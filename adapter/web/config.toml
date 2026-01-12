@@ -1,6 +1,10 @@
 [adapter]
 name = "web"
+<<<<<<< HEAD
 enabled = false
+=======
+enabled = true
+>>>>>>> origin/main
 module = "adapter.web"
 class = "WebAdapter"
 replyQueue = "xxxbot_reply:web"
@@ -10,10 +14,17 @@ logEnabled = true
 logLevel = "INFO"
 
 [web]
+<<<<<<< HEAD
 enable = false
 platform = "web"
 aliases = ["webchat"]
 botWxid = ""
+=======
+enable = true
+platform = "web"
+aliases = ["webchat"]
+botWxid = "web-bot-user"
+>>>>>>> origin/main
 logRawMessage = true
 
 [web.redis]
