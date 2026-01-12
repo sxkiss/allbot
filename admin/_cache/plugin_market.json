@@ -1,0 +1,1481 @@
+{
+  "timestamp": 1753483432,
+  "data": {
+    "success": true,
+    "plugins": [
+      {
+        "name": "DependencyManager",
+        "description": "同过微信命令直接管理 Python 依赖包，无需登录服务器！!!",
+        "author": "老夏的金库",
+        "version": "1.0.0",
+        "github_url": "https://github.com/NanSsye/DependencyManager",
+        "icon": null,
+        "id": "ceaaf954-bdbd-4249-a84d-a17e5fa48d2d",
+        "status": "approved",
+        "submit_time": "2025-04-20T01:50:53.282353",
+        "review_time": "2025-04-20T01:51:05.108328",
+        "update_time": "2025-05-20T08:58:47",
+        "downloads": 1,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "DifyConversationManager",
+        "description": "dify会话管理，输入/dify 删除对话 ，可以重置对话",
+        "author": "老夏的金库",
+        "version": "1.2.0",
+        "github_url": "https://github.com/NanSsye/DifyConversationManager",
+        "icon": null,
+        "id": "4099f07d-1877-409b-9908-208f8642d6e1",
+        "status": "approved",
+        "submit_time": "2025-03-24T12:51:25.251282",
+        "review_time": "2025-03-24T12:51:33.071121",
+        "update_time": "2025-05-08T22:29:15.827310",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "AutoSummary",
+        "description": "快速总结文本内容和卡片消息，让你的 XYBotV2 瞬间变身效率助手！🚀\r\nAutoSummary 是一款为 XYBotV2 设计的插件，旨在帮助用户快速总结微信聊天中的文本内容和卡片消息。它能够：\r\n\r\n✨ 自动提取文本消息中的链接，并抓取网页内容进行总结。\r\n📰 解析微信卡片消息 (XML 消息)，例如公众号文章分享等，并进行内容概括。\r\n🤖 集成 Dify API，利用强大的 AI 能力生成高质量的摘要。\r\n🛡️ 支持黑名单和白名单，灵活控制插件处理的链接范围。\r\n无论是快速了解群内分享的文章内容，还是概括长篇对话的重点，AutoSummary 都能帮你节省宝贵的时间！",
+        "author": "老夏的金库",
+        "version": "1.3.0",
+        "github_url": "https://github.com/NanSsye/AutoSummary",
+        "icon": null,
+        "id": "cbb0fd16-bcc7-40cb-85e5-634b624a7adf",
+        "status": "approved",
+        "submit_time": "2025-03-24T13:57:28.862101",
+        "review_time": "2025-03-24T13:57:52.457651",
+        "update_time": "2025-05-12T20:54:34.024917",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "ChatSummary",
+        "description": "聊天记录总结插件\r\n功能\r\n聊天记录总结： 自动分析聊天记录，生成总结报告 🧾。\r\n话题提取： 提取聊天记录中的主要话题 🗣️。\r\n参与者识别： 识别参与话题讨论的用户 👤。\r\n时间段分析： 分析话题讨论的时间段 ⏱️。\r\n过程描述： 简要描述话题讨论的过程 ✍️。\r\n情感评价： 对话题讨论进行情感评价 🤔。\r\nDify 集成： 通过 Dify 大模型进行总结，提供更智能的分析结果 ✨。\r\n灵活的总结方式：\r\n默认条数总结： 只输入 $总结 或 总结 时，默认总结最近 100 条消息 💬。\r\n指定条数总结： 输入 $总结 200 或 总结 200 时，总结最近 200 条消息 🔢。\r\n指定时间段总结： 输入 $总结 1小时 或 总结 1小时 时，总结最近 1 小时的消息 🕐。\r\n数据库存储： 将聊天记录存储到 SQLite 数据库中，方便后续分析和查询 💾。\r\n定期清理： 定期清理数据库中的旧消息，保持数据库的精简 🧹。\r\n独立表格： 为每个聊天（个人或群组）创建独立的表格，保证数据隔离和查询效率 🗂️。\r\n\"$总结\", \"总结\"]  # 触发总结的命令",
+        "author": "老夏的金库",
+        "version": "1.1.0",
+        "github_url": "https://github.com/NanSsye/ChatSummary",
+        "icon": null,
+        "id": "7bbda80d-45e6-4022-8d2f-794de1ff170f",
+        "status": "approved",
+        "submit_time": "2025-03-25T14:12:13.616105",
+        "review_time": "2025-03-25T14:15:28.262440",
+        "update_time": "2025-04-20T01:04:14.667576",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "VideoSender",
+        "description": "随机播放小姐姐视频\r\n发送 随机视频 获取适配",
+        "author": "老夏的金库",
+        "version": "1.1.0",
+        "github_url": "https://github.com/NanSsye/VideoSender",
+        "icon": null,
+        "id": "915466fe-4e01-4a61-8259-40b31c31eb5d",
+        "status": "approved",
+        "submit_time": "2025-03-25T14:13:00.959232",
+        "review_time": "2025-03-25T14:15:30.654165",
+        "update_time": "2025-04-20T01:04:20.083583",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "FastGPT",
+        "description": "一个基于 XYBot 框架的插件，用于集成 FastGPT 知识库问答功能，支持文本对话和图片分析。\r\n\r\n本项目由小x宝社区（https://github.com/pancrePal-xiaoyibao/pancrePal-xiaoyibao）开发者Sam贡献，目的是服务患者在Fastgpt RAG平台上，借助优秀的多模态模型能力（stepfun- step1o-Vision等）方便的进行病情对话和图像报告分析。",
+        "author": "小X宝社区",
+        "version": "1.5.0",
+        "github_url": "https://github.com/NanSsye/FastGPT-XYBotV2",
+        "icon": null,
+        "id": "f09bc645-df26-4403-9363-106503239295",
+        "status": "approved",
+        "submit_time": "2025-03-25T14:13:37.472352",
+        "review_time": "2025-03-25T14:15:32.540639",
+        "update_time": "2025-05-09T15:49:41",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "CogVideoX",
+        "description": "使用智谱 AI 最先进的 CogVideoX 模型生成高质量视频！/n\n文本生成视频命令\n使用以下命令从文本生成视频：\n\n#生成视频 [描述] [--size 宽度x高度] [--ratio 宽:高]\n图片生成视频命令\n上传图片并添加以下描述：\n\n#图生视频 [描述] [--size 宽度x高度] [--ratio 宽:高]\n",
+        "author": "老夏的金库",
+        "version": "1.0.0",
+        "github_url": "https://github.com/NanSsye/CogVideoX.git",
+        "icon": null,
+        "id": "28cce5c4-4cf1-451b-974f-125b8e33a34b",
+        "status": "approved",
+        "submit_time": "2025-03-25T14:14:31.768616",
+        "review_time": "2025-03-25T14:15:35.651026",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "grokimage",
+        "description": "grok画图插件",
+        "author": "老赵",
+        "version": "1.0.4",
+        "github_url": "https://github.com/zhaolu1206/grokimage",
+        "icon": null,
+        "id": "4a8151cf-bb74-4911-8214-f197d76c266d",
+        "status": "approved",
+        "submit_time": "2025-03-26T00:11:32.229968",
+        "review_time": "2025-03-26T00:34:41.804163",
+        "update_time": "2025-04-20T00:38:28.536908",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "画图，图片生成",
+            "id": 4
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "Reminder",
+        "description": "这个备忘录插件是为 XYBotV2 平台量身打造的，旨在帮助用户创建和管理个性化备忘录。它支持各种时间格式，还能与其他插件联动，并提供全面的管理功能。再也不用担心忘记重要的事情啦！😎\r\n\r\n功能特性\r\n灵活的时间格式 🕒：支持多种时间格式，包括指定时间、相对时间和循环提醒，想怎么设置就怎么设置。\r\n插件联动 🤝：与其他 XYBotV2 插件无缝集成，允许备忘录触发其他插件的操作。比如，提醒你查看天气、新闻等等。\r\n全面的管理 🗂️：提供存储、查询和删除备忘录的命令，支持单个和批量操作，管理起来So easy！\r\n用户友好的界面 🙋：提供清晰的说明和示例，指导用户设置提醒，再也不怕不会用啦！\r\n积分控制 💰：集成积分系统来管理使用情况，管理员和白名单用户还可以享受免积分特权，贴心不贴心！",
+        "author": "老夏的金库",
+        "version": "1.3.0",
+        "github_url": "https://github.com/NanSsye/Reminder.git",
+        "icon": null,
+        "id": "7aed2934-57d8-48f9-bc9f-74fdb9d65092",
+        "status": "approved",
+        "submit_time": "2025-03-26T02:09:48.089875",
+        "review_time": "2025-05-16T11:43:18.317904",
+        "update_time": "2025-05-29T21:24:25",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "StockAnalysis",
+        "description": "一个专为 XYBotv2 设计的强大微信插件，可以直接在您的聊天界面中实现实时股票数据分析和投资建议。此插件利用 akshare 库获取股票数据，并可选择与 Dify AI 服务集成，以进行深入的分析和建议。",
+        "author": "老夏的金库",
+        "version": "1.0.0",
+        "github_url": "https://github.com/NanSsye/StockAnalysis.git",
+        "icon": null,
+        "id": "3de94a47-e286-47df-b950-b41ada662a48",
+        "status": "approved",
+        "submit_time": "2025-04-01T14:21:03.026493",
+        "review_time": "2025-04-01T14:21:41.321805",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "ChargptChat",
+        "description": "简介\r\nChargptChat 是一个基于 chargpt.ai API 的微信机器人聊天插件，支持多种 AI 模型，提供文本对话和图片生成功能。\r\n\r\n功能特点\r\n🤖 支持多种顶级 AI 大模型（OpenAI、Anthropic、Google 等）\r\n🖼️ 支持 AI 图片生成，可指定比例和保存图片\r\n🔄 流式响应，实时展示生成过程\r\n🔒 内置敏感词过滤系统\r\n🔧 高度可定制的配置选项\r\n💬 仅通过触发词唤醒，不响应@消息",
+        "author": "老夏的金库",
+        "version": "1.0.0",
+        "github_url": "https://github.com/NanSsye/ChargptChat",
+        "icon": null,
+        "id": "4d15b06e-e302-4019-88da-231293baec55",
+        "status": "approved",
+        "submit_time": "2025-04-02T03:35:38.793935",
+        "review_time": "2025-04-02T03:35:52.703888",
+        "update_time": "2025-04-20T01:05:55",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "聊天",
+            "id": 2
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "OpenManus",
+        "description": "- **多步骤思考**: 使用 MCP (多步认知过程) 方法进行复杂问题分析",
+        "author": "老夏的金库",
+        "version": "0.4.0",
+        "github_url": "https://github.com/NanSsye/OpenManus",
+        "icon": null,
+        "id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf",
+        "status": "approved",
+        "submit_time": "2025-04-03T11:45:22.311440",
+        "review_time": "2025-04-03T11:45:36.946370",
+        "update_time": "2025-04-20T01:05:23.490531",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "聊天，工具",
+            "id": 5
+          }
+        ],
+        "requirements": [
+          {
+            "name": "aiohttp>=3.8.4",
+            "version": null,
+            "id": 1,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "tomli>=2.0.1",
+            "version": null,
+            "id": 2,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "loguru>=0.6.0",
+            "version": null,
+            "id": 3,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "pydub>=0.25.1",
+            "version": null,
+            "id": 4,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "aiofiles>=23.1.0",
+            "version": null,
+            "id": 5,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "fish-audio-sdk>=1.0.0  # Fish Audio TTS（可选）",
+            "version": null,
+            "id": 6,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "requests>=2.28.0       # MiniMax TTS使用",
+            "version": null,
+            "id": 7,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "python-dateutil>=2.8.2  # 日期时间工具",
+            "version": null,
+            "id": 8,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "pandas>=1.5.3",
+            "version": null,
+            "id": 9,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "numpy>=1.24.0",
+            "version": null,
+            "id": 10,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "scipy>=1.10.0",
+            "version": null,
+            "id": 11,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "scikit-learn>=1.2.0",
+            "version": null,
+            "id": 12,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          },
+          {
+            "name": "akshare",
+            "version": null,
+            "id": 13,
+            "plugin_id": "a9543b48-e431-4ea4-9a10-9eb5f42804cf"
+          }
+        ],
+        "review_comment": ""
+      },
+      {
+        "name": "MemeGen",
+        "description": "MemeGen是XYBotV2、xxxBot信机器人的一个表情包生成插件，可以在微信群聊中根据用户头像生成各种有趣的表情包。\r\n注意！！！！\r\n安装meme-generator库：\r\n\r\npip install meme_generator==0.1.11\r\n下载表情资源：\r\n\r\nmeme download\r\n基础命令\r\n他人单人表情：@用户名 触发词（如\"@张三 摸\"）- 使用被@用户的头像\r\n双人表情：@用户A 触发词 @用户B（如\"@张三 亲 @李四\"）- 使用两位被@用户的头像\r\n查看表情列表：发送\"表情列表\"或\"表情菜单\"",
+        "author": "阿孟",
+        "version": "1.0.0",
+        "github_url": "https://github.com/Vita0519/MemeGen",
+        "icon": null,
+        "id": "f3fb4019-fcbd-4684-bf4d-204a88955c23",
+        "status": "approved",
+        "submit_time": "2025-04-07T12:29:48.451163",
+        "review_time": "2025-05-21T19:50:25.440272",
+        "update_time": "2025-05-21T19:51:01",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "游戏",
+            "id": 6
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "KolorsVirtualTryOn",
+        "description": "介绍\nKolorsVirtualTryOn 是一个虚拟试衣服务插件，基于快手 Kolors 模型实现。用户可以通过上传人物照片和衣服照片，合成虚拟试衣效果图。\n\n功能\n上传人物照片\n上传衣服照片\n自动合成试衣效果图\n定期清理临时文件和结果文件",
+        "author": "老夏的金库",
+        "version": "1.0.0",
+        "github_url": "https://github.com/NanSsye/KolorsVirtualTryOn",
+        "icon": null,
+        "id": "16e6a6a5-a5e5-4827-891a-b6fdc2c7d56b",
+        "status": "approved",
+        "submit_time": "2025-04-08T00:52:41.978438",
+        "review_time": "2025-04-08T00:52:57.093440",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "SiliconFlow",
+        "description": "硅基流动 API 插件为 xxxbot-pad 提供了与硅基流动 API 的集成，使您可以直接在微信中使用硅基流动的大语言模型服务。",
+        "author": "老夏的金库",
+        "version": "1.3.1",
+        "github_url": "https://github.com/NanSsye/SiliconFlow",
+        "icon": null,
+        "id": "8965ee6d-df4e-4624-898d-3d619e02850c",
+        "status": "approved",
+        "submit_time": "2025-04-14T22:53:35",
+        "review_time": "2025-04-14T22:53:35",
+        "update_time": "2025-05-23T20:46:48.359909",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "DouyinParser",
+        "description": "这是一个为 xxxbot-pad 开发的 DouyinParser 插件，可以无需借用API实现本地解析抖音视频链接并发送视频卡片消息。",
+        "author": "BEelzebub",
+        "version": "1.0.0",
+        "github_url": "https://github.com/BEelzebub594/DouyinParser",
+        "icon": null,
+        "id": "5ade8774-e2d2-4304-a79f-d8a8b3761f47",
+        "status": "approved",
+        "submit_time": "2025-04-17T02:33:44.356670",
+        "review_time": "2025-04-17T03:22:45.297477",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "Dify",
+        "description": "接通Dify平台AI对话插件",
+        "author": "老夏的金库",
+        "version": "1.6.1",
+        "github_url": "https://github.com/NanSsye/Dify",
+        "icon": null,
+        "id": "61eff2e3-f663-4c71-955d-aea8c9009a10",
+        "status": "approved",
+        "submit_time": "2025-04-19T17:24:09",
+        "review_time": "2025-04-19T17:24:09",
+        "update_time": "2025-05-25T22:10:19",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "AI",
+            "id": 21
+          }
+        ],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "RaiseCard",
+        "description": "这是一个简单的举牌图片生成插件，可以生成举牌图片并发送给用户。发送：举牌 xxxx或者黑丝举牌 xxxx",
+        "author": "老夏的金库",
+        "version": "1.1.0",
+        "github_url": "https://github.com/NanSsye/RaiseCard",
+        "icon": null,
+        "id": "8cf12f5e-c1de-4335-9229-d5b802c9e330",
+        "status": "approved",
+        "submit_time": "2025-04-20T22:24:20.055408",
+        "review_time": "2025-04-20T22:24:49.742717",
+        "update_time": "2025-04-20T22:24:58.179569",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "GroupRobbery",
+        "description": "这是一个为 xxxbot-pad 开发的群抢劫小游戏插件，随机抢劫群友的积分，具有100多种不同风格的随机事件，带来丰富的游戏体验。",
+        "author": "wspzf",
+        "version": "1.0.0",
+        "github_url": "https://github.com/wspzf/GroupRobbery",
+        "icon": null,
+        "id": "0dcb00f3-9d53-4d9b-9659-0034a4323b56",
+        "status": "approved",
+        "submit_time": "2025-04-21T23:27:38.207560",
+        "review_time": "2025-04-22T00:05:34.302990",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "游戏",
+            "id": 6
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "GuessIdioms",
+        "description": "这是一个为 xxxbot-pad 开发的看图猜成语插件，通过显示成语相关的图片，让群成员猜测对应的成语。游戏支持多轮进行，并提供自动提示功能，增加游戏的趣味性和互动性。",
+        "author": "wspzf",
+        "version": "1.0.0",
+        "github_url": "https://github.com/wspzf/GuessIdioms",
+        "icon": null,
+        "id": "8d7ffca8-2a8b-4d88-a097-237548c0a5f7",
+        "status": "approved",
+        "submit_time": "2025-04-21T23:46:17.026992",
+        "review_time": "2025-04-22T00:05:37.582649",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "游戏",
+            "id": 6
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "IdiomSolitaire",
+        "description": "这是一个为 xxxbot-pad 开发的成语接龙插件，玩家需要根据上一个成语的最后一个字来接新的成语。",
+        "author": "wspzf",
+        "version": "1.0.0",
+        "github_url": "https://github.com/wspzf/IdiomSolitaire",
+        "icon": null,
+        "id": "5784b7b6-5f70-451c-b7fd-5521b3556c3e",
+        "status": "approved",
+        "submit_time": "2025-04-21T23:47:59.783221",
+        "review_time": "2025-04-22T00:05:42.113396",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "游戏",
+            "id": 6
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "JDRebate",
+        "description": "京东返利插件是一款为基于 xxxbot 的微信机器人设计的插件。它可以自动识别微信聊天（包括群聊和私聊）中用户发送的京东商品链接或京东商品卡片分享，并将其转换为带有推广返利的链接。转换后的链接会以更美观、信息更丰富的格式发送回给用户。",
+        "author": "wspzf",
+        "version": "1.2.0",
+        "github_url": "https://github.com/wspzf/JDRebate",
+        "icon": null,
+        "id": "494d268b-fe5c-45a0-90d6-1c9397a7f920",
+        "status": "approved",
+        "submit_time": "2025-05-11T20:27:56.295555",
+        "review_time": "2025-05-11T22:12:21.527787",
+        "update_time": "2025-04-25T15:35:37.142062",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "购物，返利",
+            "id": 13
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "GroupMonitorPlugin",
+        "description": "为XXXBot开发的一款退群提醒插件",
+        "author": "BEelzebub",
+        "version": "1.1.0",
+        "github_url": "https://github.com/BEelzebub594/GroupMonitor",
+        "icon": null,
+        "id": "4aba74c3-0a17-442a-bd92-96b53931cc0f",
+        "status": "approved",
+        "submit_time": "2025-04-25T17:10:22.716179",
+        "review_time": "2025-04-25T17:11:34.774004",
+        "update_time": "2025-04-30T11:36:48",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "DuanjuSpider",
+        "description": "DuanjuSpider是一个微信机器人插件，用于在群聊中搜索短剧资源。通过简单的命令，可以快速查找各类短剧并获取网盘链接，为群友提供便捷的资源获取方式。",
+        "author": "BEelzebub",
+        "version": "1.2.0",
+        "github_url": "https://github.com/BEelzebub594/DuanjuSpider",
+        "icon": null,
+        "id": "80f54d5e-c590-40d0-b72c-05123ae66fbb",
+        "status": "approved",
+        "submit_time": "2025-04-29T10:44:16.487931",
+        "review_time": "2025-04-29T20:36:26.478347",
+        "update_time": "2025-05-20T16:57:45.118594",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [
+          {
+            "name": "requests>=2.28.0",
+            "version": null,
+            "id": 14,
+            "plugin_id": "80f54d5e-c590-40d0-b72c-05123ae66fbb"
+          },
+          {
+            "name": "beautifulsoup4>=4.11.1",
+            "version": null,
+            "id": 15,
+            "plugin_id": "80f54d5e-c590-40d0-b72c-05123ae66fbb"
+          },
+          {
+            "name": "aiohttp>=3.8.1",
+            "version": null,
+            "id": 16,
+            "plugin_id": "80f54d5e-c590-40d0-b72c-05123ae66fbb"
+          },
+          {
+            "name": "loguru>=0.6.0",
+            "version": null,
+            "id": 17,
+            "plugin_id": "80f54d5e-c590-40d0-b72c-05123ae66fbb"
+          },
+          {
+            "name": "tomli>=2.0.1",
+            "version": null,
+            "id": 18,
+            "plugin_id": "80f54d5e-c590-40d0-b72c-05123ae66fbb"
+          }
+        ],
+        "review_comment": ""
+      },
+      {
+        "name": "Quarkso",
+        "description": "为XXXBot开发的夸克网盘和百度云资源搜索插件，基于metaso插件模式修订。插件名字是作者偷懒了O(∩_∩)O",
+        "author": "BEelzebub",
+        "version": "1.0.0",
+        "github_url": "https://github.com/BEelzebub594/Quarkso",
+        "icon": null,
+        "id": "8d624be7-7583-4442-976e-13aac1eb8394",
+        "status": "approved",
+        "submit_time": "2025-04-29T21:02:25.932993",
+        "review_time": "2025-04-30T11:35:32.619001",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "Bncr",
+        "description": "Bncr无界机器人框架对接.附上支持xxxbot-pad无界适配器，详细看说明文档",
+        "author": "sxkiss",
+        "version": "1.0.3",
+        "github_url": "https://github.com/sxkiss/Bncr",
+        "icon": null,
+        "id": "b49d6dc3-b27a-4d8f-8459-4d7154747f57",
+        "status": "approved",
+        "submit_time": "2025-05-20T12:31:51.945760",
+        "review_time": "2025-05-20T14:17:03.048248",
+        "update_time": "2025-05-20T14:16:57",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "GroupWelcome",
+        "description": "GroupWelcome 是一个用于自动欢迎新成员加入群聊的插件。当有新成员加入群聊时，插件会自动发送一条欢迎消息，并可选择性地发送一个项目说明 PDF 文件。",
+        "author": "老夏的金库",
+        "version": "1.3.0",
+        "github_url": "https://github.com/NanSsye/GroupWelcome",
+        "icon": null,
+        "id": "5064f641-0815-421b-b7b7-6ced6d179330",
+        "status": "approved",
+        "submit_time": "2025-05-06T23:38:20",
+        "review_time": "2025-05-06T23:38:20",
+        "update_time": "2025-05-13T20:51:30.659583",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "AtAllFilter",
+        "description": "AtAllFilter 是一个用于过滤群聊中\"@所有人\"消息的插件。当在群聊中收到包含\"@所有人\"或\"@全体成员\"的消息时，该插件会阻止消息传递到其他插件，避免机器人对这类消息做出响应。",
+        "author": "xxxbot",
+        "version": "1.0.0",
+        "github_url": "https://github.com/NanSsye/AtAllFilter",
+        "icon": null,
+        "id": "4b1dedbb-b0ec-40f6-ad6e-5572b858d4d7",
+        "status": "approved",
+        "submit_time": "2025-05-07T14:29:09",
+        "review_time": "2025-05-07T14:29:09",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "Apilot",
+        "description": "Apilot 是一个基于 XXXBOT 的实用 API 接口调用插件，提供多种实用功能，如天气查询、星座运势、新闻资讯等。\n\n原DOW插件，由于不可抗力迁移至XXXBOT平台，保持原有功能。",
+        "author": "飞天雾",
+        "version": "1.5.0",
+        "github_url": "https://github.com/sofs2005/Apilot",
+        "icon": null,
+        "id": "30aff05a-71e8-4877-aef5-ce7c97af7cb0",
+        "status": "approved",
+        "submit_time": "2025-05-07T15:26:36.261738",
+        "review_time": "2025-05-07T15:49:45.604130",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "Kylsky",
+        "description": "只支持dow插件，下载后需要从xxxbot框架中的/plugins文件夹内移动至/dow/plugins内！兼容 new-api在chatgpt-on-wechat进行请求绘图发送。",
+        "author": "Kylsky",
+        "version": "1.0.0",
+        "github_url": "https://github.com/Kylsky/mj-dify-on-wechat-plugin",
+        "icon": null,
+        "id": "4c765dfc-21ee-4620-adad-b959e219df8b",
+        "status": "approved",
+        "submit_time": "2025-05-08T12:48:49.483559",
+        "review_time": "2025-05-08T22:42:40.690136",
+        "update_time": "2025-05-08T22:42:32",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "midjourney，绘图",
+            "id": 11
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "MessageForwarder",
+        "description": "消息转发",
+        "author": "有风的",
+        "version": "1.0.0",
+        "github_url": "https://github.com/2629728088/MessageForwarder",
+        "icon": null,
+        "id": "e8f3f6a2-ceee-4677-af80-23dd8a355576",
+        "status": "approved",
+        "submit_time": "2025-05-09T17:58:58.538281",
+        "review_time": "2025-05-10T00:49:09.911160",
+        "update_time": "2025-05-14T14:15:33",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "ManagePlugin",
+        "description": "xxxbot插件管理器",
+        "author": "xxxbot",
+        "version": "1.1.0",
+        "github_url": "https://github.com/NanSsye/ManagePlugin",
+        "icon": null,
+        "id": "5e8cf1da-6632-4642-bda9-541e39248eff",
+        "status": "approved",
+        "submit_time": "2025-05-10T11:17:47",
+        "review_time": "2025-05-10T11:17:47",
+        "update_time": "2025-05-10T11:18:09.551514",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "GeminiImageXXX",
+        "description": "- **图像生成**：根据文本描述生成高质量图片",
+        "author": "XXXBOT团伙",
+        "version": "1.0.1",
+        "github_url": "https://github.com/single228758/GeminiImageXXX",
+        "icon": null,
+        "id": "80c757bc-9cf2-4c09-8aa7-e0313726c2f2",
+        "status": "approved",
+        "submit_time": "2025-05-10T12:11:53.394710",
+        "review_time": "2025-05-10T16:40:43.574208",
+        "update_time": "2025-05-20T16:57:57.956357",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "八戒专属",
+            "id": 18
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "KeywordCall",
+        "description": "适配xxxbot-pad版本的KeywordCall，支持配置关键字进行不同API的调用，兼容OpenAI格式的API接口",
+        "author": "pigracing",
+        "version": "1.0.1",
+        "github_url": "https://github.com/pigracing/KeywordCall",
+        "icon": null,
+        "id": "a7ec8b0f-7582-4513-9541-73782d013b3b",
+        "status": "approved",
+        "submit_time": "2025-05-11T22:10:27.051906",
+        "review_time": "2025-05-11T22:12:36.888256",
+        "update_time": "2025-05-14T14:14:19.649477",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "ImagePlugin",
+        "description": "图片处理插件，支持图生图，图生文的功能,适配xxxbot-pad版本的ImagePlugin，支持配置关键字进行不同API的调用，兼容OpenAI格式的API接口",
+        "author": "pigracing",
+        "version": "1.0.2",
+        "github_url": "https://github.com/pigracing/ImagePlugin",
+        "icon": null,
+        "id": "dd9d6960-6682-4a33-92c0-b9fdfdaf1304",
+        "status": "approved",
+        "submit_time": "2025-05-12T13:43:02.517776",
+        "review_time": "2025-05-12T17:06:24.088905",
+        "update_time": "2025-05-14T14:50:36",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          },
+          {
+            "name": "图生文",
+            "id": 14
+          },
+          {
+            "name": "图生图",
+            "id": 15
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "TVSSpider",
+        "description": "TVSSpider是一个为微信机器人设计的插件，用于搜索并获取TVS1网站的影视资源。该插件采用两步式搜索机制，有效防止因一次性发送过多链接导致的微信封号风险。",
+        "author": "BEelzebub",
+        "version": "1.1.0",
+        "github_url": "https://github.com/BEelzebub594/TVSSpider",
+        "icon": null,
+        "id": "d4d56a6c-bcf8-40bc-95d8-ff67f89bab20",
+        "status": "approved",
+        "submit_time": "2025-05-12T23:05:19.346038",
+        "review_time": "2025-05-13T11:22:43.239373",
+        "update_time": "2025-05-20T16:58:04.214717",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [
+          {
+            "name": "requests>=2.25.0",
+            "version": null,
+            "id": 19,
+            "plugin_id": "d4d56a6c-bcf8-40bc-95d8-ff67f89bab20"
+          },
+          {
+            "name": "beautifulsoup4>=4.9.3",
+            "version": null,
+            "id": 20,
+            "plugin_id": "d4d56a6c-bcf8-40bc-95d8-ff67f89bab20"
+          },
+          {
+            "name": "toml>=0.10.2",
+            "version": null,
+            "id": 21,
+            "plugin_id": "d4d56a6c-bcf8-40bc-95d8-ff67f89bab20"
+          }
+        ],
+        "review_comment": ""
+      },
+      {
+        "name": "AutoSummaryOpenAI",
+        "description": "基于xxxbot-pad上面的分享链接自动总结插件，支持OpenAI兼容接口，快速总结文本内容和卡片消息，让你的 xxxbot-pad 瞬间变身效率助手！",
+        "author": "pigracing",
+        "version": "1.0.0",
+        "github_url": "https://github.com/pigracing/AutoSummaryOpenAI",
+        "icon": null,
+        "id": "548bbec7-e2a7-4c1a-9c84-50adaa45990c",
+        "status": "approved",
+        "submit_time": "2025-05-13T12:28:38.512306",
+        "review_time": "2025-05-13T16:10:40.406729",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "DailyFortunePlugin",
+        "description": "一个简单而有趣的微信机器人插件，为用户提供每日运势预测。",
+        "author": "Debin",
+        "version": "1.0.0",
+        "github_url": "https://github.com/luodeb/DailyFortunePlugin",
+        "icon": null,
+        "id": "7871618f-5d99-456f-93a8-c89fdccd6fd5",
+        "status": "approved",
+        "submit_time": "2025-05-13T12:52:54.635202",
+        "review_time": "2025-05-13T16:11:00.719442",
+        "update_time": "2025-05-13T16:10:54",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "游戏",
+            "id": 6
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "Webhook_XXX",
+        "description": "-Webhook 对接插件是为在原始框架上实现dow框架回调功能的替代性插件，您可以在原始框架基础上设置回调地址，对接外部程序进行信息处理。 -目前可实现文本消息、图片消息、语音消息、文件消息、引用消息的传递，其他需要信息传递的内容请自行对接 -语音消息传递请查看使用方法部分对XYBot.py部分代码进行调整，传递出的语音通过api获取的base64为silk格式 -引用消息无法引用语音消息的内容，针对图片、文件类型的引用消息，因无法获取引用消息的旧msgid，导致无法通过api重新下载数据，请根据引用数据中对应的值进行数据库索引处理 -如需配置多个回调地址请自行复制插件修改插件名称，配置多个插件进行设置",
+        "author": "喵子柒",
+        "version": "1.1.0",
+        "github_url": "https://github.com/nanaaya98/Webhook_XXX",
+        "icon": null,
+        "id": "810eff3a-f2a3-4288-b862-67ea23229a12",
+        "status": "approved",
+        "submit_time": "2025-05-14T02:07:40.480981",
+        "review_time": "2025-05-14T14:13:19.593413",
+        "update_time": "2025-05-15T08:53:55",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "PushMessagesPlugin",
+        "description": "机器人插件 接收消息给数据转发到自定义的地址",
+        "author": "milian221",
+        "version": "1.0.0",
+        "github_url": "https://github.com/milian221/PushMessagesPlugin.git",
+        "icon": null,
+        "id": "850f9c0e-7818-4e22-92ac-be1312e82388",
+        "status": "approved",
+        "submit_time": "2025-05-14T19:17:49.283609",
+        "review_time": "2025-05-14T19:46:47.316255",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "AutoReloginPlugin",
+        "description": "该插件用于保持微信机器人的长时间在线状态，通过定期执行二次登录来刷新会话，防止因会话过期而掉线。",
+        "author": "xxxbot团伙",
+        "version": "1.0.0",
+        "github_url": "https://github.com/NanSsye/AutoReloginPlugin",
+        "icon": null,
+        "id": "7703543a-b9f5-44da-a171-a1b2a43d9053",
+        "status": "approved",
+        "submit_time": "2025-05-14T20:51:20",
+        "review_time": "2025-05-14T20:51:20",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "DoubaoGen",
+        "description": "Doubao 是一个基于字节跳动豆包 AI 的聊天插件，为微信机器人提供智能对话和图片生成能力。无论是私聊还是群聊，Doubao 都能提供灵活的 AI 对话体验。",
+        "author": "阿孟",
+        "version": "1.2.1",
+        "github_url": "https://github.com/Vita0519/DoubaoGen",
+        "icon": null,
+        "id": "3374b354-d535-488e-b829-778b2b1e7a08",
+        "status": "approved",
+        "submit_time": "2025-05-19T21:48:16.136694",
+        "review_time": "2025-05-19T21:50:01.804536",
+        "update_time": "2025-05-19T21:50:21",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "Coze",
+        "description": "Coze AI 平台简易版",
+        "author": "Wilson",
+        "version": "1.0.0",
+        "github_url": "https://github.com/wailson/Coze-XXXbot",
+        "icon": null,
+        "id": "425ad9f7-0e57-4b92-8507-c67da88148c7",
+        "status": "approved",
+        "submit_time": "2025-05-16T10:33:16.303529",
+        "review_time": "2025-05-16T11:18:32.392660",
+        "update_time": "2025-05-16T11:19:01",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "聊天",
+            "id": 2
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "YuewenPlugin",
+        "description": "enable = true",
+        "author": "xxxbot团伙",
+        "version": "1.0.2",
+        "github_url": "https://github.com/single228758/yuewenxxxbot",
+        "icon": null,
+        "id": "f624c54c-9998-4753-a9d7-a8746bb17301",
+        "status": "approved",
+        "submit_time": "2025-05-16T12:13:39.353640",
+        "review_time": "2025-05-16T19:28:08.490055",
+        "update_time": "2025-05-25T21:41:45.315381",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "八戒专属",
+            "id": 18
+          }
+        ],
+        "requirements": [
+          {
+            "name": "loguru",
+            "version": null,
+            "id": 22,
+            "plugin_id": "f624c54c-9998-4753-a9d7-a8746bb17301"
+          },
+          {
+            "name": "requests",
+            "version": null,
+            "id": 23,
+            "plugin_id": "f624c54c-9998-4753-a9d7-a8746bb17301"
+          },
+          {
+            "name": "Pillow",
+            "version": null,
+            "id": 24,
+            "plugin_id": "f624c54c-9998-4753-a9d7-a8746bb17301"
+          },
+          {
+            "name": "aiohttp",
+            "version": null,
+            "id": 25,
+            "plugin_id": "f624c54c-9998-4753-a9d7-a8746bb17301"
+          },
+          {
+            "name": "toml",
+            "version": null,
+            "id": 26,
+            "plugin_id": "f624c54c-9998-4753-a9d7-a8746bb17301"
+          },
+          {
+            "name": "tomli",
+            "version": null,
+            "id": 27,
+            "plugin_id": "f624c54c-9998-4753-a9d7-a8746bb17301"
+          }
+        ],
+        "review_comment": ""
+      },
+      {
+        "name": "Custom_WriteList_XXX",
+        "description": "管理机器人在特定群聊中的是否启用，可自定义唤醒、退出词。",
+        "author": "喵子柒",
+        "version": "1.0.0",
+        "github_url": "https://github.com/nanaaya98/Custom_WriteList_XXX",
+        "icon": null,
+        "id": "aa31e1cd-766a-466e-aa91-5ddf910872d1",
+        "status": "approved",
+        "submit_time": "2025-05-17T14:56:43.573530",
+        "review_time": "2025-05-17T20:06:32.622774",
+        "update_time": "2025-05-19T10:14:37",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "管理",
+            "id": 16
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "DifyPlus",
+        "description": "XXXBOT-PAD DifyPlus Plugin。\n源于老夏的Dify插件，支持群聊组，支持不同的群聊组配置不同的模型（智能体）。",
+        "author": "冷风",
+        "version": "1.0.0",
+        "github_url": "https://github.com/hzcoolwind/DifyPlus",
+        "icon": null,
+        "id": "59d8a541-ae8c-496c-922f-7f9bec49ca4e",
+        "status": "approved",
+        "submit_time": "2025-05-17T20:01:50.152327",
+        "review_time": "2025-05-17T20:06:38.323178",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "Dify Plugin",
+            "id": 17
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "AIReport",
+        "description": "调用API信息，发送【文字】或【图片】版本咨询类插件。",
+        "author": "老金",
+        "version": "3.2",
+        "github_url": "https://github.com/KimYx0207/AIReport",
+        "icon": null,
+        "id": "2de239fe-d970-40a7-9ed5-86e0ce92c273",
+        "status": "approved",
+        "submit_time": "2025-05-18T16:02:26.779543",
+        "review_time": "2025-05-18T16:03:56.860724",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "souziyuan",
+        "description": "XXXbot网盘资源搜索插件\r\n\r\n触发指令 ： 搜XXX（综合指令，支持短剧，音乐，软件，教辅） 搜音乐XXX（只支持音乐） 全网搜XXX（电影，电视剧，综艺，动漫类）\r\n\r\n音乐可以导入到酷狗，QQ音乐之类的播放器，可以导入歌单 自行测试吧",
+        "author": "池塘的水满囖",
+        "version": "1.0.0",
+        "github_url": "https://github.com/67628042/souziyuan",
+        "icon": null,
+        "id": "54b927e9-0417-4f08-b3b9-48fabf140a1a",
+        "status": "approved",
+        "submit_time": "2025-05-18T20:18:17",
+        "review_time": "2025-05-18T20:18:17",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "yuanbao",
+        "description": "XXXbot元宝绘画插件 触发指令：元宝+内容+风格 例如：元宝美女人像摄影风格\r\n\r\n\"人像摄影风格\", \"真实全景风格\", \"全息风格\", \"卡通插画风格\", \"城市风格\", \"像素风格\", \"赛博朋克风格\", \"蒸汽朋克风格\", \"浪漫风格\", \"3D卡通风格\", \"轻奢日漫风格\", \"轻手绘漫画风格\", \"3D风格\", \"彩色水墨风格\", \"工作室摄影风格\", \"水彩风格\", \"古典风格\", \"剪纸风格\", \"毛边风格\", \"徐悲鸿风格\", \"轻奢风格\", \"水墨画风格\", \"韩式风格\", \"现代风格\", \"复古风格\", \"彩铅风格\", \"油画风格\", \"宫崎骏风格\", \"凡高风格\"",
+        "author": "池塘的水满囖",
+        "version": "1.0.0",
+        "github_url": "https://github.com/67628042/yuanbao",
+        "icon": null,
+        "id": "cd1885c0-eb3e-46d8-bc53-ac9b2def1dc4",
+        "status": "approved",
+        "submit_time": "2025-05-18T20:18:51",
+        "review_time": "2025-05-18T20:18:51",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "yulu",
+        "description": "XXXbot聚合语录插件",
+        "author": "池塘的水满囖",
+        "version": "1.0.0",
+        "github_url": "https://github.com/67628042/yulu/",
+        "icon": null,
+        "id": "9c821198-fefb-4003-a942-d8abf1ae6bd1",
+        "status": "approved",
+        "submit_time": "2025-05-18T20:19:17",
+        "review_time": "2025-05-18T20:19:17",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "wangzhezhanli",
+        "description": "XXXbot王者荣耀查战力插件\r\n\r\n触发指令： 查战力+战区+英雄名 例如：查战力苹果微信妲己\r\n\r\n\"安卓微信\": \"wx\", \"安卓QQ\": \"qq\", \"ios微信\": \"ios_wx\", \"iosQQ\": \"ios_qq\"",
+        "author": "池塘的水满囖",
+        "version": "1.0.0",
+        "github_url": "https://github.com/67628042/wangzhezhanli",
+        "icon": null,
+        "id": "0615ed4f-ed6c-4132-9cc6-ddd2360aff36",
+        "status": "approved",
+        "submit_time": "2025-05-18T20:19:57",
+        "review_time": "2025-05-18T20:19:57",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": null
+      },
+      {
+        "name": "Moyu",
+        "description": "适用于xxxbot、xybot的摸鱼插件，🐟摸鱼提醒小助手",
+        "author": "Felix",
+        "version": "1.0.0",
+        "github_url": "https://github.com/Felix-sec/Moyu",
+        "icon": null,
+        "id": "27759e05-5184-404a-bcee-26560b750211",
+        "status": "approved",
+        "submit_time": "2025-05-19T21:28:56.453668",
+        "review_time": "2025-05-19T21:30:34.085276",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "娱乐",
+            "id": 19
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "imageprompt",
+        "description": "简单反推图片生成提示词",
+        "author": "xxxbot团伙",
+        "version": "1.0.0",
+        "github_url": "https://github.com/single228758/imageprompt",
+        "icon": null,
+        "id": "af5b3cb4-10fa-49be-97d4-be88c97e0627",
+        "status": "approved",
+        "submit_time": "2025-05-20T13:59:28.927143",
+        "review_time": "2025-05-20T14:17:44.948821",
+        "update_time": "2025-05-20T14:19:12",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "八戒专属",
+            "id": 18
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "huanlxxx",
+        "description": "基于[BeArt AI免费在线换脸工具](https://beart.ai/zh/face-swap/)的插件，发送换脸，根据提示发送图片1和图片2，完成换脸",
+        "author": "xxxbot团伙",
+        "version": "1.0.0",
+        "github_url": "https://github.com/single228758/huanlxxx",
+        "icon": null,
+        "id": "66b5451c-eb8d-4d72-8ed8-0ebc548e76df",
+        "status": "approved",
+        "submit_time": "2025-05-20T14:21:58.127871",
+        "review_time": "2025-05-20T14:27:08.747920",
+        "update_time": "2025-05-20T14:27:02",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "八戒专属",
+            "id": 18
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "AliRAM",
+        "description": "阿里云RAM账号管理插件",
+        "author": "柏煊",
+        "version": "1.0.1",
+        "github_url": "https://github.com/foce123/AliRAM",
+        "icon": null,
+        "id": "b138ade6-cdcb-4f44-b384-7a34e9593386",
+        "status": "approved",
+        "submit_time": "2025-05-21T16:34:58.349690",
+        "review_time": "2025-05-21T19:38:50.051983",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "TextGame",
+        "description": "游戏娱乐插件，支持钓鱼，外出探险，经济系统，等级系统。",
+        "author": "Sakura7301",
+        "version": "0.2.4",
+        "github_url": "https://github.com/Sakura7301/game",
+        "icon": null,
+        "id": "105bdc18-9215-4378-b831-19bbcf485334",
+        "status": "approved",
+        "submit_time": "2025-05-22T14:29:01.782917",
+        "review_time": "2025-05-22T21:31:51.490764",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "游戏，社交，对战，冒险",
+            "id": 22
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "Music_puls",
+        "description": "这是一款增强版音乐插件",
+        "author": "电脑小白",
+        "version": "2.0.2",
+        "github_url": "https://github.com/baqixiao-jie/Music_puls",
+        "icon": null,
+        "id": "036be39f-3a4b-4a81-b020-f2e619ff0d36",
+        "status": "approved",
+        "submit_time": "2025-05-25T16:15:29.337606",
+        "review_time": "2025-05-25T16:16:25.847874",
+        "update_time": "2025-05-25T21:44:08",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "wclshotscreen_xxx_plugin",
+        "description": "wow 怀旧服 wcl查分插件\r\n命令：查分 服务器 角色名",
+        "author": "刚某人",
+        "version": "1.0.0",
+        "github_url": "https://github.com/MadHHH/wclshotscreen_xxx_plugin",
+        "icon": null,
+        "id": "0c2be7f1-927c-4c20-bd94-8e70bed57d4b",
+        "status": "approved",
+        "submit_time": "2025-05-27T10:11:02.582020",
+        "review_time": "2025-05-28T09:36:22.236306",
+        "update_time": "2025-05-28T09:36:16",
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "JDLoginPlugin",
+        "description": "JDLogin 插件\n本插件支持京东账号的短信登录、二维码登录和密码登录，支持微信ID与京东账号绑定，自动管理登录会话，超时自动退出。 基于青龙兔子RabbitPro开发，",
+        "author": "sxkiss",
+        "version": "1.0.0",
+        "github_url": "https://github.com/sxkiss/JDLogin",
+        "icon": null,
+        "id": "b0c4f6d5-10b0-4a09-94e9-7a72553e6962",
+        "status": "approved",
+        "submit_time": "2025-05-28T22:53:41.909931",
+        "review_time": "2025-05-29T21:14:23.928380",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "GroupWelcome",
+        "description": "进群欢迎，增加3种卡片，指令：切换欢迎卡片",
+        "author": "xxxbot&电脑小白",
+        "version": "1.4.1",
+        "github_url": "https://github.com/baqixiao-jie/GroupWelcome",
+        "icon": null,
+        "id": "91c9d216-f0b1-4eb2-9461-4b05154199eb",
+        "status": "approved",
+        "submit_time": "2025-06-13T18:56:58.579561",
+        "review_time": "2025-06-14T21:26:13.840237",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [],
+        "requirements": [],
+        "review_comment": ""
+      },
+      {
+        "name": "关键词自动回复",
+        "description": "关键词触发自动回复，支持回复网页截图",
+        "author": "墨染",
+        "version": "1.0.0",
+        "github_url": "https://github.com/Mrfsl/xxxbotpad-plugins-KeywordReply",
+        "icon": null,
+        "id": "490fb1d0-138b-4d7e-beda-999a8091f7d2",
+        "status": "approved",
+        "submit_time": "2025-06-23T12:20:46.119383",
+        "review_time": "2025-06-27T20:21:37.183198",
+        "update_time": null,
+        "downloads": 0,
+        "submitter_id": null,
+        "tags": [
+          {
+            "name": "工具",
+            "id": 1
+          }
+        ],
+        "requirements": [],
+        "review_comment": ""
+      }
+    ],
+    "error": null
+  }
+}

@@ -1,7 +1,0 @@
-[SignIn]
-enable = true
-command = ["签到", "每日签到", "qd", "Qd", "QD"]
-min-point = 3
-max-point = 20
-streak-cycle = 5 # 每签到?天后，额外积分奖励加1点？
-max-streak-point = 10 # 额外积分奖励上限

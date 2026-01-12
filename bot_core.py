@@ -20,6 +20,7 @@ from utils.decorators import scheduler
 from utils.plugin_manager import plugin_manager
 from utils.xybot import XYBot
 from utils.notification_service import init_notification_service, get_notification_service
+from utils.reply_router import ReplyRouter, ReplyDispatcher, has_enabled_adapters
 import websockets  # 如果未导入，确保添加这行
 import redis.asyncio as aioredis  # 新增
 
@@ -118,7 +119,7 @@ except ImportError as e:
 
 
 NUM_CONSUMERS = 1  # 可根据需要调整并发消费者数量
-QUEUE_NAME = 'xbot'  # 自定义队列名
+QUEUE_NAME = 'xxxbot'  # 自定义队列名
 
 async def message_consumer(xybot, redis, message_db):
     while True:
@@ -130,38 +131,6 @@ async def message_consumer(xybot, redis, message_db):
         except Exception as e:
             logger.error(f"消息处理异常: {e}")
 
-async def http_poll_messages(xybot, api_host, api_port, wxid, redis, message_db):
-    """通过HTTP API轮询拉取消息"""
-    import time
-    url = f"http://{api_host}:{api_port}/api/Msg/Sync"
-    synckey = ""
-    while True:
-        try:
-            payload = {"Scene": 0, "Synckey": synckey, "Wxid": wxid}
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        addmsgs = data.get("Data", {}).get("AddMsgs", [])
-                        for message in addmsgs:
-                            await message_db.save_message(
-                                msg_id=message.get("MsgId") or message.get("msgId") or 0,
-                                new_msg_id=message.get("NewMsgId") or message.get("newMsgId") or 0,
-                                sender_wxid=message.get("FromUserName", {}).get("string", ""),
-                                from_wxid=message.get("ToUserName", {}).get("string", ""),
-                                msg_type=message.get("MsgType") or message.get("category") or 0,
-                                content=message.get("Content", {}).get("string", ""),
-                                is_group=False
-                            )
-                            await redis.rpush(QUEUE_NAME, json.dumps(message, ensure_ascii=False))
-                            logger.info(f"[HTTP] 消息已入队到队列 {QUEUE_NAME}，消息ID: {message.get('MsgId') or message.get('msgId')}")
-                        # 更新synckey
-                        if "Synckey" in data:
-                            synckey = data["Synckey"]
-            await asyncio.sleep(0.05)
-        except Exception as e:
-            logger.error(f"HTTP拉取消息异常: {e}")
-            await asyncio.sleep(1)
 
 async def bot_core():
     # 设置工作目录
@@ -187,6 +156,14 @@ async def bot_core():
                 "host": app_config.wechat_api.host,
                 "port": app_config.wechat_api.port,
                 "mode": app_config.wechat_api.mode,
+                "enable-websocket": app_config.wechat_api.enable_websocket,
+                "ws-url": app_config.wechat_api.ws_url,
+                "enable-rabbitmq": app_config.wechat_api.enable_rabbitmq,
+                "rabbitmq-host": app_config.wechat_api.rabbitmq_host,
+                "rabbitmq-port": app_config.wechat_api.rabbitmq_port,
+                "rabbitmq-user": app_config.wechat_api.rabbitmq_user,
+                "rabbitmq-password": app_config.wechat_api.rabbitmq_password,
+                "rabbitmq-queue": app_config.wechat_api.rabbitmq_queue,
                 "redis-host": app_config.wechat_api.redis_host,
                 "redis-port": app_config.wechat_api.redis_port,
                 "redis-password": app_config.wechat_api.redis_password,
@@ -194,6 +171,7 @@ async def bot_core():
             },
             "XYBot": {
                 "version": app_config.xybot.version,
+                "enable-wechat-login": app_config.xybot.enable_wechat_login,
                 "ignore-protection": app_config.xybot.ignore_protection,
                 "enable-group-wakeup": app_config.xybot.enable_group_wakeup,
                 "group-wakeup-words": app_config.xybot.group_wakeup_words,
@@ -286,6 +264,32 @@ async def bot_core():
 
     # 设置客户端属性
     bot.ignore_protect = config.get("XYBot", {}).get("ignore-protection", False)
+    enable_wechat_login = config.get("XYBot", {}).get("enable-wechat-login", True)
+
+    if has_enabled_adapters(script_dir):
+        reply_router = ReplyRouter(
+            redis_host=api_config.get("redis-host", "127.0.0.1"),
+            redis_port=api_config.get("redis-port", 6379),
+            redis_db=api_config.get("redis-db", 0),
+            redis_password=api_config.get("redis-password") or None,
+            queue_name=api_config.get("reply-queue", "xxxbot_reply"),
+        )
+        bot.set_reply_router(reply_router)
+        logger.success("🛰️ ReplyRouter 已启用，所有发送消息将通过适配器队列分发")
+
+        # 启动回复调度器
+        reply_dispatcher = ReplyDispatcher(
+            base_dir=script_dir,
+            redis_host=api_config.get("redis-host", "127.0.0.1"),
+            redis_port=api_config.get("redis-port", 6379),
+            redis_db=api_config.get("redis-db", 0),
+            redis_password=api_config.get("redis-password") or None,
+            main_queue=api_config.get("reply-queue", "xxxbot_reply"),
+        )
+        # 在后台任务中启动调度器
+        asyncio.create_task(reply_dispatcher.start())
+        logger.success("🚦 ReplyDispatcher 回复调度器已启动，开始监听主队列并分发消息")
+
 
     # 等待WechatAPI服务启动
     # time_out = 30  # 增加超时时间
@@ -331,83 +335,101 @@ async def bot_core():
     device_name = robot_stat.get("device_name", None)
     device_id = robot_stat.get("device_id", None)
 
-    if not await bot.is_logged_in(wxid):
-        while not await bot.is_logged_in(wxid):
-            # 需要登录
-            try:
-                get_cached_info = await bot.get_cached_info(wxid)
-                # logger.info("获取缓存登录信息:{}",get_cached_info)
-                if get_cached_info:
-                    #二次登录
-                    twice = await bot.twice_login(wxid)
-                    logger.info("二次登录:{}",twice)
-                    if not twice:
-                        logger.error("二次登录失败，请检查微信是否在运行中，或重新启动机器人")
-                        # 尝试唤醒登录
-                        logger.info("尝试唤醒登录...")
-                        try:
-                            # 准备唤醒登录
-                            # 注意：awaken_login 方法只接受 wxid 参数
-                            # 实际的 API 调用会将其作为 JSON 请求体中的 Wxid 字段发送
-
-                            # 直接使用 aiohttp 调用 API，而不是使用 awaken_login 方法
-                            # 这样我们可以更好地控制错误处理
-                            async with aiohttp.ClientSession() as session:
-                                # 根据协议版本选择不同的 API 路径
-                                api_base = "/api"
-                                api_url = f'http://{api_host}:{api_config.get("port", 9000)}{api_base}/Login/LoginTwiceAutoAuth'
-
-                                # 准备请求参数
-                                json_param = {
-                                    "OS": device_name if device_name else "iPad",
-                                    "Proxy": {
-                                        "ProxyIp": "",
-                                        "ProxyPassword": "",
-                                        "ProxyUser": ""
-                                    },
-                                    "Url": "",
-                                    "Wxid": wxid
-                                }
-
-                                logger.debug(f"发送唤醒登录请求到 {api_url} 参数: {json_param}")
-
-                                try:
-                                    # 发送请求
-                                    response = await session.post(api_url, json=json_param)
-
-                                    # 检查响应状态码
-                                    if response.status != 200:
-                                        logger.error(f"唤醒登录请求失败，状态码: {response.status}")
-                                        raise Exception(f"服务器返回状态码 {response.status}")
-
-                                    # 解析响应内容
-                                    json_resp = await response.json()
-                                    logger.debug(f"唤醒登录响应: {json_resp}")
-
-                                    # 检查是否成功
-                                    if json_resp and json_resp.get("Success"):
-                                        # 尝试获取 UUID
-                                        data = json_resp.get("Data", {})
-                                        qr_response = data.get("QrCodeResponse", {}) if data else {}
-                                        uuid = qr_response.get("Uuid", "") if qr_response else ""
-
-                                        if uuid:
-                                            logger.success(f"唤醒登录成功，获取到登录uuid: {uuid}")
-                                            # 更新状态，记录UUID但没有二维码
-                                            update_bot_status("waiting_login", f"等待微信登录 (UUID: {uuid})")
+    if enable_wechat_login:
+        if not await bot.is_logged_in(wxid):
+            while not await bot.is_logged_in(wxid):
+                # 需要登录
+                try:
+                    get_cached_info = await bot.get_cached_info(wxid)
+                    # logger.info("获取缓存登录信息:{}",get_cached_info)
+                    if get_cached_info:
+                        #二次登录
+                        twice = await bot.twice_login(wxid)
+                        logger.info("二次登录:{}",twice)
+                        if not twice:
+                            logger.error("二次登录失败，请检查微信是否在运行中，或重新启动机器人")
+                            # 尝试唤醒登录
+                            logger.info("尝试唤醒登录...")
+                            try:
+                                # 准备唤醒登录
+                                # 注意：awaken_login 方法只接受 wxid 参数
+                                # 实际的 API 调用会将其作为 JSON 请求体中的 Wxid 字段发送
+    
+                                # 直接使用 aiohttp 调用 API，而不是使用 awaken_login 方法
+                                # 这样我们可以更好地控制错误处理
+                                async with aiohttp.ClientSession() as session:
+                                    # 根据协议版本选择不同的 API 路径
+                                    api_base = "/api"
+                                    api_url = f'http://{api_host}:{api_config.get("port", 9000)}{api_base}/Login/LoginTwiceAutoAuth'
+    
+                                    # 准备请求参数
+                                    json_param = {
+                                        "OS": device_name if device_name else "iPad",
+                                        "Proxy": {
+                                            "ProxyIp": "",
+                                            "ProxyPassword": "",
+                                            "ProxyUser": ""
+                                        },
+                                        "Url": "",
+                                        "Wxid": wxid
+                                    }
+    
+                                    logger.debug(f"发送唤醒登录请求到 {api_url} 参数: {json_param}")
+    
+                                    try:
+                                        # 发送请求
+                                        response = await session.post(api_url, json=json_param)
+    
+                                        # 检查响应状态码
+                                        if response.status != 200:
+                                            logger.error(f"唤醒登录请求失败，状态码: {response.status}")
+                                            raise Exception(f"服务器返回状态码 {response.status}")
+    
+                                        # 解析响应内容
+                                        json_resp = await response.json()
+                                        logger.debug(f"唤醒登录响应: {json_resp}")
+    
+                                        # 检查是否成功
+                                        if json_resp and json_resp.get("Success"):
+                                            # 尝试获取 UUID
+                                            data = json_resp.get("Data", {})
+                                            qr_response = data.get("QrCodeResponse", {}) if data else {}
+                                            uuid = qr_response.get("Uuid", "") if qr_response else ""
+    
+                                            if uuid:
+                                                logger.success(f"唤醒登录成功，获取到登录uuid: {uuid}")
+                                                # 更新状态，记录UUID但没有二维码
+                                                update_bot_status("waiting_login", f"等待微信登录 (UUID: {uuid})")
+                                            else:
+                                                logger.error("唤醒登录响应中没有有效的UUID")
+                                                raise Exception("响应中没有有效的UUID")
                                         else:
-                                            logger.error("唤醒登录响应中没有有效的UUID")
-                                            raise Exception("响应中没有有效的UUID")
-                                    else:
-                                        # 如果请求不成功，获取错误信息
-                                        error_msg = json_resp.get("Message", "未知错误") if json_resp else "未知错误"
-                                        logger.error(f"唤醒登录失败: {error_msg}")
-                                        raise Exception(error_msg)
-
-                                except Exception as e:
-                                    logger.error(f"唤醒登录过程中出错: {e}")
-                                    logger.error("将尝试二维码登录")
-                                # 如果唤醒登录失败，回退到二维码登录
+                                            # 如果请求不成功，获取错误信息
+                                            error_msg = json_resp.get("Message", "未知错误") if json_resp else "未知错误"
+                                            logger.error(f"唤醒登录失败: {error_msg}")
+                                            raise Exception(error_msg)
+    
+                                    except Exception as e:
+                                        logger.error(f"唤醒登录过程中出错: {e}")
+                                        logger.error("将尝试二维码登录")
+                                    # 如果唤醒登录失败，回退到二维码登录
+                                    if not device_name:
+                                        device_name = bot.create_device_name()
+                                    if not device_id:
+                                        device_id = bot.create_device_id()
+                                    uuid, url = await bot.get_qr_code(device_id=device_id, device_name=device_name, print_qr=True)
+                                    logger.success("获取到登录uuid: {}", uuid)
+                                    logger.success("获取到登录二维码: {}", url)
+                                    # 更新状态，记录二维码URL
+                                    update_bot_status("waiting_login", "等待微信扫码登录", {
+                                        "qrcode_url": url,
+                                        "uuid": uuid,
+                                        "expires_in": 240, # 默认240秒过期
+                                        "timestamp": time.time()
+                                    })
+                            except Exception as e:
+                                logger.error("唤醒登录失败: {}", e)
+                                # 如果唤醒登录出错，回退到二维码登录
                                 if not device_name:
                                     device_name = bot.create_device_name()
                                 if not device_id:
@@ -422,26 +444,48 @@ async def bot_core():
                                     "expires_in": 240, # 默认240秒过期
                                     "timestamp": time.time()
                                 })
+    
+                    else:
+                        # 二维码登录
+                        if not device_name:
+                            device_name = bot.create_device_name()
+                        if not device_id:
+                            device_id = bot.create_device_id()
+                        uuid, url = await bot.get_qr_code(device_id=device_id, device_name=device_name, print_qr=True)
+                        logger.success("获取到登录uuid: {}", uuid)
+                        logger.success("获取到登录二维码: {}", url)
+                        # 更新状态，记录二维码URL
+                        update_bot_status("waiting_login", "等待微信扫码登录", {
+                            "qrcode_url": url,
+                            "uuid": uuid,
+                            "expires_in": 240, # 默认240秒过期
+                            "timestamp": time.time()
+                        })
+    
+                        # 检查状态文件是否正确更新
+                        try:
+                            status_file = script_dir / "admin" / "bot_status.json"
+                            if status_file.exists():
+                                with open(status_file, "r", encoding="utf-8") as f:
+                                    current_status = json.load(f)
+                                    if current_status.get("qrcode_url") != url:
+                                        logger.warning("状态文件中的二维码URL与实际不符，尝试重新更新状态")
+                                        # 再次更新状态
+                                        update_bot_status("waiting_login", "等待微信扫码登录", {
+                                            "qrcode_url": url,
+                                            "uuid": uuid,
+                                            "expires_in": 240,
+                                            "timestamp": time.time()
+                                        })
                         except Exception as e:
-                            logger.error("唤醒登录失败: {}", e)
-                            # 如果唤醒登录出错，回退到二维码登录
-                            if not device_name:
-                                device_name = bot.create_device_name()
-                            if not device_id:
-                                device_id = bot.create_device_id()
-                            uuid, url = await bot.get_qr_code(device_id=device_id, device_name=device_name, print_qr=True)
-                            logger.success("获取到登录uuid: {}", uuid)
-                            logger.success("获取到登录二维码: {}", url)
-                            # 更新状态，记录二维码URL
-                            update_bot_status("waiting_login", "等待微信扫码登录", {
-                                "qrcode_url": url,
-                                "uuid": uuid,
-                                "expires_in": 240, # 默认240秒过期
-                                "timestamp": time.time()
-                            })
-
-                else:
-                    # 二维码登录
+                            logger.error(f"检查状态文件失败: {e}")
+    
+                    # 显示倒计时
+                    logger.info("等待登录中，过期倒计时：240")
+    
+                except Exception as e:
+                    logger.error("发生错误: {}", e)
+                    # 出错时重新尝试二维码登录
                     if not device_name:
                         device_name = bot.create_device_name()
                     if not device_id:
@@ -456,148 +500,117 @@ async def bot_core():
                         "expires_in": 240, # 默认240秒过期
                         "timestamp": time.time()
                     })
-
-                    # 检查状态文件是否正确更新
-                    try:
-                        status_file = script_dir / "admin" / "bot_status.json"
-                        if status_file.exists():
-                            with open(status_file, "r", encoding="utf-8") as f:
-                                current_status = json.load(f)
-                                if current_status.get("qrcode_url") != url:
-                                    logger.warning("状态文件中的二维码URL与实际不符，尝试重新更新状态")
-                                    # 再次更新状态
-                                    update_bot_status("waiting_login", "等待微信扫码登录", {
-                                        "qrcode_url": url,
-                                        "uuid": uuid,
-                                        "expires_in": 240,
-                                        "timestamp": time.time()
-                                    })
-                    except Exception as e:
-                        logger.error(f"检查状态文件失败: {e}")
-
-                # 显示倒计时
-                logger.info("等待登录中，过期倒计时：240")
-
+    
+                while True:
+                    stat, data = await bot.check_login_uuid(uuid, device_id=device_id)
+                    if stat:
+                        break
+                    # 计算剩余时间
+                    expires_in = data
+                    logger.info("等待登录中，过期倒计时：{}", expires_in)
+                    # 更新状态，包含倒计时
+                    update_bot_status("waiting_login", f"等待微信扫码登录 (剩余{expires_in}秒)", {
+                        "qrcode_url": url if 'url' in locals() else None,
+                        "uuid": uuid,
+                        "expires_in": expires_in,
+                        "timestamp": time.time()
+                    })
+                    await asyncio.sleep(2)
+    
+            # 保存登录信息
+            robot_stat["wxid"] = bot.wxid
+            robot_stat["device_name"] = device_name
+            robot_stat["device_id"] = device_id
+            with open("resource/robot_stat.json", "w") as f:
+                json.dump(robot_stat, f)
+    
+            # 获取登录账号信息
+            bot.wxid = data.get("acctSectResp").get("userName")
+            bot.nickname = data.get("acctSectResp").get("NickName")
+            bot.alias = data.get("acctSectResp").get("Alais")
+            bot.phone = data.get("acctSectResp").get("Mobile")
+            # update_worker_success = await db.update_worker_db(bot.wxid, bot.nickname, bot.phone)
+            logger.info("登录账号信息: wxid: {}  昵称: {}  微信号: {}  手机号: {}", bot.wxid, bot.nickname, bot.alias,
+                        bot.phone)
+    
+            # 登录微信
+            try:
+                # 等待登录，获取个人信息
+                # await bot.login() - 这个方法不存在
+                # 直接使用之前获取的个人信息即可，因为在 check_login_uuid 成功后已经设置了 wxid
+                # 登录成功后更新状态
+                update_bot_status("online", f"已登录：{bot.nickname}", {
+                    "nickname": bot.nickname,
+                    "wxid": bot.wxid,
+                    "alias": bot.alias
+                })
             except Exception as e:
-                logger.error("发生错误: {}", e)
-                # 出错时重新尝试二维码登录
-                if not device_name:
-                    device_name = bot.create_device_name()
-                if not device_id:
-                    device_id = bot.create_device_id()
-                uuid, url = await bot.get_qr_code(device_id=device_id, device_name=device_name, print_qr=True)
-                logger.success("获取到登录uuid: {}", uuid)
-                logger.success("获取到登录二维码: {}", url)
-                # 更新状态，记录二维码URL
-                update_bot_status("waiting_login", "等待微信扫码登录", {
-                    "qrcode_url": url,
-                    "uuid": uuid,
-                    "expires_in": 240, # 默认240秒过期
-                    "timestamp": time.time()
-                })
-
-            while True:
-                stat, data = await bot.check_login_uuid(uuid, device_id=device_id)
-                if stat:
-                    break
-                # 计算剩余时间
-                expires_in = data
-                logger.info("等待登录中，过期倒计时：{}", expires_in)
-                # 更新状态，包含倒计时
-                update_bot_status("waiting_login", f"等待微信扫码登录 (剩余{expires_in}秒)", {
-                    "qrcode_url": url if 'url' in locals() else None,
-                    "uuid": uuid,
-                    "expires_in": expires_in,
-                    "timestamp": time.time()
-                })
-                await asyncio.sleep(2)
-
-        # 保存登录信息
-        robot_stat["wxid"] = bot.wxid
-        robot_stat["device_name"] = device_name
-        robot_stat["device_id"] = device_id
-        with open("resource/robot_stat.json", "w") as f:
-            json.dump(robot_stat, f)
-
-        # 获取登录账号信息
-        bot.wxid = data.get("acctSectResp").get("userName")
-        bot.nickname = data.get("acctSectResp").get("NickName")
-        bot.alias = data.get("acctSectResp").get("Alais")
-        bot.phone = data.get("acctSectResp").get("Mobile")
-        # update_worker_success = await db.update_worker_db(bot.wxid, bot.nickname, bot.phone)
-        logger.info("登录账号信息: wxid: {}  昵称: {}  微信号: {}  手机号: {}", bot.wxid, bot.nickname, bot.alias,
-                    bot.phone)
-
-        # 登录微信
+                logger.error(f"登录失败: {e}")
+                update_bot_status("error", f"登录失败: {str(e)}")
+                return None
+    
+        else:  # 已登录
+            bot.wxid = wxid
+            profile = await bot.get_profile()
+    
+            bot.nickname = profile.get("userInfo").get("NickName").get("string")
+            bot.alias = profile.get("userInfo").get("Alias")
+            bot.phone = profile.get("userInfo").get("BindMobile").get("string")
+            # 不需要使用头像图片URL
+    
+            logger.info("profile登录账号信息: wxid: {}  昵称: {}  微信号: {}  手机号: {}", bot.wxid, bot.nickname, bot.alias,
+                        bot.phone)
+    
+        logger.info("登录设备信息: device_name: {}  device_id: {}", device_name, device_id)
+    
+        logger.success("登录成功")
+    
+        # 更新状态为在线
+        update_bot_status("online", f"已登录：{bot.nickname}", {
+            "nickname": bot.nickname,
+            "wxid": bot.wxid,
+            "alias": bot.alias
+        })
+    
+        # 先初始化通知服务，再发送重连通知
+        # 初始化通知服务
+        notification_config = config.get("Notification", {})
+        notification_service = init_notification_service(notification_config)
+        logger.info(f"通知服务初始化完成，启用状态: {notification_service.enabled}")
+    
+        # 发送微信重连通知
+        if notification_service and notification_service.enabled and notification_service.triggers.get("reconnect", False):
+            if notification_service.token:
+                logger.info(f"发送微信重连通知，微信ID: {bot.wxid}")
+                asyncio.create_task(notification_service.send_reconnect_notification(bot.wxid))
+            else:
+                logger.warning("PushPlus Token未设置，无法发送重连通知")
+    
+        # ========== 登录完毕 开始初始化 ========== #
+    
+        # 开启自动心跳
         try:
-            # 等待登录，获取个人信息
-            # await bot.login() - 这个方法不存在
-            # 直接使用之前获取的个人信息即可，因为在 check_login_uuid 成功后已经设置了 wxid
-            # 登录成功后更新状态
-            update_bot_status("online", f"已登录：{bot.nickname}", {
-                "nickname": bot.nickname,
-                "wxid": bot.wxid,
-                "alias": bot.alias
-            })
+            success = await bot.start_auto_heartbeat()
+            if success:
+                logger.success("已开启自动心跳")
+            else:
+                logger.warning("开启自动心跳失败")
+        except ValueError:
+            logger.warning("自动心跳已在运行")
         except Exception as e:
-            logger.error(f"登录失败: {e}")
-            update_bot_status("error", f"登录失败: {str(e)}")
-            return None
-
-    else:  # 已登录
-        bot.wxid = wxid
-        profile = await bot.get_profile()
-
-        bot.nickname = profile.get("userInfo").get("NickName").get("string")
-        bot.alias = profile.get("userInfo").get("Alias")
-        bot.phone = profile.get("userInfo").get("BindMobile").get("string")
-        # 不需要使用头像图片URL
-
-        logger.info("profile登录账号信息: wxid: {}  昵称: {}  微信号: {}  手机号: {}", bot.wxid, bot.nickname, bot.alias,
-                    bot.phone)
-
-    logger.info("登录设备信息: device_name: {}  device_id: {}", device_name, device_id)
-
-    logger.success("登录成功")
-
-    # 更新状态为在线
-    update_bot_status("online", f"已登录：{bot.nickname}", {
-        "nickname": bot.nickname,
-        "wxid": bot.wxid,
-        "alias": bot.alias
-    })
-
-    # 先初始化通知服务，再发送重连通知
-    # 初始化通知服务
-    notification_config = config.get("Notification", {})
-    notification_service = init_notification_service(notification_config)
-    logger.info(f"通知服务初始化完成，启用状态: {notification_service.enabled}")
-
-    # 发送微信重连通知
-    if notification_service and notification_service.enabled and notification_service.triggers.get("reconnect", False):
-        if notification_service.token:
-            logger.info(f"发送微信重连通知，微信ID: {bot.wxid}")
-            asyncio.create_task(notification_service.send_reconnect_notification(bot.wxid))
-        else:
-            logger.warning("PushPlus Token未设置，无法发送重连通知")
-
-    # ========== 登录完毕 开始初始化 ========== #
-
-    # 开启自动心跳
-    try:
-        success = await bot.start_auto_heartbeat()
-        if success:
-            logger.success("已开启自动心跳")
-        else:
-            logger.warning("开启自动心跳失败")
-    except ValueError:
-        logger.warning("自动心跳已在运行")
-    except Exception as e:
-        logger.warning("自动心跳已在运行:{}",e)
+            logger.warning("自动心跳已在运行:{}",e)
+    
+    else:
+        logger.warning("已禁用原生微信登录（enable-wechat-login=false），系统将仅依赖适配器处理消息")
+        update_bot_status("adapter_mode", "已禁用微信登录，等待适配器消息", {
+            "nickname": bot.nickname or "",
+            "wxid": bot.wxid or "",
+            "alias": bot.alias or ""
+        })
 
     # 初始化机器人
     xybot = XYBot(bot)
-    await xybot.update_profile(bot.wxid, bot.nickname, bot.alias, bot.phone)
+    xybot.update_profile(bot.wxid, bot.nickname, bot.alias, bot.phone)
 
     # 设置机器人实例到管理后台
     set_bot_instance(xybot)
@@ -686,60 +699,53 @@ async def bot_core():
     # 尝试多种可能的键名格式获取 ws-url
     ws_url = None
     wechat_api_config = config.get('WechatAPIServer', {})
-    
-    # 检查各种可能的键名
-    for key in ['ws-url', 'ws_url', 'wsUrl', 'ws_uri', 'ws-uri']:
-        if key in wechat_api_config:
-            ws_url = wechat_api_config[key]
-            logger.debug(f"从配置中找到 {key}: {ws_url}")
-            break
-    
-    # 检查 dataclass 配置对象
-    if not ws_url and hasattr(app_config, 'wechat_api') and hasattr(app_config.wechat_api, 'ws_url'):
-        ws_url = app_config.wechat_api.ws_url
-        logger.debug(f"从 app_config.wechat_api.ws_url 读取: {ws_url}")
-
-    # 仍未找到则设置默认值
-    if not ws_url or not isinstance(ws_url, str):
-        # 使用服务器地址和端口构造默认地址
-        server_host = wechat_api_config.get('host')  # 从配置中获取主机地址
-        # 尝试获取ws专用端口，如没有则使用普通API端口
-        server_port = wechat_api_config.get('ws-port')
-        if not server_port:
-            server_port = wechat_api_config.get('port')
-        ws_url = f"ws://{server_host}:{server_port}/ws"
-        logger.warning(f"未在配置中找到有效的 ws-url，使用构造值: {ws_url}")
-
-    # 获取 wxid 并拼接到 URL
-    wxid = bot.wxid
-    if not ws_url.rstrip("/").endswith(wxid):
-        ws_url = ws_url.rstrip("/") + f"/{wxid}"
-    
-    logger.info(f"WebSocket 消息推送地址: {ws_url}")
 
     # 初始化 Redis 连接
     redis_url = f"redis://{api_config.get('redis-host', '127.0.0.1')}:{api_config.get('redis-port', 6379)}"
     redis = aioredis.from_url(redis_url, decode_responses=True)
 
     # 启动消息消费者
-    for _ in range(NUM_CONSUMERS):
+    consumer_tasks = [
         asyncio.create_task(message_consumer(xybot, redis, message_db))
+        for _ in range(NUM_CONSUMERS)
+    ]
 
-    # 选择消息读取方式
-    message_mode = getattr(app_config.wechat_api, "message_mode", None) \
-        or getattr(app_config.wechat_api, "messageMode", None) \
-        or config.get("WechatAPIServer", {}).get("message-mode", "ws")
-    logger.info(f"消息读取模式: {message_mode}")
+    try:
+        # 根据配置决定是否启用 WebSocket
+        if wechat_api_config.get("enable-websocket", False):
+            ws_url = None
+            for key in ['ws-url', 'ws_url', 'wsUrl', 'ws_uri', 'ws-uri']:
+                if key in wechat_api_config:
+                    ws_url = wechat_api_config[key]
+                    logger.debug(f"从配置中找到 {key}: {ws_url}")
+                    break
 
-    if message_mode and message_mode.lower() == "http":
-        api_host = config.get("WechatAPIServer", {}).get("host", "127.0.0.1")
-        api_port = config.get("WechatAPIServer", {}).get("port", 9011)
-        wxid = bot.wxid
-        await http_poll_messages(xybot, api_host, api_port, wxid, redis, message_db)
-    else:
-        await listen_ws_messages(xybot, ws_url, redis, message_db)
+            if not ws_url and hasattr(app_config, 'wechat_api') and hasattr(app_config.wechat_api, 'ws_url'):
+                ws_url = app_config.wechat_api.ws_url
+                logger.debug(f"从 app_config.wechat_api.ws_url 读取: {ws_url}")
 
-    # 返回机器人实例（此处不会执行到，因为上面的无限循环）
+            if not ws_url or not isinstance(ws_url, str):
+                server_host = wechat_api_config.get('host', '127.0.0.1')
+                server_port = wechat_api_config.get('ws-port') or wechat_api_config.get('port', 9000)
+                ws_url = f"ws://{server_host}:{server_port}/ws"
+                logger.warning(f"未在配置中找到有效的 ws-url，使用构造值: {ws_url}")
+
+            wxid = bot.wxid
+            if wxid and not ws_url.rstrip("/").endswith(wxid):
+                ws_url = ws_url.rstrip("/") + f"/{wxid}"
+
+            logger.info(f"WebSocket 消息推送地址: {ws_url}")
+            await listen_ws_messages(xybot, ws_url, redis, message_db)
+        else:
+            logger.info("WebSocket 消息通道已禁用（enable-websocket = false），消息消费者将继续从 Redis 队列读取")
+            # 阻塞当前协程，保持消费者持续运行（Ctrl+C 触发 CancelledError 后跳出）
+            await asyncio.Event().wait()
+    finally:
+        for task in consumer_tasks:
+            task.cancel()
+        await asyncio.gather(*consumer_tasks, return_exceptions=True)
+
+    # 返回机器人实例（正常情况下不会执行到，因为上面会阻塞）
     return xybot
 
 async def listen_ws_messages(xybot, ws_url, redis, message_db):
@@ -774,12 +780,11 @@ async def listen_ws_messages(xybot, ws_url, redis, message_db):
                                     # 本地存储
                                     await message_db.save_message(
                                         msg_id=message.get("MsgId") or message.get("msgId") or 0,
-                                        new_msg_id=message.get("NewMsgId") or message.get("newMsgId") or 0,
                                         sender_wxid=message.get("FromUserName", {}).get("string", ""),
                                         from_wxid=message.get("ToUserName", {}).get("string", ""),
                                         msg_type=message.get("MsgType") or message.get("category") or 0,
                                         content=message.get("Content", {}).get("string", ""),
-                                        is_group=False
+                                        is_group=False  # 可根据业务调整
                                     )
                                     # 入队
                                     await redis.rpush(QUEUE_NAME, json.dumps(message, ensure_ascii=False))
@@ -807,7 +812,6 @@ async def listen_ws_messages(xybot, ws_url, redis, message_db):
                                     # 本地存储
                                     await message_db.save_message(
                                         msg_id=addmsg.get("MsgId") or 0,
-                                        new_msg_id=addmsg.get("NewMsgId") or 0,
                                         sender_wxid=addmsg.get("FromUserName", {}).get("string", ""),
                                         from_wxid=addmsg.get("ToUserName", {}).get("string", ""),
                                         msg_type=addmsg.get("MsgType") or 0,

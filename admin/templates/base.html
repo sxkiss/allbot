@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}xbot管理后台{% endblock %}</title>
+    <title>{% block title %}AllBot管理后台{% endblock %}</title>
 
     <!-- Favicon图标 -->
     <link rel="icon" href="/static/img/favicon.ico" type="image/x-icon">
@@ -252,16 +252,45 @@
             padding-top: 0 !important;
         }
 
-        /* 确保弹窗内容完全可见 */
-        .modal-dialog {
-            max-height: 90vh;
-            margin: 1.75rem auto;
-            width: auto;
-            min-width: 500px;
+       /* 确保弹窗内容完全可见 */
+       .modal-dialog {
+           max-height: 90vh;
+           margin: 1.75rem auto;
+           width: auto;
+           min-width: 500px;
+       }
+
+        /* 移动端模态框优化 */
+        @media (max-width: 768px) {
+            .modal-dialog {
+                min-width: auto;
+                margin: var(--space-sm);
+                max-width: calc(100% - var(--space-md));
+                max-height: 85vh;
+            }
+
+            .modal-dialog.modal-lg {
+                max-width: 95%;
+                width: auto;
+            }
+
+            .modal-body {
+                max-height: calc(85vh - 100px);
+                padding: var(--space-sm);
+            }
+
+            .modal-header,
+            .modal-footer {
+                padding: var(--space-sm);
+            }
+
+            .modal-header .btn-close {
+                padding: var(--space-xs);
+            }
         }
 
-        /* 确保模态框大小合适 */
-        .modal-dialog.modal-lg {
+       /* 确保模态框大小合适 */
+       .modal-dialog.modal-lg {
             max-width: 80%;
             width: 800px;
         }
@@ -300,12 +329,12 @@
     <div class="design-circle design-circle-1"></div>
     <div class="design-circle design-circle-2"></div>
 
-    <!-- 侧边栏 -->
-    <nav class="sidebar d-none d-lg-flex">
+   <!-- 侧边栏 -->
+    <nav class="sidebar">
         <div class="sidebar-header">
             <h3 class="mb-0">
                 <i class="bi bi-pause-circle"></i>
-                <span>xbot</span>
+                <span>allbot</span>
             </h3>
         </div>
 
@@ -347,6 +376,18 @@
                         <a href="/accounts" class="nav-link {% if request.path == '/accounts' %}active{% endif %}">
                             <i class="bi bi-person-badge"></i>
                             <span>账号管理</span>
+                        </a>
+                   </li>
+                   <li class="nav-item">
+                       <a href="/adapters" class="nav-link {% if request.path == '/adapters' %}active{% endif %}">
+                           <i class="bi bi-hdd-network"></i>
+                           <span>适配器管理</span>
+                       </a>
+                   </li>
+                    <li class="nav-item">
+                        <a href="/webchat" class="nav-link {% if request.path == '/webchat' %}active{% endif %}">
+                            <i class="bi bi-chat-dots"></i>
+                            <span>Web对话</span>
                         </a>
                     </li>
                     <li class="nav-item">
@@ -428,7 +469,10 @@
         <!-- 顶部导航栏 -->
         <nav class="navbar navbar-expand navbar-light topbar mb-4 shadow-sm animate__animated animate__fadeInDown">
             <div class="container-fluid">
-                <div class="topbar-left">
+               <div class="topbar-left">
+                    <button class="sidebar-toggler d-lg-none me-2" id="sidebar-toggler" type="button">
+                        <i class="bi bi-list"></i>
+                    </button>
                     <h1 class="h4 mb-0 text-gray-800">{% block page_title %}控制面板{% endblock %}</h1>
                     <div class="ms-3">{% block page_actions %}{% endblock %}</div>
                 </div>
@@ -453,6 +497,10 @@
                         </div>
                         <span class="topbar-user-name d-none d-md-inline">管理员</span>
                     </div>
+                    <a href="/logout" class="btn btn-sm btn-outline-danger ms-2">
+                        <i class="bi bi-box-arrow-right"></i>
+                        <span class="d-none d-md-inline">退出</span>
+                    </a>
                 </div>
             </div>
         </nav>
@@ -470,9 +518,9 @@
                         <i class="bi bi-exclamation-triangle-fill me-1"></i> 免责声明：本项目仅供学习交流使用，严禁用于商业用途！
                     </p>
                 </div>
-                <span class="text-muted">xbot © 2025 - 技术支持 <a href="https://github.com/NanSsye/xbot/" class="text-decoration-none" target="_blank">xxxTeam</a></span>
+                <span class="text-muted">allbot © 2025 - 技术支持 <a href="https://github.com/sxkiss/allbot/" class="text-decoration-none" target="_blank">sxkissTeam</a></span>
                 <div class="mt-2">
-                    <a href="https://github.com/NanSsye/xbot/" class="btn btn-sm btn-outline-secondary me-1" title="GitHub">
+                    <a href="https://github.com/sxkiss/allbot/" class="btn btn-sm btn-outline-secondary me-1" title="GitHub">
                         <i class="bi bi-github"></i> GitHub
                     </a>
                     <a href="#" class="btn btn-sm btn-outline-secondary me-1" title="Discord">
@@ -486,8 +534,11 @@
         </footer>
     </div>
 
+    <!-- 移动端侧边栏遮罩层 -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
     <!-- 移动端底部导航栏 - 只在小屏幕上显示 -->
-    <nav class="mobile-nav d-lg-none d-none">
+    <nav class="mobile-nav d-lg-none">
         <a href="/" class="mobile-nav-item {% if request.path == '/' %}active{% endif %}">
             <i class="bi bi-house-door"></i>
             <span>控制台</span>
@@ -508,7 +559,91 @@
             <i class="bi bi-sliders"></i>
             <span>设置</span>
         </a>
+        <a href="/adapters" class="mobile-nav-item {% if request.path == '/adapters' %}active{% endif %}">
+            <i class="bi bi-hdd-network"></i>
+            <span>适配器</span>
+        </a>
+        <a href="/webchat" class="mobile-nav-item {% if request.path == '/webchat' %}active{% endif %}">
+            <i class="bi bi-chat-dots"></i>
+            <span>对话</span>
+        </a>
+        <a href="javascript:;" class="mobile-nav-item" id="mobile-more-btn">
+            <i class="bi bi-grid"></i>
+            <span>更多</span>
+        </a>
     </nav>
+
+    <!-- 移动端更多菜单模态框 -->
+    <div class="modal" id="mobile-more-modal" tabindex="-1" aria-labelledby="mobile-more-modal-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="mobile-more-modal-title">更多功能</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="list-group list-group-flush">
+                        <a href="/accounts" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-person-badge me-2"></i>
+                                <span>账号管理</span>
+                            </div>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                        <a href="/notification" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-bell me-2"></i>
+                                <span>通知管理</span>
+                            </div>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                        <a href="/contacts" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-people me-2"></i>
+                                <span>联系人</span>
+                            </div>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                        <a href="/friend_circle" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-image me-2"></i>
+                                <span>朋友圈</span>
+                            </div>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                        <a href="/reminders" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-alarm me-2"></i>
+                                <span>定时提醒</span>
+                            </div>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                        <a href="/ai-platforms" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-robot me-2"></i>
+                                <span>AI平台管理</span>
+                            </div>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                        <a href="/plugin-market" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-shop me-2"></i>
+                                <span>插件市场</span>
+                            </div>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                        <a href="/about" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-info-circle me-2"></i>
+                                <span>关于</span>
+                            </div>
+                            <i class="bi bi-chevron-right text-muted"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast通知组件 -->
     <div class="toast-container position-fixed top-0 end-0 p-3">

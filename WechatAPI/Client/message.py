@@ -113,6 +113,9 @@ class MessageMixin(WechatAPIClientBase):
             BanProtection: 登录新设备后4小时内操作
             根据error_handler处理错误
         """
+        if getattr(self, "reply_router", None):
+            client_msg_id, create_time, new_msg_id = await self.reply_router.send_text(wxid, content, at)
+            return client_msg_id, create_time, new_msg_id
         return await self._queue_message(self._send_text_message, wxid, content, at)
 
     async def _send_text_message(self, wxid: str, content: str, at: list[str] = None) -> tuple[int, int, int]:
@@ -161,6 +164,8 @@ class MessageMixin(WechatAPIClientBase):
             ValueError: image_path和image_base64都为空或都不为空时
             根据error_handler处理错误
         """
+        if getattr(self, "reply_router", None):
+            return await self.reply_router.send_image(wxid, image)
         return await self._queue_message(self._send_image_message, wxid, image)
 
     async def _send_image_message(self, wxid: str, image: Union[str, bytes, os.PathLike]) -> dict:
@@ -210,6 +215,10 @@ class MessageMixin(WechatAPIClientBase):
                     ValueError: 视频或图片参数都为空或都不为空时
                     根据error_handler处理错误
                 """
+        if getattr(self, "reply_router", None):
+            client_msg_id, _create_time, new_msg_id = await self.reply_router.send_video(wxid, video, image)
+            return client_msg_id, new_msg_id
+
         if not image:
             image = Path(os.path.join(Path(__file__).resolve().parent, "fallback.png"))
         # get video base64 and duration
@@ -310,6 +319,9 @@ class MessageMixin(WechatAPIClientBase):
             ValueError: voice_path和voice_base64都为空或都不为空时，或format不支持时
             根据error_handler处理错误
         """
+        if getattr(self, "reply_router", None):
+            client_msg_id, create_time, new_msg_id = await self.reply_router.send_voice(wxid, voice, format)
+            return client_msg_id, create_time, new_msg_id
         return await self._queue_message(self._send_voice_message, wxid, voice, format)
 
     async def _send_voice_message(self, wxid: str, voice: Union[str, bytes, os.PathLike], format: str = "amr") -> \
@@ -381,38 +393,54 @@ class MessageMixin(WechatAPIClientBase):
 
         return closest_rate
 
-    async def send_link_message(self, wxid: str, url: str = "", title: str = "", description: str = "", thumb_url: str = "") -> dict:
-        """发送分享链接消息（适配官方接口）"""
+    async def send_link_message(self, wxid: str, url: str, title: str = "", description: str = "",
+                                thumb_url: str = "") -> tuple[str, int, int]:
+        """发送链接消息。
+
+        Args:
+            wxid (str): 接收人wxid
+            url (str): 跳转链接
+            title (str, optional): 标题. Defaults to "".
+            description (str, optional): 描述. Defaults to "".
+            thumb_url (str, optional): 缩略图链接. Defaults to "".
+
+        Returns:
+            tuple[str, int, int]: 返回(ClientMsgid, CreateTime, NewMsgId)
+
+        Raises:
+            UserLoggedOut: 未登录时调用
+            BanProtection: 登录新设备后4小时内操作
+            根据error_handler处理错误
+        """
+        if getattr(self, "reply_router", None):
+            client_msg_id, create_time, new_msg_id = await self.reply_router.send_link(wxid, url, title, description, thumb_url)
+            return client_msg_id, create_time, new_msg_id
+        return await self._queue_message(self._send_link_message, wxid, url, title, description, thumb_url)
+
+    async def _send_link_message(self, wxid: str, url: str, title: str = "", description: str = "",
+                                 thumb_url: str = "") -> tuple[int, int, int]:
         if not self.wxid:
             raise UserLoggedOut("请先登录")
         elif not self.ignore_protect and protector.check(14400):
             raise BanProtection("风控保护: 新设备登录后4小时内请挂机")
 
-        # 组装xml内容
-        xml = f"""
-        <msg>
-          <appmsg appid='' sdkver=''>
-            <title>{title}</title>
-            <des>{description}</des>
-            <action></action>
-            <type>5</type>
-            <showtype>0</showtype>
-            <url>{url}</url>
-            <thumburl>{thumb_url}</thumburl>
-          </appmsg>
-        </msg>
-        """.strip()
-
-        json_param = {
-            "ToWxid": wxid,
-            "Type": 0,
-            "Wxid": self.wxid,
-            "Xml": xml
-        }
-
         async with aiohttp.ClientSession() as session:
+            json_param = {"Wxid": self.wxid, "ToWxid": wxid, "Url": url, "Title": title, "Desc": description,
+                          "ThumbUrl": thumb_url}
             response = await session.post(f'http://{self.ip}:{self.port}/api/Msg/ShareLink', json=json_param)
-            return await response.json()
+            json_resp = await response.json()
+
+            if json_resp.get("Success"):
+                logger.info("发送链接消息: 对方wxid:{} 链接:{} 标题:{} 描述:{} 缩略图链接:{}",
+                            wxid,
+                            url,
+                            title,
+                            description,
+                            thumb_url)
+                data = json_resp.get("Data")
+                return data.get("clientMsgId"), data.get("createTime"), data.get("newMsgId")
+            else:
+                self.error_handler(json_resp)
 
     async def _send_location_message(self, wxid: str, Infourl: str, Label: str = "", Poiname: str = "",
                                  Scale: int = 0,X: int = 0,Y: int = 0) -> tuple[int, int, int]:

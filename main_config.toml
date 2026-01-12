@@ -1,20 +1,32 @@
 # 协议版本选择
 [Protocol]
-version = "ipad"            # 协议版本，可选值: "ipad", "pad" 或 "mac"
+version = "pad"            # 协议版本，可选值: "ipad", "pad", "mac", "ipad2", "car" 或 "win"
 
 [Framework]
 type = "wechat"  
 
 [WechatAPIServer]
-host = "192.168.6.19"         # WechatAPI服务器地址，默认127.0.0.1，可修改为其他地址
-port = 9011                # WechatAPI服务器端口，默认9000，如有冲突可修改
-mode = "release"           # 运行模式：release(生产环境)，debug(调试模式)
+host = "win.sxkiss.top"         # WechatAPI服务器地址，默认127.0.0.1，可修改为其他地址
+port = 8000               # WechatAPI服务器端口，默认9000，如有冲突可修改
+mode = "debug"           # 运行模式：release(生产环境)，debug(调试模式)
+
+# Redis 设置
 redis-host = "127.0.0.1"   # Redis服务器地址，本地使用127.0.0.1
 redis-port = 6379          # Redis端口，使用系统Redis服务的默认端口
 redis-password = ""        # Redis密码，如果有设置密码则填写
 redis-db = 0               # Redis数据库编号，默认0
-ws-url = "ws://192.168.6.19:9088/ws"
-message-mode = "ws"  # 可选 ws 或 http，决定消息读取方式
+
+# WebSocket 设置
+enable-websocket = false    # 是否启用 WebSocket 消息接收，默认关闭
+ws-url = "ws://win.sxkiss.top:8000/api/ws"                # WebSocket 服务器地址，例如: "ws://127.0.0.1:8080/ws"
+
+# RabbitMQ 设置
+enable-rabbitmq = true    # 是否启用 RabbitMQ 消息接收，默认开启
+rabbitmq-host = "sxkiss.top"
+rabbitmq-port = 5672
+rabbitmq-user = "guest"
+rabbitmq-password = "guest"
+rabbitmq-queue = "859"     # RabbitMQ 队列名称
 
 # 管理后台设置
 [Admin]
@@ -22,9 +34,9 @@ enabled = true             # 是否启用管理后台
 host = "0.0.0.0"           # 管理后台监听地址，使用0.0.0.0允许外部访问
 port = 9090                # 管理后台端口，修改为9090
 username = "admin"         # 管理后台登录用户名
-password = "admin1234"      # 管理后台登录密码
-debug = false               # 是否开启调试模式
-log_level = "INFO"         # 日志级别，可选值: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
+password = "sxkiss"      # 管理后台登录密码
+debug = true               # 是否开启调试模式
+log_level = "DEBUG"         # 日志级别，可选值: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
 
 # 日志系统设置（第二阶段优化）
 [Logging]
@@ -36,7 +48,7 @@ log_rotation = "1 day"     # 日志轮转周期：1 day / 1 week / 100 MB
 
 # 性能监控设置（第二阶段优化）
 [Performance]
-enabled = false             # 是否启用性能监控
+enabled = true             # 是否启用性能监控
 monitoring_interval = 30   # 监控间隔（秒）
 max_history_size = 1000    # 最大历史记录数量
 cpu_alert_threshold = 80   # CPU使用率警告阈值（%）
@@ -45,7 +57,8 @@ memory_low_threshold_mb = 500 # 可用内存警告阈值（MB）
 
 # XYBot 核心设置
 [XYBot]
-version = "v1.0.0"                    # 版本号，请勿修改
+version = "v2.0.0"                    # 版本号，请勿修改
+enable-wechat-login = false           # 是否启用微信登录，设为false时框架将在无微信登录情况下启动
 ignore-protection = true             # 是否忽略风控保护机制，建议保持false
 enable-group-wakeup = false
 group-wakeup-words = [
@@ -54,17 +67,17 @@ group-wakeup-words = [
 ]
 # 机器人名称列表，用于识别@机器人的消息
 robot-names = [
-    "小小x"
+    "bot"
 ]
 # 机器人wxid列表，用于检测at_list中的@机器人
 robot-wxids = [
-    "wxid_xxxx"
+    "wxid_n5ssaw9wv8wp12"
 ]
 # GitHub加速服务设置
 # 可选值: "", "https://ghfast.top/", "https://gh-proxy.com/", "https://mirror.ghproxy.com/"
 # 空字符串表示直连不使用加速
 # 注意: 如果使用加速服务，请确保以"/"结尾
-github-proxy = "https://ghfast.top/"
+github-proxy = "https://ghproxy.fangkuai.fun/"
 
 # SQLite数据库地址，一般无需修改
 XYBotDB-url = "sqlite:///database/xybot.db"
@@ -72,19 +85,16 @@ msgDB-url = "sqlite+aiosqlite:///database/message.db"
 keyvalDB-url = "sqlite+aiosqlite:///database/keyval.db"
 
 # 管理员设置
-admins = ["wxid_lnbsshdobq7y22"]  # 管理员的wxid列表，可从消息日志中获取
+admins = ["sxkiss_com","909464773"]  # 管理员的wxid列表，可从消息日志中获取
 disabled-plugins = [
     "ExamplePlugin",
     "TencentLke",
     "FastGPT",
     "OpenAIAPI",
-    "SiliconFlow",
     "AdminPoint",
     "AutoSummary",
     "FileDownloader",
     "DailyBot",
-    "BotStatus",
-    "DouyinParser",
     "GifSender",
     "GetWeather",
     "GetContact",
@@ -98,7 +108,6 @@ disabled-plugins = [
     "QueryPoint",
     "RaiseCard",
     "RedPacket",
-    "VideoDemand",
     "SignIn",
 ]   # 禁用的插件列表，不需要的插件名称填在这里
 timezone = "Asia/Shanghai"             # 时区设置，中国用户使用 Asia/Shanghai
@@ -107,11 +116,11 @@ timezone = "Asia/Shanghai"             # 时区设置，中国用户使用 Asia/
 auto-restart = false                 # 仅建议在开发时启用，生产环境保持false
 
 # 图片文件自动清理设置
-files-cleanup-days = 7               # 图片文件保存天数，超过此天数的图片将被自动清理，设为0表示禁用自动清理
+files-cleanup-days = 1               # 图片文件保存天数，超过此天数的图片将被自动清理，设为0表示禁用自动清理
 
 # 自动重启监控器设置
 [AutoRestart]
-enabled = true                      # 是否启用自动重启监控器
+enabled = false                      # 是否启用自动重启监控器
 check-interval = 60                 # 检查间隔（秒）
 offline-threshold = 300             # 离线阈值（秒），超过这个时间没有状态更新就触发重启
 max-restart-attempts = 3            # 最大重启尝试次数
@@ -141,7 +150,7 @@ blacklist = [# 黑名单列表
 
 # 系统通知设置
 [Notification]
-enabled = true                      # 是否启用通知功能
+enabled = false                      # 是否启用通知功能
 token = ""                          # PushPlus Token，请在 http://www.pushplus.plus/ 注册并填写您的Token
 channel = "wechat"                  # 通知渠道：wechat(微信公众号)、sms(短信)、mail(邮件)、webhook、cp(企业微信)
 template = "html"                   # 通知模板
@@ -166,7 +175,7 @@ restartContent = "系统已于 <span style=\"color:#1e90ff;font-weight:bold;\">{
 
 # 消息回调设置
 [Callback]
-enabled = true                      # 是否启用回调功能
+enabled = false                      # 是否启用回调功能
 path = "python wx849_callback_sender.py"  # 回调脚本路径，根据Python安装位置可能需要调整
 delay = 0                           # 回调延迟（毫秒），通常设为0
 mode = "all"                        # 回调模式：all=所有消息，filter=仅指定类型

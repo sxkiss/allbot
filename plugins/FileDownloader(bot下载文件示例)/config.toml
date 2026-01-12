@@ -1,5 +1,0 @@
-[basic]
-# 是否启用插件
-enable = true
-# 是否自动下载文件
-auto_download = true

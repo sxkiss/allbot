@@ -85,12 +85,13 @@ function closeModalManually(modalId) {
     }
 }
 
-// 插件市场API配置
+// 插件市场API配置（统一走本地同源代理，避免 CORS 和端口暴露问题）
 const PLUGIN_MARKET_API = {
-    BASE_URL: 'http://xianan.xin:1562/api',
-    LIST: '/plugins/?status=approved',  // 添加尾部斜杠，避免重定向
-    SUBMIT: '/plugins/',  // 添加尾部斜杠，避免重定向
-    INSTALL: '/plugins/install/',
+    BASE_URL: '',
+    LIST: '/api/plugin_market',
+    SUBMIT: '/api/plugin_market/submit',
+    INSTALL: '/api/plugin_market/install',
+    HEALTH: '/api/plugin_market',
     CACHE_KEY: 'xybot_plugin_market_cache',
     CACHE_EXPIRY: 3600000 // 缓存有效期1小时（毫秒）
 };
@@ -233,7 +234,8 @@ document.addEventListener('DOMContentLoaded', function() {
 // 检查网络连接
 async function checkConnection() {
     try {
-        const response = await fetch(`${PLUGIN_MARKET_API.BASE_URL}/health`, {
+        const url = `${PLUGIN_MARKET_API.BASE_URL}${PLUGIN_MARKET_API.HEALTH || '/health'}`;
+        const response = await fetch(url, {
             method: 'GET'
         });
         return response.ok;
@@ -316,9 +318,24 @@ async function loadPlugins(framework = 'original') {
         const data = await response.json();
 
         if (data.success) {
-            plugins = data.data.plugins;
+            const allPlugins = data.data.plugins || [];
+            const adapterCount = allPlugins.filter(plugin => plugin.type === 'adapter').length;
+            plugins = allPlugins.filter(plugin => plugin.type !== 'adapter');
             console.log('插件信息:', plugins); // 调试输出
             document.getElementById('plugin-count').textContent = plugins.length;
+
+            const adapterAlert = document.getElementById('adapter-migration-alert');
+            if (adapterAlert) {
+                if (adapterCount > 0) {
+                    const countElement = adapterAlert.querySelector('.adapter-count');
+                    if (countElement) {
+                        countElement.textContent = adapterCount;
+                    }
+                    adapterAlert.classList.remove('d-none');
+                } else {
+                    adapterAlert.classList.add('d-none');
+                }
+            }
 
             // 检查插件更新状态
             let updateCount = 0;
@@ -374,6 +391,8 @@ function filterPlugins(filter) {
         filteredPlugins = plugins.filter(plugin => plugin.enabled);
     } else if (filter === 'disabled') {
         filteredPlugins = plugins.filter(plugin => !plugin.enabled);
+    } else {
+        filteredPlugins = plugins;
     }
 
     renderPluginList(filteredPlugins);
@@ -398,9 +417,8 @@ function renderPluginList(pluginsList) {
 
     // 为每个插件创建卡片并添加到网格布局中
     pluginsList.forEach(plugin => {
-        const statusClass = plugin.enabled ? 'success' : 'secondary';
-        const statusIcon = plugin.enabled ? 
-            '<i class="bi bi-check-circle-fill text-success status-icon" title="已启用"></i>' : 
+        const statusIcon = plugin.enabled ?
+            '<i class="bi bi-check-circle-fill text-success status-icon" title="已启用"></i>' :
             '<i class="bi bi-x-circle-fill text-secondary status-icon" title="已禁用"></i>';
 
         // 检查插件是否有更新
@@ -457,7 +475,7 @@ function renderPluginList(pluginsList) {
                 </div>
                 <div class="d-flex align-items-center">
                     <div class="plugin-icon rounded-circle shadow-sm" style="background: linear-gradient(135deg, ${gradientColors[0]}, ${gradientColors[1]});">
-                        <i class="bi bi-puzzle"></i>
+                        <i class="bi ${isAdapter ? 'bi-plug' : 'bi-puzzle'}"></i>
                     </div>
                     <div class="ms-3" style="min-width: 0; flex: 1;">
                         <h5 class="card-title mb-0 fw-bold text-truncate" title="${plugin.name}">${plugin.name}</h5>

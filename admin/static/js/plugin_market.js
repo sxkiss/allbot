@@ -3,12 +3,13 @@ let marketPlugins = [];
 let currentCategory = 'all';
 let installedPlugins = []; // 存储已安装的插件信息
 
-// 插件市场API配置 - 与plugins.js保持一致
+// 插件市场API配置（统一走本地同源代理，避免 CORS 和端口暴露问题）
 const PLUGIN_MARKET_API = {
-    BASE_URL: 'http://xianan.xin:1562/api',  // 使用与旧插件市场相同的远程API
-    LIST: '/plugins/?status=approved',  // 使用与旧插件市场相同的路径
-    SUBMIT: '/plugins/',
-    INSTALL: '/plugins/install/',
+    BASE_URL: '',
+    LIST: '/api/plugin_market',
+    SUBMIT: '/api/plugin_market/submit',
+    INSTALL: '/api/plugin_market/install',
+    CATEGORIES: '/api/plugin_market/categories',
     CACHE_KEY: 'xybot_plugin_market_cache',
     CACHE_EXPIRY: 3600000 // 缓存有效期1小时（毫秒）
 };
@@ -17,11 +18,13 @@ const PLUGIN_MARKET_API = {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('插件市场页面加载完成');
 
-    // 先加载本地插件，再加载市场插件
-    loadLocalPlugins().then(() => {
-        console.log('已安装插件数量:', installedPlugins.length);
-        // 加载插件市场数据
-        loadPluginMarket();
+    // 先加载分类，再加载本地插件，最后加载市场插件
+    loadCategories().then(() => {
+        loadLocalPlugins().then(() => {
+            console.log('已安装插件数量:', installedPlugins.length);
+            // 加载插件市场数据
+            loadPluginMarket();
+        });
     });
 
     // 初始化推荐插件卡片的点击事件
@@ -34,22 +37,6 @@ document.addEventListener('DOMContentLoaded', function() {
             loadPluginMarket(true); // 强制刷新
         });
     }
-
-    // 为分类按钮添加点击事件
-    const categoryButtons = document.querySelectorAll('.btn-group[aria-label="插件分类"] button');
-    categoryButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            // 移除所有按钮的active类
-            categoryButtons.forEach(btn => btn.classList.remove('active'));
-            // 添加当前按钮的active类
-            this.classList.add('active');
-            // 获取分类
-            const category = this.getAttribute('data-category');
-            currentCategory = category;
-            // 过滤插件
-            filterMarketPlugins(category);
-        });
-    });
 
     // 搜索功能
     const searchInput = document.getElementById('plugin-search-input');
@@ -97,6 +84,85 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// 加载分类列表
+async function loadCategories() {
+    try {
+        console.log('开始加载分类列表...');
+        const response = await fetch(PLUGIN_MARKET_API.CATEGORIES);
+
+        if (!response.ok) {
+            throw new Error(`获取分类列表失败: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.success || !data.categories) {
+            console.warn('分类数据格式不正确:', data);
+            return;
+        }
+
+        // 渲染分类按钮
+        renderCategories(data.categories);
+        console.log('分类列表加载完成，共', data.categories.length, '个分类');
+
+    } catch (error) {
+        console.error('加载分类列表失败:', error);
+        // 失败时保持HTML中的默认分类
+    }
+}
+
+// 渲染分类按钮
+function renderCategories(categories) {
+    const categoryContainer = document.querySelector('.btn-group[aria-label="插件分类"]');
+
+    if (!categoryContainer) {
+        console.error('找不到分类按钮容器');
+        return;
+    }
+
+    // 清空现有按钮
+    categoryContainer.innerHTML = '';
+
+    // 按 sort_order 排序
+    categories.sort((a, b) => a.sort_order - b.sort_order);
+
+    // 渲染每个分类按钮
+    categories.forEach((category, index) => {
+        if (!category.is_active) return; // 跳过未激活的分类
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-outline-primary';
+        button.setAttribute('data-category', category.value);
+
+        // 第一个按钮默认激活
+        if (index === 0) {
+            button.classList.add('active');
+            currentCategory = category.value;
+        }
+
+        // 添加图标和文本
+        button.innerHTML = `<i class="bi ${category.icon} me-1"></i> ${category.label}`;
+
+        // 添加点击事件
+        button.addEventListener('click', function() {
+            // 移除所有按钮的active类
+            categoryContainer.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            // 添加当前按钮的active类
+            this.classList.add('active');
+            // 获取分类
+            const categoryValue = this.getAttribute('data-category');
+            currentCategory = categoryValue;
+            // 过滤插件
+            filterMarketPlugins(categoryValue);
+        });
+
+        categoryContainer.appendChild(button);
+    });
+
+    console.log('分类按钮渲染完成');
+}
 
 // 加载本地已安装的插件
 async function loadLocalPlugins() {
@@ -430,7 +496,7 @@ function generateTagCloud() {
 
     // 收集所有标签
     const tagFrequency = {};
-    const predefinedCategories = ['ai', 'tools', 'entertainment', 'other'];
+    const predefinedCategories = ['ai', 'tools', 'entertainment', 'adapter', 'other'];
 
     // 添加预定义分类
     predefinedCategories.forEach(category => {
@@ -1252,6 +1318,7 @@ async function installPlugin(plugin, status) {
                         author: plugin.author || '未知作者',
                         version: plugin.version || '1.0.0',
                         github_url: cleanGithubUrl,
+                        type: plugin.category === 'adapter' ? 'adapter' : 'plugin',
                         config: {},
                         requirements: []
                     }
@@ -1361,6 +1428,7 @@ function getCategoryName(category) {
         'tools': '工具',
         'ai': 'AI',
         'entertainment': '娱乐',
+        'adapter': '适配器',
         'other': '其他'
     };
     return categories[category.toLowerCase()] || '其他';

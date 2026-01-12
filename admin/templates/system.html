@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}系统管理 - xbot管理后台{% endblock %}
+{% block title %}系统管理 - AllBot管理后台{% endblock %}
 
 {% block page_title %}系统管理{% endblock %}
 
@@ -172,26 +172,6 @@
         bottom: 0;
         z-index: 9999;
         height: calc(100vh - 75px) !important;
-    }
-
-    /* 终端iframe样式 */
-    #terminal-iframe {
-        width: 100%;
-        height: 100%;
-        border: none;
-        background-color: #000;
-    }
-
-    /* 确保终端错误提示可见 */
-    .terminal-error {
-        color: #ff6b6b;
-        text-align: center;
-        padding: 20px;
-    }
-
-    /* 避免iframe内容溢出 */
-    #terminal-container {
-        overflow: hidden;
     }
 
     /* 调整日志容器可见性 */
@@ -446,63 +426,6 @@
         </div>
     </div>
 
-    <!-- 终端区域 -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">终端服务</h5>
-                    <div>
-                        <a href="/terminal" class="btn btn-sm btn-primary me-2">打开终端页面</a>
-                        <a href="http://localhost:3000" target="_blank" class="btn btn-sm btn-outline-primary">直接访问终端</a>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="alert alert-info">
-                        <h6 class="alert-heading">终端服务状态检查与操作指南</h6>
-                        <hr>
-                        <ol>
-                            <li><strong>终端服务状态检查</strong>：在系统命令行中运行 <code>ps aux | grep wetty</code> 查看WeTTy服务是否运行</li>
-                            <li><strong>访问方式</strong>：
-                                <ul>
-                                    <li>方式一：点击上方的<strong>打开终端页面</strong>按钮，在管理后台中使用</li>
-                                    <li>方式二：点击上方的<strong>直接访问终端</strong>按钮，直接打开WeTTy服务</li>
-                                </ul>
-                            </li>
-                            <li><strong>如果终端不可访问</strong>，请尝试重启WeTTy服务：
-                                <div class="bg-dark text-light p-2 mt-1 rounded">
-                                    <code>pkill -f wetty && wetty --port 3000 --host 0.0.0.0 --allow-iframe --base / --command /bin/bash &</code>
-                                </div>
-                            </li>
-                            <li>如果重启后仍然无法访问，请检查端口3000是否已被占用：<code>netstat -tuln | grep 3000</code></li>
-                        </ol>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div>
-                            <span class="text-muted">WeTTy终端服务端口：</span>
-                            <span class="fw-bold">3000</span>
-                        </div>
-                        <div>
-                            <button id="check-terminal" class="btn btn-sm btn-outline-primary me-2">检查终端服务状态</button>
-                            <button id="restart-terminal" class="btn btn-sm btn-outline-warning">重启终端服务</button>
-                        </div>
-                    </div>
-                    <div id="terminal-status" class="mt-3 d-none">
-                        <div class="d-flex align-items-center">
-                            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
-                                <span class="visually-hidden">正在检查...</span>
-                            </div>
-                            <span>正在检查终端服务状态...</span>
-                        </div>
-                    </div>
-                    <div id="terminal-log" class="mt-3 d-none">
-                        <h6 class="text-muted">终端服务诊断日志：</h6>
-                        <div class="border rounded bg-light p-2" style="max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap;"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 {% endblock %}
 
@@ -844,85 +767,9 @@
                         });
                 }
             });
-            
-            // 处理终端相关按钮
-            safeAddEventListener('check-terminal', 'click', function() {
-                const statusElement = document.getElementById('terminal-status');
-                const logElement = document.getElementById('terminal-log');
-                
-                statusElement.classList.remove('d-none');
-                
-                fetch('/api/terminal/diagnose')
-                    .then(response => response.json())
-                    .then(data => {
-                        statusElement.classList.add('d-none');
-                        logElement.classList.remove('d-none');
-                        
-                        const logContent = logElement.querySelector('div');
-                        if (logContent) {
-                            if (data.success) {
-                                logContent.innerHTML = `<div class="text-success mb-2"><i class="bi bi-check-circle"></i> 终端服务状态: ${data.status.running ? '运行中' : '未运行'}</div>`;
-                                if (data.logs && data.logs.length > 0) {
-                                    data.logs.forEach(log => {
-                                        logContent.innerHTML += `<div class="small">${log.replace(/\n/g, '<br>')}</div>`;
-                                    });
-                                }
-                            } else {
-                                logContent.innerHTML = `<div class="text-danger"><i class="bi bi-exclamation-triangle"></i> 检查失败: ${data.error || '未知错误'}</div>`;
-                            }
-                        }
-                    })
-                    .catch(error => {
-                        statusElement.classList.add('d-none');
-                        logElement.classList.remove('d-none');
-                        
-                        const logContent = logElement.querySelector('div');
-                        if (logContent) {
-                            logContent.innerHTML = `<div class="text-danger"><i class="bi bi-exclamation-triangle"></i> 检查出错: ${error.message}</div>`;
-                        }
-                    });
-            });
-            
-            safeAddEventListener('restart-terminal', 'click', function() {
-                if (confirm('确定要重启终端服务吗？')) {
-                    const statusElement = document.getElementById('terminal-status');
-                    const logElement = document.getElementById('terminal-log');
-                    
-                    statusElement.classList.remove('d-none');
-                    
-                    fetch('/api/terminal/restart', { method: 'POST' })
-                        .then(response => response.json())
-                        .then(data => {
-                            statusElement.classList.add('d-none');
-                            logElement.classList.remove('d-none');
-                            
-                            const logContent = logElement.querySelector('div');
-                            if (logContent) {
-                                if (data.success) {
-                                    logContent.innerHTML = `<div class="text-success mb-2"><i class="bi bi-check-circle"></i> 终端服务已重启</div>`;
-                                    if (data.logs && data.logs.length > 0) {
-                                        data.logs.forEach(log => {
-                                            logContent.innerHTML += `<div class="small">${log.replace(/\n/g, '<br>')}</div>`;
-                                        });
-                                    }
-                                } else {
-                                    logContent.innerHTML = `<div class="text-danger"><i class="bi bi-exclamation-triangle"></i> 重启失败: ${data.error || '未知错误'}</div>`;
-                                }
-                            }
-                        })
-                        .catch(error => {
-                            statusElement.classList.add('d-none');
-                            logElement.classList.remove('d-none');
-                            
-                            const logContent = logElement.querySelector('div');
-                            if (logContent) {
-                                logContent.innerHTML = `<div class="text-danger"><i class="bi bi-exclamation-triangle"></i> 重启出错: ${error.message}</div>`;
-                            }
-                        });
-                }
-            });
+
         }
-        
+
         // 初始化页面
         initPage();
         

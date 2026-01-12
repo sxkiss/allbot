@@ -1,3 +1,0 @@
-[AdminSignInReset]
-enable = true
-command = ["重置签到", "重置签到状态"]

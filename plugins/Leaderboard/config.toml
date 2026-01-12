@@ -1,4 +1,0 @@
-[Leaderboard]
-enable = true
-command = ["排行榜", "积分榜", "积分排行榜", "群排行榜", "群积分榜"]
-max-count = 30

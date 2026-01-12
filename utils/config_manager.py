@@ -33,12 +33,18 @@ class WechatAPIConfig:
     host: str = "127.0.0.1"
     port: int = 9000
     mode: str = "release"
+    enable_websocket: bool = False
+    ws_url: str = ""
+    enable_rabbitmq: bool = True
+    rabbitmq_host: str = "127.0.0.1"
+    rabbitmq_port: int = 5672
+    rabbitmq_user: str = "guest"
+    rabbitmq_password: str = "guest"
+    rabbitmq_queue: str = "wechat_messages"
     redis_host: str = "127.0.0.1"
     redis_port: int = 6379
     redis_password: str = ""
     redis_db: int = 0
-    ws_url: str = ""
-    message_mode: str = "ws"
 
 
 @dataclass
@@ -73,6 +79,7 @@ class XYBotConfig:
     """XYBot核心配置"""
 
     version: str = "v1.0.0"
+    enable_wechat_login: bool = True
     ignore_protection: bool = False
     enable_group_wakeup: bool = False
     group_wakeup_words: List[str] = field(default_factory=lambda: ["bot", "机器人"])
@@ -116,16 +123,6 @@ class NotificationConfig:
 
 
 @dataclass
-class CallbackConfig:
-    """回调配置"""
-
-    enabled: bool = True
-    path: str = "python wx849_callback_sender.py"
-    delay: int = 0
-    mode: str = "all"
-
-
-@dataclass
 class LoggingConfig:
     """日志系统配置"""
 
@@ -160,7 +157,6 @@ class AppConfig:
     xybot: XYBotConfig = field(default_factory=XYBotConfig)
     auto_restart: AutoRestartConfig = field(default_factory=AutoRestartConfig)
     notification: NotificationConfig = field(default_factory=NotificationConfig)
-    callback: CallbackConfig = field(default_factory=CallbackConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     performance: PerformanceConfig = field(default_factory=PerformanceConfig)
 
@@ -312,6 +308,9 @@ class ConfigManager:
                 host=api_config.get("host", config.wechat_api.host),
                 port=api_config.get("port", config.wechat_api.port),
                 mode=api_config.get("mode", config.wechat_api.mode),
+                enable_websocket=api_config.get(
+                    "enable-websocket", config.wechat_api.enable_websocket
+                ),
                 redis_host=api_config.get("redis-host", config.wechat_api.redis_host),
                 redis_port=api_config.get("redis-port", config.wechat_api.redis_port),
                 redis_password=api_config.get(
@@ -319,7 +318,24 @@ class ConfigManager:
                 ),
                 redis_db=api_config.get("redis-db", config.wechat_api.redis_db),
                 ws_url=api_config.get("ws-url", config.wechat_api.ws_url),
-                message_mode=api_config.get("message-mode", config.wechat_api.message_mode),
+                enable_rabbitmq=api_config.get(
+                    "enable-rabbitmq", config.wechat_api.enable_rabbitmq
+                ),
+                rabbitmq_host=api_config.get(
+                    "rabbitmq-host", config.wechat_api.rabbitmq_host
+                ),
+                rabbitmq_port=api_config.get(
+                    "rabbitmq-port", config.wechat_api.rabbitmq_port
+                ),
+                rabbitmq_user=api_config.get(
+                    "rabbitmq-user", config.wechat_api.rabbitmq_user
+                ),
+                rabbitmq_password=api_config.get(
+                    "rabbitmq-password", config.wechat_api.rabbitmq_password
+                ),
+                rabbitmq_queue=api_config.get(
+                    "rabbitmq-queue", config.wechat_api.rabbitmq_queue
+                ),
             )
 
         # 管理后台配置
@@ -354,6 +370,9 @@ class ConfigManager:
             xybot_config = self._raw_config["XYBot"]
             config.xybot = XYBotConfig(
                 version=xybot_config.get("version", config.xybot.version),
+                enable_wechat_login=xybot_config.get(
+                    "enable-wechat-login", config.xybot.enable_wechat_login
+                ),
                 ignore_protection=xybot_config.get(
                     "ignore-protection", config.xybot.ignore_protection
                 ),
@@ -428,16 +447,6 @@ class ConfigManager:
                 heartbeat_threshold=notification_config.get(
                     "heartbeatThreshold", config.notification.heartbeat_threshold
                 ),
-            )
-
-        # 回调配置
-        if "Callback" in self._raw_config:
-            callback_config = self._raw_config["Callback"]
-            config.callback = CallbackConfig(
-                enabled=callback_config.get("enabled", config.callback.enabled),
-                path=callback_config.get("path", config.callback.path),
-                delay=callback_config.get("delay", config.callback.delay),
-                mode=callback_config.get("mode", config.callback.mode),
             )
 
         # 日志配置

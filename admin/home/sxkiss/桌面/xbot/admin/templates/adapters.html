@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}适配器管理 - XXXBot{% endblock %}
+
+{% block page_title %}适配器管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4" data-aos="fade-up">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-hdd-network-fill me-2 text-primary"></i>消息平台适配器
+                    </h5>
+                    <button id="btn-restart-service" class="btn btn-sm btn-warning" style="display: none;">
+                        <i class="bi bi-arrow-clockwise me-1"></i>重启服务
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>管理消息平台适配器的启用状态。修改后需要重启服务才能生效。
+                    </div>
+
+                    <div id="adapters-container" class="row">
+                        <div class="col-12 text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <p class="mt-2">正在加载适配器列表...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 适配器卡片模板 -->
+<template id="adapter-card-template">
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 adapter-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-plugin me-2"></i>
+                    <span class="adapter-name">适配器名称</span>
+                </h5>
+                <span class="badge adapter-status-badge">状态</span>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">平台:</span>
+                        <span class="adapter-platform fw-bold">未知</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-muted">配置文件:</span>
+                        <code class="adapter-config-path small">config.toml</code>
+                    </div>
+                </div>
+
+                <div class="form-check form-switch d-flex justify-content-between align-items-center p-0">
+                    <label class="form-check-label" for="adapter-switch">
+                        <i class="bi bi-power me-1"></i>启用适配器
+                    </label>
+                    <input class="form-check-input adapter-switch ms-2" type="checkbox" role="switch" id="adapter-switch" style="width: 3rem; height: 1.5rem; cursor: pointer;">
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<style>
+.adapter-card {
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.adapter-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.adapter-card.enabled {
+    border-color: #28a745;
+}
+
+.adapter-card.disabled {
+    border-color: #dc3545;
+    opacity: 0.8;
+}
+
+.adapter-status-badge.bg-success {
+    background-color: #28a745 !important;
+}
+
+.adapter-status-badge.bg-secondary {
+    background-color: #6c757d !important;
+}
+
+.form-check-input:checked {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.adapter-config-path {
+    font-size: 0.75rem;
+    background-color: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='/js/adapters.js') }}"></script>
+{% endblock %}

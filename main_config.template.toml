@@ -1,0 +1,153 @@
+# 协议版本选择
+[Protocol]
+version = "pad"            # 协议版本，可选值: "ipad", "pad", "mac", "ipad2", "car" 或 "win"
+
+[Framework]
+type = "wechat"
+
+[WechatAPIServer]
+host = "127.0.0.1"         # WechatAPI服务器地址，默认127.0.0.1，可修改为其他地址
+port = 9000                 # WechatAPI服务器端口，默认9000，如有冲突可修改
+mode = "debug"             # 运行模式：release(生产环境)，debug(调试模式)
+
+# Redis 设置
+redis-host = "127.0.0.1"   # Redis服务器地址，本地使用127.0.0.1
+redis-port = 6379           # Redis端口，使用系统Redis服务的默认端口
+redis-password = ""         # Redis密码，如果有设置密码则填写
+redis-db = 0                # Redis数据库编号，默认0
+
+# WebSocket 设置
+enable-websocket = false    # 是否启用 WebSocket 消息接收，默认关闭
+ws-url = "ws://127.0.0.1:9000/api/ws"  # WebSocket 服务器地址，例如: "ws://127.0.0.1:8080/ws"
+
+# RabbitMQ 设置
+enable-rabbitmq = true      # 是否启用 RabbitMQ 消息接收，默认开启
+rabbitmq-host = "127.0.0.1"
+rabbitmq-port = 5672
+rabbitmq-user = "guest"
+rabbitmq-password = "guest"
+rabbitmq-queue = "example-queue"  # RabbitMQ 队列名称
+
+# 管理后台设置
+[Admin]
+enabled = true             # 是否启用管理后台
+host = "0.0.0.0"           # 管理后台监听地址，使用0.0.0.0允许外部访问
+port = 9090                # 管理后台端口
+username = "admin"         # 管理后台登录用户名
+password = "change_me"     # 管理后台登录密码
+debug = true               # 是否开启调试模式
+log_level = "INFO"         # 日志级别，可选值: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
+
+# 日志系统设置（第二阶段优化）
+[Logging]
+enable_file_log = true     # 是否启用文件日志
+enable_console_log = true  # 是否启用控制台日志
+enable_json_format = false # 是否启用JSON格式日志（用于结构化分析）
+max_log_files = 10         # 最大日志文件数量
+log_rotation = "1 day"     # 日志轮转周期：1 day / 1 week / 100 MB
+
+# 性能监控设置（第二阶段优化）
+[Performance]
+enabled = true             # 是否启用性能监控
+monitoring_interval = 30   # 监控间隔（秒）
+max_history_size = 1000    # 最大历史记录数量
+cpu_alert_threshold = 80   # CPU使用率警告阈值（%）
+memory_alert_threshold = 85 # 内存使用率警告阈值（%）
+memory_low_threshold_mb = 500 # 可用内存警告阈值（MB）
+
+# XYBot 核心设置
+[XYBot]
+version = "v2.0.0"                    # 版本号，请勿修改
+enable-wechat-login = false           # 是否启用微信登录，设为false时框架将在无微信登录情况下启动
+ignore-protection = false             # 是否忽略风控保护机制，建议保持false
+enable-group-wakeup = false
+group-wakeup-words = [
+    "bot",
+    "机器人",
+]
+# 机器人名称列表，用于识别@机器人的消息
+robot-names = [
+    "bot"
+]
+# 机器人wxid列表，用于检测at_list中的@机器人
+robot-wxids = [
+    "wxid_xxxxxxxxxxxxx"
+]
+# GitHub加速服务设置
+# 可选值: "", "https://ghfast.top/", "https://gh-proxy.com/", "https://mirror.ghproxy.com/"
+# 空字符串表示直连不使用加速
+# 注意: 如果使用加速服务，请确保以"/"结尾
+github-proxy = ""
+
+# SQLite数据库地址，一般无需修改
+XYBotDB-url = "sqlite:///database/xybot.db"
+msgDB-url = "sqlite+aiosqlite:///database/message.db"
+keyvalDB-url = "sqlite+aiosqlite:///database/keyval.db"
+
+# 管理员设置
+admins = ["wxid_admin_1", "wxid_admin_2"]  # 管理员的wxid列表，可从消息日志中获取
+
+disabled-plugins = []   # 禁用的插件列表，不需要的插件名称填在这里
+
+timezone = "Asia/Shanghai"             # 时区设置，中国用户使用 Asia/Shanghai
+
+# 实验性功能，如果main_config.toml配置改动，或者plugins文件夹有改动，自动重启。可以在开发时使用，不建议在生产环境使用。
+auto-restart = false                 # 仅建议在开发时启用，生产环境保持false
+
+# 图片文件自动清理设置
+files-cleanup-days = 1               # 图片文件保存天数，超过此天数的图片将被自动清理，设为0表示禁用自动清理
+
+# 自动重启监控器设置
+[AutoRestart]
+enabled = false                      # 是否启用自动重启监控器
+check-interval = 60                 # 检查间隔（秒）
+offline-threshold = 300             # 离线阈值（秒），超过这个时间没有状态更新就触发重启
+max-restart-attempts = 3            # 最大重启尝试次数
+restart-cooldown = 1800             # 重启冷却时间（秒），两次重启之间的最小间隔
+check-offline-trace = true          # 是否检查掉线追踪，如果为true，则仅在检测到"获取新消息失败"的日志时触发重启
+failure-count-threshold = 10        # 连续失败次数阈值，检测到达到这个次数的"获取新消息失败"时才触发重启
+reset-threshold-multiplier = 3      # 重置阈值倍数，失败计数器重置时间 = 离线阈值 * 此值
+
+# 消息过滤设置
+ignore-mode = "None"            # 消息处理模式：
+# "None" - 处理所有消息
+# "Whitelist" - 仅处理白名单消息
+# "Blacklist" - 屏蔽黑名单消息
+
+whitelist = [# 白名单列表
+    "wxid_example_1",  # 您的个人微信ID
+    "wxid_example_2",  # 您的另一个微信ID
+    "1234567890@chatroom"  # 您的群聊ID
+]
+
+blacklist = [# 黑名单列表
+    "wxid_block_1", # 个人用户微信ID
+    "wxid_block_2",
+    "333@chatroom", # 群聊ID
+    "444@chatroom"
+]
+
+# 系统通知设置
+[Notification]
+enabled = false                      # 是否启用通知功能
+token = ""                          # PushPlus Token，请在 http://www.pushplus.plus/ 注册并填写您的Token
+channel = "wechat"                  # 通知渠道：wechat(微信公众号)、sms(短信)、mail(邮件)、webhook、cp(企业微信)
+template = "html"                   # 通知模板
+topic = ""                          # 群组编码，不填仅发送给自己
+heartbeatThreshold = 3              # 心跳失败阈值，连续失败多少次判定为离线
+
+# 通知触发条件
+[Notification.triggers]
+offline = true                      # 微信离线时通知
+reconnect = true                   # 微信重新连接时通知
+restart = true                     # 系统重启时通知
+error = true                       # 系统错误时通知
+
+# 通知模板设置
+[Notification.templates]
+offlineTitle = "警告：微信离线通知 - {time}"  # 离线通知标题
+offlineContent = "您的微信账号 <b>{wxid}</b> 已于 <span style=\"color:#ff4757;font-weight:bold;\">{time}</span> 离线，请尽快检查您的设备连接状态或重新登录。"  # 离线通知内容
+reconnectTitle = "微信重新连接通知 - {time}"  # 重连通知标题
+reconnectContent = "您的微信账号 <b>{wxid}</b> 已于 <span style=\"color:#2ed573;font-weight:bold;\">{time}</span> 重新连接。"  # 重连通知内容
+restartTitle = "系统重启通知 - {time}"  # 重启通知标题
+restartContent = "系统已于 <span style=\"color:#1e90ff;font-weight:bold;\">{time}</span> 重新启动。"  # 重启通知内容

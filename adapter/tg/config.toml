@@ -1,0 +1,44 @@
+[adapter]
+name = "telegram"
+enabled = true
+module = "adapter.tg"
+class = "TelegramAdapter"
+replyQueue = "xxxbot_reply:telegram"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = false
+logLevel = "DEBUG"
+
+[telegram]
+# 是否启用 Telegram 适配器
+enable = true
+# Bot API Token（@BotFather 获取）
+token = "7913773965:AAFD3t2_ShxkSy8htWKwIUrxuyJE--kSR88"
+# 自建反代地址（直接填基础域名/端口，无需附加 /bot），启用 httpProxy 时将作为备用
+# proxyHost = "https://tg.sxkiss.com"
+# HTTP/HTTPS 透明代理（可选）
+ httpProxy = "http://sxkiss.top:7890"
+# 自定义请求头（可选，用于伪装为浏览器，示例：{ User-Agent = "..." }）
+# customHeaders = { User-Agent = "Mozilla/5.0 ..." }
+# 是否启用长轮询
+polling = true
+# 轮询超时
+pollingTimeout = 30
+# 下载重试
+downloadRetry = 3
+# 初始化重试次数/间隔
+initRetry = 3
+initRetryInterval = 5
+
+[telegram.webhook]
+# 启用 Webhook 时自动关闭长轮询
+enable = false
+# Telegram 推送到的公网可访问地址（需提前配置反向代理）
+url = ""
+# 本地监听地址/端口
+listenHost = "0.0.0.0"
+listenPort = 9001
+# 可选：与 Telegram 设置的 secret token 保持一致
+secretToken = ""
+# 是否删除 Telegram 端待处理的旧更新
+dropPendingUpdates = false

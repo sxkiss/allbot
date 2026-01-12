@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 
 from pydantic import validate_arguments
-from sqlalchemy import Column, String, Integer, DateTime, Text, Boolean, delete, BigInteger
+from sqlalchemy import Column, String, Integer, DateTime, Text, Boolean, delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_scoped_session
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -20,8 +20,7 @@ class Message(DeclarativeBase):
     __tablename__ = 'messages'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    msg_id = Column(BigInteger, index=True, comment='消息唯一ID（整型）')
-    new_msg_id = Column(BigInteger, index=True, comment='新消息ID（撤回等场景）', default=0)
+    msg_id = Column(Integer, index=True, comment='消息唯一ID（整型）')
     sender_wxid = Column(String(40), index=True, comment='消息发送人wxid')
     from_wxid = Column(String(40), index=True, comment='消息来源wxid')
     msg_type = Column(Integer, comment='消息类型（整型编码）')
@@ -67,8 +66,7 @@ class MessageDB(metaclass=Singleton):
                            from_wxid: str = "",
                            msg_type: int = 0,
                            content: str = "",
-                           is_group: bool = False,
-                           new_msg_id: int = 0) -> bool:
+                           is_group: bool = False) -> bool:
         """异步保存消息到数据库"""
         # 确保content是字符串类型
         if isinstance(content, dict) and "string" in content:
@@ -80,7 +78,6 @@ class MessageDB(metaclass=Singleton):
             try:
                 message = Message(
                     msg_id=msg_id,
-                    new_msg_id=new_msg_id,
                     sender_wxid=sender_wxid,
                     from_wxid=from_wxid,
                     msg_type=msg_type,

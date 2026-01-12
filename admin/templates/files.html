@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}文件管理 - xbot管理后台{% endblock %}
+{% block title %}文件管理 - AllBot管理后台{% endblock %}
 
 {% block page_title %}文件管理{% endblock %}
 
@@ -34,6 +34,30 @@
         background-color: #fff;
         height: calc(100vh - 180px);
     }
+
+    /* 移动端适配 */
+    @media (max-width: 768px) {
+        .file-manager-iframe {
+            height: calc(100vh - 250px);
+            min-height: 400px;
+        }
+
+        .file-manager-container {
+            height: calc(100vh - 250px);
+            min-height: 400px;
+        }
+
+        .card-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .card-header .btn {
+            width: 100%;
+        }
+    }
+
 
     /* 确保版本信息正确显示 */
     #version-info {
