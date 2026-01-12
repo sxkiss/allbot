@@ -1,6 +1,6 @@
 [adapter]
 name = "qq"
-enabled = true
+enabled = false
 module = "adapter.qq"
 class = "QQAdapter"
 replyQueue = "xxxbot_reply:qq"
@@ -10,7 +10,7 @@ logEnabled = false
 logLevel = "INFO"
 
 [qq]
-enable = true
+enable = false
 platform = "qq"
 aliases = ["ntqq"]
 host = "0.0.0.0"
@@ -18,8 +18,8 @@ port = 9011
 allowPrivate = true
 sessionTakeover = "auto"
 dedupCacheSize = 2000
-botWxid = "563008797"
-allowedGroups = ["183254335", "41344962"]
+botWxid = ""
+allowedGroups = []
 maxClients = 1
 logRawMessage = true
 

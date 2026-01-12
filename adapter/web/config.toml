@@ -1,6 +1,6 @@
 [adapter]
 name = "web"
-enabled = true
+enabled = false
 module = "adapter.web"
 class = "WebAdapter"
 replyQueue = "xxxbot_reply:web"
@@ -10,10 +10,10 @@ logEnabled = true
 logLevel = "INFO"
 
 [web]
-enable = true
+enable = false
 platform = "web"
 aliases = ["webchat"]
-botWxid = "web-bot-user"
+botWxid = ""
 logRawMessage = true
 
 [web.redis]

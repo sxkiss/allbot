@@ -1,6 +1,6 @@
 [adapter]
 name = "win"
-enabled = true
+enabled = false
 module = "adapter.win"
 class = "WinAdapter"
 replyQueue = "xxxbot_reply:win"
@@ -10,18 +10,14 @@ logEnabled = true
 logLevel = "INFO"
 
 [win]
-enable = true
-wsUrl = "ws://win.sxkiss.top:8000/api/ws"
-sendUrl = "http://win.sxkiss.top:8000/api/send"
-staticBaseUrl = "http://sxkiss.top:9999/static/temp"
-mediaCacheDir = "admin/static/temp/win"
+enable = false
+wsUrl = ""
+sendUrl = ""
+staticBaseUrl = ""
+mediaCacheDir = ""
 allowPrivate = true
 ignoreGhId = true
-groupWhitelist = [
-    "52806025813@chatroom",
-    "49972501401@chatroom",
-    "49651687371@chatroom",
-]
+groupWhitelist = []
 dedupCacheSize = 3000
 reconnectInterval = 5
 sessionTakeover = "auto"

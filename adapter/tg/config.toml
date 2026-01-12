@@ -1,6 +1,6 @@
 [adapter]
 name = "telegram"
-enabled = true
+enabled = false
 module = "adapter.tg"
 class = "TelegramAdapter"
 replyQueue = "xxxbot_reply:telegram"
@@ -11,13 +11,13 @@ logLevel = "DEBUG"
 
 [telegram]
 # 是否启用 Telegram 适配器
-enable = true
+enable = false
 # Bot API Token（@BotFather 获取）
-token = "7913773965:AAFD3t2_ShxkSy8htWKwIUrxuyJE--kSR88"
+token = ""
 # 自建反代地址（直接填基础域名/端口，无需附加 /bot），启用 httpProxy 时将作为备用
 # proxyHost = "https://tg.sxkiss.com"
 # HTTP/HTTPS 透明代理（可选）
- httpProxy = "http://sxkiss.top:7890"
+httpProxy = ""
 # 自定义请求头（可选，用于伪装为浏览器，示例：{ User-Agent = "..." }）
 # customHeaders = { User-Agent = "Mozilla/5.0 ..." }
 # 是否启用长轮询
