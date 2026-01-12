@@ -1,6 +1,0 @@
-[basic]
-enable = true  # 是否启用插件
-
-[filter]
-# 是否记录被过滤的消息
-log_filtered = true

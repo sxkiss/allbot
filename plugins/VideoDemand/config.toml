@@ -1,7 +1,0 @@
-[VideoDemand]
-enable = true
-command = ["视频菜单"]
-random-command = ["随机视频"]
-random-video-url = "https://sj.tuituiya.cn/sjdsp/zsxjj669.php"
-menu-image = "https://d.kstore.dev/download/8150/shipin.jpg"
-cache-time = 300  # 菜单有效期5分钟 

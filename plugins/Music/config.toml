@@ -1,5 +1,0 @@
-[Music]
-enable = true
-command = ["点歌"]  #  只有这一个命令可以触发
-command-format = "点歌 <歌曲名>"
-play_command = "播放"    #  只有这一个命令可以触发播放
