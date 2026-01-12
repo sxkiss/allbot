@@ -67,7 +67,7 @@ LOG_CONFIG = {
 
 # 插件市场配置
 PLUGIN_MARKET_CONFIG = {
-    "base_url": "http://xianan.xin:1562/api",
+    "base_url": os.environ.get("PLUGIN_MARKET_BASE_URL", "http://v.sxkiss.top"),
     "cache_dir": "_cache",
     "temp_dir": "_temp",
     "sync_interval": 3600

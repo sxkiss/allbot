@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}插件管理 - xbot管理后台{% endblock %}
+{% block title %}插件管理 - AllBot管理后台{% endblock %}
 
 {% block page_title %}插件管理{% endblock %}
 
@@ -450,6 +450,18 @@
                             </div>
                         </div>
 
+                        <!-- 框架选择器 - 更小更靠右 -->
+                        <div class="filter-section">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="框架选择">
+                                <button type="button" class="btn btn-outline-secondary active"
+                                    data-framework="original">原始框架</button>
+                                <button type="button" class="btn btn-outline-secondary"
+                                    data-framework="dow">DOW框架</button>
+                                <button type="button" class="btn btn-outline-secondary"
+                                    data-framework="all">所有框架</button>
+                            </div>
+                        </div>
+                        
                         <!-- 插件市场按钮 -->
                         <div class="ms-md-2">
                             <a href="/plugin-market" class="btn btn-sm btn-primary">
@@ -467,6 +479,12 @@
                             <input type="text" class="form-control bg-light border-0" id="plugin-search-input"
                                 placeholder="搜索插件...">
                         </div>
+                    </div>
+
+                    <div id="adapter-migration-alert" class="alert alert-warning d-none mb-4" role="alert">
+                        <i class="bi bi-plug me-2"></i>
+                        检测到 <strong class="adapter-count">0</strong> 个适配器，相关操作已迁移至
+                        <a href="/adapters" class="alert-link">适配器管理</a> 页面。
                     </div>
 
                     <div id="plugin-list" class="plugin-grid"
@@ -744,6 +762,8 @@
 <script src="/admin/static/js/custom.js?v={{ version }}"></script>
 <!-- 引入插件显示修复脚本 -->
 <script src="/static/js/fix_plugins_display.js?v={{ version }}"></script>
+<!-- 引入DOW框架插件专用修复脚本 -->
+<script src="/admin/static/js/fix_dow_plugins.js?v={{ version }}"></script>
 <script>
 // 轻量级脚本，只处理"可更新"标签和黄色背景
 (function() {

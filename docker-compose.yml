@@ -1,28 +1,14 @@
-version: "3"
-
 services:
-  wechat:
-    image: nanssye/xbot-wechat
-    container_name: xbot-wechat
-    restart: always
+  allbot:
+    image: sxkiss/allbot:latest
+    container_name: allbot
+    restart: unless-stopped
     ports:
-      - "9011:9011"
-      - "9088:9088"
-      - "9010:9010"
-
-  admin:
-    image: nanssye/xbot
-    container_name: xbot
-    restart: always
-    ports:
-      - "9090:9090"
+      - "9090:9090" # 管理后台端口
     volumes:
-      - xbot:/app
-
-networks:
-  xbot-network:
-    driver: bridge
+      - ./:/app
+      - redis_data:/data/redis # Redis数据持久化
 
 volumes:
-  xbot:
-    name: xbot
+  redis_data:
+    name: redis_data

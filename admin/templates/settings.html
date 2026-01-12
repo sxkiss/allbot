@@ -1,0 +1,564 @@
+{% extends "base.html" %}
+
+{% block title %}系统设置 - AllBot管理后台{% endblock %}
+
+{% block page_title %}系统设置{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-section {
+        margin-bottom: 2rem;
+    }
+
+    .section-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 8px 8px 0 0;
+        margin-bottom: 0;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .section-header:hover {
+        opacity: 0.9;
+    }
+
+    .section-header i.bi-chevron-down {
+        transition: transform 0.3s;
+    }
+
+    .section-header.collapsed i.bi-chevron-down {
+        transform: rotate(-90deg);
+    }
+
+    .section-body {
+        border: 1px solid #dee2e6;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        padding: 1.5rem;
+        background: white;
+    }
+
+    .form-label {
+        font-weight: 500;
+        color: #495057;
+        margin-bottom: 0.5rem;
+    }
+
+    .form-text {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+
+    .btn-save-config {
+        min-width: 120px;
+        position: sticky;
+        top: 20px;
+        z-index: 100;
+    }
+
+    .alert-config {
+        margin-top: 1rem;
+    }
+
+    .array-input-group {
+        margin-bottom: 0.5rem;
+    }
+
+    .array-input-group .input-group {
+        margin-bottom: 0.5rem;
+    }
+
+    .btn-add-item {
+        margin-top: 0.5rem;
+    }
+
+    .config-tabs {
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 99;
+        padding: 1rem 0;
+        border-bottom: 2px solid #dee2e6;
+        margin-bottom: 1.5rem;
+    }
+
+    .nav-pills .nav-link {
+        border-radius: 20px;
+        padding: 0.5rem 1.5rem;
+        margin-right: 0.5rem;
+    }
+
+    .nav-pills .nav-link.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-gear me-2 text-primary"></i>系统配置管理
+                    </h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary me-2" id="btn-reload-config">
+                            <i class="bi bi-arrow-clockwise"></i> 重新加载
+                        </button>
+                        <button class="btn btn-sm btn-primary btn-save-config" id="btn-save-config">
+                            <i class="bi bi-save"></i> 保存配置
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>提示：</strong>修改配置后需要重启服务才能生效。保存前会自动备份原配置文件。
+                    </div>
+
+                    <div id="alert-container"></div>
+
+                    <!-- 配置分类标签 -->
+                    <div class="config-tabs">
+                        <ul class="nav nav-pills" id="config-tabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-basic" type="button">
+                                    <i class="bi bi-gear-fill me-1"></i>基础配置
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-server" type="button">
+                                    <i class="bi bi-server me-1"></i>服务器配置
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-bot" type="button">
+                                    <i class="bi bi-robot me-1"></i>机器人配置
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-advanced" type="button">
+                                    <i class="bi bi-sliders me-1"></i>高级配置
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- 配置表单 -->
+                    <div class="tab-content" id="config-content">
+                        <!-- 基础配置 -->
+                        <div class="tab-pane fade show active" id="tab-basic" role="tabpanel">
+                            <div id="basic-config-container"></div>
+                        </div>
+
+                        <!-- 服务器配置 -->
+                        <div class="tab-pane fade" id="tab-server" role="tabpanel">
+                            <div id="server-config-container"></div>
+                        </div>
+
+                        <!-- 机器人配置 -->
+                        <div class="tab-pane fade" id="tab-bot" role="tabpanel">
+                            <div id="bot-config-container"></div>
+                        </div>
+
+                        <!-- 高级配置 -->
+                        <div class="tab-pane fade" id="tab-advanced" role="tabpanel">
+                            <div id="advanced-config-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btnSave = document.getElementById('btn-save-config');
+    const btnReload = document.getElementById('btn-reload-config');
+    const alertContainer = document.getElementById('alert-container');
+
+    let configData = {};
+
+    // 显示提示信息
+    function showAlert(message, type = 'info') {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show alert-config`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        alertContainer.innerHTML = '';
+        alertContainer.appendChild(alertDiv);
+
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 5000);
+    }
+
+    // 创建表单字段
+    function createFormField(section, key, value, description = '') {
+        const fieldId = `${section}-${key}`;
+        const fieldType = typeof value;
+
+        let inputHtml = '';
+
+        if (fieldType === 'boolean') {
+            inputHtml = `
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="${fieldId}"
+                           ${value ? 'checked' : ''} data-section="${section}" data-key="${key}">
+                    <label class="form-check-label" for="${fieldId}">${key}</label>
+                </div>
+            `;
+        } else if (fieldType === 'number') {
+            inputHtml = `
+                <label for="${fieldId}" class="form-label">${key}</label>
+                <input type="number" class="form-control" id="${fieldId}"
+                       value="${value}" data-section="${section}" data-key="${key}">
+            `;
+        } else if (Array.isArray(value)) {
+            inputHtml = `
+                <label class="form-label">${key}</label>
+                <div class="array-input-group" id="${fieldId}-container" data-section="${section}" data-key="${key}">
+                    ${value.map((item, index) => `
+                        <div class="input-group mb-2">
+                            <input type="text" class="form-control array-item" value="${item}" data-index="${index}">
+                            <button class="btn btn-outline-danger btn-remove-item" type="button">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    `).join('')}
+                    <button class="btn btn-sm btn-outline-primary btn-add-item" type="button">
+                        <i class="bi bi-plus-circle me-1"></i>添加项
+                    </button>
+                </div>
+            `;
+        } else {
+            inputHtml = `
+                <label for="${fieldId}" class="form-label">${key}</label>
+                <input type="text" class="form-control" id="${fieldId}"
+                       value="${value}" data-section="${section}" data-key="${key}">
+            `;
+        }
+
+        return `
+            <div class="mb-3">
+                ${inputHtml}
+                ${description ? `<div class="form-text">${description}</div>` : ''}
+            </div>
+        `;
+    }
+
+    // 创建配置区块
+    function createConfigSection(title, section, data, descriptions = {}) {
+        let fieldsHtml = '';
+
+        for (const [key, value] of Object.entries(data)) {
+            if (typeof value === 'object' && !Array.isArray(value)) {
+                continue; // 跳过嵌套对象，单独处理
+            }
+            fieldsHtml += createFormField(section, key, value, descriptions[key] || '');
+        }
+
+        return `
+            <div class="config-section">
+                <div class="section-header" data-bs-toggle="collapse" data-bs-target="#section-${section}">
+                    <h6 class="mb-0">${title}</h6>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div class="section-body collapse show" id="section-${section}">
+                    ${fieldsHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    // 渲染配置界面
+    function renderConfig(config) {
+        console.log('开始渲染配置界面，配置对象:', config);
+        configData = config;
+
+        // 基础配置
+        const basicContainer = document.getElementById('basic-config-container');
+        console.log('基础配置容器:', basicContainer);
+        basicContainer.innerHTML = '';
+
+        if (config.Protocol) {
+            console.log('渲染协议配置');
+            basicContainer.innerHTML += createConfigSection('协议配置', 'Protocol', config.Protocol, {
+                'version': '协议版本，可选值: ipad, pad, mac, ipad2, car, win'
+            });
+        }
+
+        if (config.Admin) {
+            console.log('渲染管理后台配置');
+            basicContainer.innerHTML += createConfigSection('管理后台', 'Admin', config.Admin, {
+                'enabled': '是否启用管理后台',
+                'host': '监听地址，0.0.0.0允许外部访问',
+                'port': '管理后台端口',
+                'username': '登录用户名',
+                'password': '登录密码',
+                'debug': '是否开启调试模式',
+                'log_level': '日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL'
+            });
+        }
+
+        // 服务器配置
+        const serverContainer = document.getElementById('server-config-container');
+        console.log('服务器配置容器:', serverContainer);
+        serverContainer.innerHTML = '';
+
+        if (config.WechatAPIServer) {
+            serverContainer.innerHTML += createConfigSection('WechatAPI服务器', 'WechatAPIServer', config.WechatAPIServer, {
+                'host': 'WechatAPI服务器地址',
+                'port': 'WechatAPI服务器端口',
+                'mode': '运行模式: release(生产), debug(调试)',
+                'redis-host': 'Redis服务器地址',
+                'redis-port': 'Redis端口',
+                'redis-password': 'Redis密码',
+                'redis-db': 'Redis数据库编号',
+                'enable-websocket': '是否启用WebSocket',
+                'ws-url': 'WebSocket服务器地址',
+                'enable-rabbitmq': '是否启用RabbitMQ',
+                'rabbitmq-host': 'RabbitMQ主机',
+                'rabbitmq-port': 'RabbitMQ端口',
+                'rabbitmq-user': 'RabbitMQ用户名',
+                'rabbitmq-password': 'RabbitMQ密码',
+                'rabbitmq-queue': 'RabbitMQ队列名称'
+            });
+        }
+
+        if (config.Logging) {
+            serverContainer.innerHTML += createConfigSection('日志系统', 'Logging', config.Logging, {
+                'enable_file_log': '是否启用文件日志',
+                'enable_console_log': '是否启用控制台日志',
+                'enable_json_format': '是否启用JSON格式日志',
+                'max_log_files': '最大日志文件数量',
+                'log_rotation': '日志轮转周期: 1 day / 1 week / 100 MB'
+            });
+        }
+
+        if (config.Performance) {
+            serverContainer.innerHTML += createConfigSection('性能监控', 'Performance', config.Performance, {
+                'enabled': '是否启用性能监控',
+                'monitoring_interval': '监控间隔（秒）',
+                'max_history_size': '最大历史记录数量',
+                'cpu_alert_threshold': 'CPU使用率警告阈值（%）',
+                'memory_alert_threshold': '内存使用率警告阈值（%）',
+                'memory_low_threshold_mb': '可用内存警告阈值（MB）'
+            });
+        }
+
+        // 机器人配置
+        const botContainer = document.getElementById('bot-config-container');
+        botContainer.innerHTML = '';
+
+        if (config.XYBot) {
+            botContainer.innerHTML += createConfigSection('XYBot核心', 'XYBot', config.XYBot, {
+                'version': '版本号，请勿修改',
+                'enable-wechat-login': '是否启用微信登录',
+                'ignore-protection': '是否忽略风控保护',
+                'enable-group-wakeup': '是否启用群聊唤醒',
+                'github-proxy': 'GitHub加速服务地址',
+                'timezone': '时区设置',
+                'auto-restart': '自动重启功能（开发用）',
+                'files-cleanup-days': '文件保存天数，0表示禁用清理',
+                'ignore-mode': '消息处理模式: None/Whitelist/Blacklist'
+            });
+        }
+
+        if (config.AutoRestart) {
+            botContainer.innerHTML += createConfigSection('自动重启监控', 'AutoRestart', config.AutoRestart, {
+                'enabled': '是否启用自动重启监控器',
+                'check-interval': '检查间隔（秒）',
+                'offline-threshold': '离线阈值（秒）',
+                'max-restart-attempts': '最大重启尝试次数',
+                'restart-cooldown': '重启冷却时间（秒）',
+                'check-offline-trace': '是否检查掉线追踪',
+                'failure-count-threshold': '连续失败次数阈值',
+                'reset-threshold-multiplier': '重置阈值倍数'
+            });
+        }
+
+        // 高级配置
+        const advancedContainer = document.getElementById('advanced-config-container');
+        advancedContainer.innerHTML = '';
+
+        if (config.Notification) {
+            advancedContainer.innerHTML += createConfigSection('系统通知', 'Notification', config.Notification, {
+                'enabled': '是否启用通知功能',
+                'token': 'PushPlus Token',
+                'channel': '通知渠道: wechat/sms/mail/webhook/cp',
+                'template': '通知模板',
+                'topic': '群组编码',
+                'heartbeatThreshold': '心跳失败阈值'
+            });
+        }
+
+        if (config.Callback) {
+            advancedContainer.innerHTML += createConfigSection('消息回调', 'Callback', config.Callback, {
+                'enabled': '是否启用回调功能',
+                'path': '回调脚本路径',
+                'delay': '回调延迟（毫秒）',
+                'mode': '回调模式: all/filter'
+            });
+        }
+
+        // 绑定数组操作事件
+        bindArrayEvents();
+    }
+
+    // 绑定数组字段的添加/删除事件
+    function bindArrayEvents() {
+        // 添加项
+        document.querySelectorAll('.btn-add-item').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const container = this.parentElement;
+                const newItem = document.createElement('div');
+                newItem.className = 'input-group mb-2';
+                newItem.innerHTML = `
+                    <input type="text" class="form-control array-item" value="">
+                    <button class="btn btn-outline-danger btn-remove-item" type="button">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                `;
+                this.parentElement.insertBefore(newItem, this);
+
+                // 绑定删除事件
+                newItem.querySelector('.btn-remove-item').addEventListener('click', function() {
+                    newItem.remove();
+                });
+            });
+        });
+
+        // 删除项
+        document.querySelectorAll('.btn-remove-item').forEach(btn => {
+            btn.addEventListener('click', function() {
+                this.closest('.input-group').remove();
+            });
+        });
+    }
+
+    // 收集表单数据
+    function collectFormData() {
+        const newConfig = JSON.parse(JSON.stringify(configData)); // 深拷贝
+
+        // 收集普通输入框
+        document.querySelectorAll('input[data-section][data-key]').forEach(input => {
+            const section = input.dataset.section;
+            const key = input.dataset.key;
+
+            if (!newConfig[section]) {
+                newConfig[section] = {};
+            }
+
+            if (input.type === 'checkbox') {
+                newConfig[section][key] = input.checked;
+            } else if (input.type === 'number') {
+                newConfig[section][key] = parseInt(input.value) || 0;
+            } else {
+                newConfig[section][key] = input.value;
+            }
+        });
+
+        // 收集数组输入
+        document.querySelectorAll('.array-input-group').forEach(container => {
+            const section = container.dataset.section;
+            const key = container.dataset.key;
+            const items = [];
+
+            container.querySelectorAll('.array-item').forEach(input => {
+                if (input.value.trim()) {
+                    items.push(input.value.trim());
+                }
+            });
+
+            if (!newConfig[section]) {
+                newConfig[section] = {};
+            }
+            newConfig[section][key] = items;
+        });
+
+        return newConfig;
+    }
+
+    // 加载配置
+    function loadConfig() {
+        console.log('开始加载配置...');
+        fetch('/api/system/config')
+            .then(response => {
+                console.log('API响应状态:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('API返回数据:', data);
+                if (data.success) {
+                    console.log('配置数据:', data.data);
+                    renderConfig(data.data);
+                } else {
+                    console.error('加载配置失败:', data.error);
+                    showAlert(`加载配置失败: ${data.error || '未知错误'}`, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('加载配置出错:', error);
+                showAlert(`加载配置出错: ${error.message}`, 'danger');
+            });
+    }
+
+    // 保存配置
+    function saveConfig() {
+        if (!confirm('确定要保存配置吗？保存前会自动备份原配置。')) {
+            return;
+        }
+
+        const newConfig = collectFormData();
+
+        btnSave.disabled = true;
+        btnSave.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中...';
+
+        fetch('/api/system/config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                config: newConfig
+            })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('配置保存成功！请重启服务使配置生效。', 'success');
+                } else {
+                    showAlert(`保存配置失败: ${data.error || '未知错误'}`, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('保存配置出错:', error);
+                showAlert(`保存配置出错: ${error.message}`, 'danger');
+            })
+            .finally(() => {
+                btnSave.disabled = false;
+                btnSave.innerHTML = '<i class="bi bi-save"></i> 保存配置';
+            });
+    }
+
+    // 初始加载配置
+    loadConfig();
+
+    // 绑定事件
+    btnSave.addEventListener('click', saveConfig);
+    btnReload.addEventListener('click', loadConfig);
+});
+</script>
+{% endblock %}

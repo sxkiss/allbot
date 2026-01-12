@@ -18,6 +18,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 初始化侧边栏
     initSidebar();
+
+    // 初始化移动端更多菜单
+    initMobileNav();
     
     // 初始化WebSocket连接
     initWebSocket();
@@ -112,6 +115,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+function initMobileNav() {
+    const moreBtn = document.getElementById('mobile-more-btn');
+    const modalEl = document.getElementById('mobile-more-modal');
+    if (!moreBtn || !modalEl) {
+        return;
+    }
+
+    moreBtn.addEventListener('click', function() {
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.show();
+    });
+}
+
 /**
  * 初始化侧边栏
  */
@@ -119,12 +135,21 @@ function initSidebar() {
     const sidebarToggler = document.getElementById('sidebar-toggler');
     const sidebar = document.querySelector('.sidebar');
     const mainContent = document.querySelector('.main-content');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
     
     if (sidebarToggler) {
         sidebarToggler.addEventListener('click', function() {
+            if (window.innerWidth < 992) {
+                sidebar.classList.toggle('mobile-expanded');
+                if (sidebarOverlay) {
+                    sidebarOverlay.classList.toggle('active');
+                }
+                return;
+            }
+
             sidebar.classList.toggle('collapsed');
             mainContent.classList.toggle('expanded');
-            
+
             // 保存侧边栏状态
             const isCollapsed = sidebar.classList.contains('collapsed');
             localStorage.setItem('sidebar-collapsed', isCollapsed);
@@ -139,20 +164,24 @@ function initSidebar() {
     }
     
     // 在移动设备上添加侧边栏展开/收起功能
-    if (window.innerWidth < 768) {
+    if (window.innerWidth < 992) {
         document.addEventListener('click', function(e) {
             if (sidebar.classList.contains('mobile-expanded') && 
                 !sidebar.contains(e.target) &&
                 e.target !== sidebarToggler) {
                 sidebar.classList.remove('mobile-expanded');
+                if (sidebarOverlay) {
+                    sidebarOverlay.classList.remove('active');
+                }
             }
         });
-        
-        if (sidebarToggler) {
-            sidebarToggler.addEventListener('click', function() {
-                sidebar.classList.toggle('mobile-expanded');
-            });
-        }
+    }
+
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.remove('mobile-expanded');
+            sidebarOverlay.classList.remove('active');
+        });
     }
     
     // 高亮当前页面的导航项

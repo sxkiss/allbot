@@ -170,6 +170,12 @@ p {
     box-shadow: 1px 0 5px rgba(0,0,0,0.05);
     border-right: 1px solid #f0f0f0;
     border-bottom: 3px solid #ffeb3b;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-overlay {
+    display: none;
 }
 
 .sidebar.collapsed {
@@ -316,6 +322,24 @@ p {
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid #f0f0f0;
+}
+
+.sidebar-toggler {
+    border: 1px solid var(--neutral-200);
+    background: white;
+    color: var(--neutral-700);
+    border-radius: var(--border-radius-md);
+    padding: 6px 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast) ease;
+}
+
+.sidebar-toggler:hover {
+    color: var(--primary-color);
+    border-color: var(--primary-light);
+    box-shadow: var(--shadow-sm);
 }
 
 .topbar-divider {
@@ -1099,15 +1123,53 @@ p {
 /* 响应式调整 */
 @media (max-width: 992px) {
     /* 主内容区域不需要留出侧边栏的空间 */
+
+    .main-content {
+        height: auto;
+        min-height: 100vh;
+        overflow-y: visible;
+    }
+
     .main-content {
         margin-left: 0;
         width: 100%;
         padding: var(--space-sm);
     }
 
+    /* 移动端侧边栏 */
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform var(--transition-normal) ease;
+    }
+
+    .sidebar.mobile-expanded {
+        transform: translateX(0);
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.15);
+    }
+
+    /* 移动端遮罩层 */
+    .sidebar-overlay {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: var(--z-index-fixed);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity var(--transition-normal) ease, visibility var(--transition-normal) ease;
+    }
+
+    .sidebar-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
     /* 移动端底部导航栏 */
     .mobile-nav {
-        display: flex;
+        display: flex !important;
         position: fixed;
         bottom: 0;
         left: 0;
@@ -1117,6 +1179,11 @@ p {
         z-index: var(--z-index-fixed);
         padding: var(--space-xs) 0;
         border-top: 1px solid #f0f0f0;
+    }
+
+    .mobile-nav {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
     }
 
     .mobile-nav-item {
@@ -1132,6 +1199,7 @@ p {
         transition: all 0.2s ease;
         width: 20%;
         text-align: center;
+        min-width: 72px;
     }
 
     .mobile-nav-item i {
@@ -1179,6 +1247,33 @@ p {
 }
 
 @media (max-width: 768px) {
+    .topbar {
+        height: auto;
+        padding: var(--space-sm);
+    }
+
+    .topbar .container-fluid {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-sm);
+    }
+
+    .topbar-left,
+    .topbar-right {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: var(--space-sm);
+    }
+
+    .topbar-right {
+        justify-content: flex-start;
+    }
+
+    .topbar-left h1 {
+        font-size: var(--font-size-lg);
+    }
+
     .content-wrapper {
         padding: var(--space-sm);
     }
@@ -1204,6 +1299,18 @@ p {
     .btn {
         padding: var(--space-xs) var(--space-sm);
         font-size: var(--font-size-sm);
+    }
+
+    .card .card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-sm);
+    }
+
+    .card .card-header .btn-group,
+    .card .card-header .btn-group-vertical {
+        width: 100%;
+        flex-wrap: wrap;
     }
 
     /* 优化表单元素 */

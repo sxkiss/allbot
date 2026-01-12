@@ -8,10 +8,11 @@ ENV TZ=Asia/Shanghai
 ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 
 # 更新软件源
+RUN sed -i 's@deb.debian.org@repo.huaweicloud.com@g' /etc/apt/sources.list.d/debian.sources
 RUN apt-get update
 
 # 分步安装系统依赖，以便于调试
-RUN apt-get install -y ffmpeg 
+RUN apt-get install -y ffmpeg
 RUN apt-get install -y redis-server
 RUN apt-get install -y build-essential python3-dev
 RUN apt-get install -y p7zip-full
@@ -19,19 +20,14 @@ RUN apt-get install -y unrar-free || apt-get install -y unrar || echo "无法安
 RUN apt-get install -y curl netcat-openbsd || apt-get install -y curl netcat-traditional || apt-get install -y curl netcat
 RUN ln -sf /usr/bin/7za /usr/bin/7z || echo "无法创建7z链接，但继续执行"
 
-# 安装 nodejs 和 npm
-RUN apt-get update && apt-get install -y \
-    nodejs \
-    npm
-
-# 安装 wetty 2.5.0版本
-RUN npm install -g wetty@2.5.0
-
 # 安装 procps 工具
-RUN apt-get update && apt-get install -y procps
+RUN apt-get install -y procps
 
 # 清理apt缓存减小镜像大小
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 创建Redis数据持久化目录
+RUN mkdir -p /data/redis && chmod 777 /data/redis
 
 # 复制 Redis 配置
 COPY redis.conf /etc/redis/redis.conf
@@ -42,7 +38,7 @@ COPY requirements.txt .
 # 升级pip并安装Python依赖
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir websockets httpx
+    pip install --no-cache-dir websockets "httpx[http2]"
 
 # 复制应用代码
 COPY . .
@@ -60,7 +56,10 @@ RUN mkdir -p /app/logs && chmod 777 /app/logs
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
-# 暴露端口
-EXPOSE 9090 3000
+# 暴露端口（仅后台管理端口）
+EXPOSE 9090
+
+# 数据卷（Redis持久化）
+VOLUME ["/data/redis"]
 
 CMD ["./entrypoint.sh"]

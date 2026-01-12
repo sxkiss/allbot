@@ -95,55 +95,102 @@ class FilesCleanup:
         if not self.should_cleanup():
             return
 
-        logger.info(f"开始清理超过{self.cleanup_days}天的图片文件...")
+        logger.info(f"开始清理超过{self.cleanup_days}天的媒体文件...")
 
         # 计算截止时间
         cutoff_time = time.time() - (self.cleanup_days * 24 * 60 * 60)
         cutoff_date = datetime.fromtimestamp(cutoff_time)
 
-        # 获取files目录中的所有文件
-        files_path = Path(self.files_dir)
         total_files = 0
         deleted_files = 0
 
-        # 支持的图片扩展名
-        image_extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]
+        # 支持的媒体文件扩展名
+        media_extensions = [
+            # 图片格式
+            ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".ico",
+            # 视频格式
+            ".mp4", ".avi", ".mov", ".wmv", ".flv", ".mkv", ".webm", ".m4v",
+            # 音频格式
+            ".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma",
+            # 文档格式
+            ".pdf", ".doc", ".docx",
+            # 日志文件
+            ".log", ".txt"
+        ]
+
+        # 常见的临时目录名称
+        temp_dir_names = ["files", "temp", "tmp", "cache", "temporary", "downloads"]
 
         try:
-            # 创建files目录（如果不存在）
-            if not os.path.exists(self.files_dir):
-                os.makedirs(self.files_dir, exist_ok=True)
-                logger.info(f"已创建files目录: {self.files_dir}")
+            # 收集所有需要清理的目录
+            cleanup_dirs = []
 
-            for file_path in files_path.iterdir():
-                if file_path.is_file():
-                    total_files += 1
+            # 1. 根目录下的临时文件夹
+            for dir_name in temp_dir_names:
+                root_temp_dir = os.path.join(os.getcwd(), dir_name)
+                if os.path.exists(root_temp_dir) and os.path.isdir(root_temp_dir):
+                    cleanup_dirs.append(root_temp_dir)
 
-                    # 检查文件扩展名
-                    if file_path.suffix.lower() in image_extensions:
-                        # 获取文件修改时间
-                        file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+            # 2. 插件目录下的所有临时文件夹
+            plugins_dir = os.path.join(os.getcwd(), "plugins")
+            if os.path.exists(plugins_dir):
+                for plugin_name in os.listdir(plugins_dir):
+                    plugin_path = os.path.join(plugins_dir, plugin_name)
+                    if os.path.isdir(plugin_path):
+                        # 扫描插件目录下的所有子目录
+                        try:
+                            for item in os.listdir(plugin_path):
+                                item_path = os.path.join(plugin_path, item)
+                                # 检查是否是目录且名称在临时目录列表中
+                                if os.path.isdir(item_path) and item.lower() in temp_dir_names:
+                                    cleanup_dirs.append(item_path)
+                        except PermissionError:
+                            logger.warning(f"无权限访问插件目录: {plugin_path}")
+                            continue
 
-                        # 如果文件修改时间早于截止时间，则删除
-                        if file_mtime < cutoff_date:
-                            try:
-                                file_path.unlink()
-                                deleted_files += 1
-                                logger.debug(
-                                    f"已删除过期图片文件: {file_path.name}, 修改时间: {file_mtime}"
-                                )
-                                # 每删除10个文件暂停一下，避免系统负载过高
-                                if deleted_files % 10 == 0:
-                                    await asyncio.sleep(0.1)
-                            except Exception as e:
-                                logger.error(f"删除文件失败: {file_path}, 错误: {e}")
+            logger.info(f"找到{len(cleanup_dirs)}个目录需要清理")
+
+            # 遍历所有目录进行清理
+            for cleanup_dir in cleanup_dirs:
+                try:
+                    files_path = Path(cleanup_dir)
+                    logger.debug(f"正在清理目录: {cleanup_dir}")
+
+                    for file_path in files_path.iterdir():
+                        if file_path.is_file():
+                            total_files += 1
+
+                            # 检查文件扩展名
+                            if file_path.suffix.lower() in media_extensions:
+                                # 获取文件修改时间
+                                file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+
+                                # 如果文件修改时间早于截止时间，则删除
+                                if file_mtime < cutoff_date:
+                                    try:
+                                        file_path.unlink()
+                                        deleted_files += 1
+                                        logger.debug(
+                                            f"已删除过期媒体文件: {file_path}, 修改时间: {file_mtime}"
+                                        )
+                                        # 每删除10个文件暂停一下，避免系统负载过高
+                                        if deleted_files % 10 == 0:
+                                            await asyncio.sleep(0.1)
+                                    except Exception as e:
+                                        logger.error(f"删除文件失败: {file_path}, 错误: {e}")
+                except PermissionError:
+                    logger.warning(f"无权限访问目录: {cleanup_dir}")
+                    continue
+                except Exception as e:
+                    logger.error(f"清理目录 {cleanup_dir} 时出错: {e}")
+                    continue
 
             logger.info(
-                f"图片文件清理完成: 共检查{total_files}个文件, 删除{deleted_files}个过期文件"
+                f"媒体文件清理完成: 共检查{total_files}个文件, 删除{deleted_files}个过期文件"
             )
 
         except Exception as e:
-            logger.error(f"清理图片文件时发生错误: {e}")
+            logger.error(f"清理媒体文件时发生错误: {e}")
 
     @staticmethod
     def schedule_cleanup(config=None):

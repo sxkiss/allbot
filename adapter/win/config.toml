@@ -1,0 +1,37 @@
+[adapter]
+name = "win"
+enabled = true
+module = "adapter.win"
+class = "WinAdapter"
+replyQueue = "xxxbot_reply:win"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[win]
+enable = true
+wsUrl = "ws://win.sxkiss.top:8000/api/ws"
+sendUrl = "http://win.sxkiss.top:8000/api/send"
+staticBaseUrl = "http://sxkiss.top:9999/static/temp"
+mediaCacheDir = "admin/static/temp/win"
+allowPrivate = true
+ignoreGhId = true
+groupWhitelist = [
+    "52806025813@chatroom",
+    "49972501401@chatroom",
+    "49651687371@chatroom",
+]
+dedupCacheSize = 3000
+reconnectInterval = 5
+sessionTakeover = "auto"
+selfId = ""
+debug = false
+disableSend = false
+
+[win.redis]
+queue = "xxxbot"
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""

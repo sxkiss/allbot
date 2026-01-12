@@ -903,47 +903,6 @@ def init_app():
     logger.info(f"管理后台初始化完成，将在 {config['host']}:{config['port']} 上启动")
 
 def setup_routes():
-    # 首先定义check_auth函数并设置到app.state中
-    async def check_auth(request: Request):
-        """检查用户是否已认证"""
-        try:
-            # 从Cookie中获取会话数据
-            session_cookie = request.cookies.get("session")
-            if not session_cookie:
-                logger.debug("未找到会话Cookie")
-                return None
-
-            # 调试日志
-            logger.debug(f"获取到会话Cookie: {session_cookie[:15]}...")
-
-            # 解码会话数据
-            try:
-                serializer = URLSafeSerializer(config["secret_key"], "session")
-                session_data = serializer.loads(session_cookie)
-
-                # 输出会话数据，辅助调试
-                logger.debug(f"解析会话数据成功: {session_data}")
-
-                # 检查会话是否已过期
-                expires = session_data.get("expires", 0)
-                if expires < time.time():
-                    logger.debug(f"会话已过期: 当前时间 {time.time()}, 过期时间 {expires}")
-                    return None
-
-                # 会话有效
-                logger.debug(f"会话有效，用户: {session_data.get('username')}")
-                return session_data.get("username")
-            except Exception as e:
-                logger.error(f"解析会话数据失败: {str(e)}")
-                return None
-        except Exception as e:
-            logger.error(f"检查认证失败: {str(e)}")
-            return None
-
-    # 将check_auth函数设置到app.state中，供其他模块使用
-    app.state.check_auth = check_auth
-    logger.info("check_auth函数已设置到app.state中")
-
     # 注册所有模块化路由
     try:
         from .routes.register_routes import register_all_routes
@@ -1046,6 +1005,27 @@ def setup_routes():
             logger.exception(f"加载定时提醒页面模板失败: {str(e)}")
             return HTMLResponse(f"<h1>加载定时提醒页面失败</h1><p>错误: {str(e)}</p>")
 
+    # 将check_auth函数定义移到这里，在导入reminder_api之前
+    async def check_auth(request: Request):
+        """检查用户认证状态"""
+        try:
+            token = request.headers.get('Authorization')
+            if not token:
+                # 尝试从cookie中获取token
+                token = request.cookies.get('token')
+
+            if not token:
+                raise HTTPException(status_code=401, detail="未登录或登录已过期")
+
+            # 这里可以添加token验证的逻辑
+            # 例如验证token的有效性，检查是否过期等
+            # 如果验证失败，抛出HTTPException(status_code=401)
+
+            return True
+        except Exception as e:
+            logger.error(f"认证检查失败: {str(e)}")
+            raise HTTPException(status_code=401, detail="认证失败")
+
     # 导入并注册提醒相关路由
     try:
         import sys
@@ -1058,8 +1038,45 @@ def setup_routes():
         from reminder_api import register_reminder_routes
         logger.info("成功导入reminder_api.register_reminder_routes")
 
-        # 使用已设置的check_auth函数
-        register_reminder_routes(app, app.state.check_auth)
+        # 先定义check_auth函数
+        async def check_auth(request: Request):
+            """检查用户是否已认证"""
+            try:
+                # 从Cookie中获取会话数据
+                session_cookie = request.cookies.get("session")
+                if not session_cookie:
+                    logger.debug("未找到会话Cookie")
+                    return None
+
+                # 调试日志
+                logger.debug(f"获取到会话Cookie: {session_cookie[:15]}...")
+
+                # 解码会话数据
+                try:
+                    serializer = URLSafeSerializer(config["secret_key"], "session")
+                    session_data = serializer.loads(session_cookie)
+
+                    # 输出会话数据，辅助调试
+                    logger.debug(f"解析会话数据成功: {session_data}")
+
+                    # 检查会话是否已过期
+                    expires = session_data.get("expires", 0)
+                    if expires < time.time():
+                        logger.debug(f"会话已过期: 当前时间 {time.time()}, 过期时间 {expires}")
+                        return None
+
+                    # 会话有效
+                    logger.debug(f"会话有效，用户: {session_data.get('username')}")
+                    return session_data.get("username")
+                except Exception as e:
+                    logger.error(f"解析会话数据失败: {str(e)}")
+                    return None
+            except Exception as e:
+                logger.error(f"检查认证失败: {str(e)}")
+                return None
+
+        # 然后注册路由，传入check_auth函数
+        register_reminder_routes(app, check_auth)
         logger.info("提醒API路由注册成功")
     except Exception as e:
         logger.error(f"注册提醒API路由失败: {str(e)}")
@@ -1072,7 +1089,7 @@ def setup_routes():
         from friend_circle_api import register_friend_circle_routes
 
         # 然后注册路由，传入check_auth函数和获取bot实例的函数
-        register_friend_circle_routes(app, app.state.check_auth, lambda: bot_instance)
+        register_friend_circle_routes(app, check_auth, lambda: bot_instance)
         logger.info("朋友圈API路由注册成功")
     except Exception as e:
         logger.error(f"注册朋友圈API路由失败: {str(e)}")
@@ -1085,7 +1102,7 @@ def setup_routes():
         """朋友圈页面"""
         # 检查认证状态
         try:
-            username = await app.state.check_auth(request)
+            username = await check_auth(request)
             if not username:
                 # 未认证，重定向到登录页面
                 return RedirectResponse(url="/login?next=/friend_circle", status_code=303)
@@ -1127,12 +1144,12 @@ def setup_routes():
         from .switch_account_api import register_switch_account_routes
 
         # 然后注册路由，传入check_auth函数和更新机器人状态的函数
-        register_switch_account_routes(app, app.state.check_auth, update_bot_status)
+        register_switch_account_routes(app, check_auth, update_bot_status)
         logger.info("切换账号API路由注册成功")
 
         # 导入并注册系统配置API路由
-        from .system_config_api import router as system_config_router
-        app.include_router(system_config_router)
+        from .system_config_api import register_system_config_routes
+        register_system_config_routes(app, check_auth)
         logger.info("系统配置API路由注册成功")
     except Exception as e:
         logger.error(f"注册切换账号和系统配置API路由失败: {str(e)}")
@@ -1142,17 +1159,37 @@ def setup_routes():
     # 导入并注册重启系统路由
     try:
         from .restart_api import register_restart_routes, restart_system
-        register_restart_routes(app, app.state.check_auth)
+        register_restart_routes(app, check_auth)
         logger.info("重启系统API路由注册成功")
     except Exception as e:
         logger.error(f"注册重启系统API路由失败: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
 
+    # 导入并注册适配器管理路由
+    try:
+        from .routes.adapter_routes import bp as adapter_bp
+        app.include_router(adapter_bp)
+        logger.info("适配器管理API路由注册成功")
+    except Exception as e:
+        logger.error(f"注册适配器管理API路由失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+    # 导入并注册Web聊天路由
+    try:
+        from .web_chat_api import register_web_chat_routes
+        register_web_chat_routes(app, check_auth)
+        logger.info("Web聊天API路由注册成功")
+    except Exception as e:
+        logger.error(f"注册Web聊天API路由失败: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+
     # 导入并注册账号管理路由
     try:
         from .account_manager import register_account_manager_routes
-        register_account_manager_routes(app, app.state.check_auth, update_bot_status, restart_system)
+        register_account_manager_routes(app, check_auth, update_bot_status, restart_system)
         logger.info("账号管理API路由注册成功")
 
         # 添加账号管理页面路由
@@ -1161,7 +1198,7 @@ def setup_routes():
             """账号管理页面"""
             # 检查认证状态
             try:
-                username = await app.state.check_auth(request)
+                username = await check_auth(request)
                 if not username:
                     # 未认证，重定向到登录页面
                     return RedirectResponse(url="/login?next=/accounts", status_code=303)
@@ -1193,6 +1230,74 @@ def setup_routes():
         logger.error(f"注册账号管理API路由失败: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
+
+    # 添加适配器管理页面路由
+    @app.get("/adapters", response_class=HTMLResponse)
+    async def adapters_page(request: Request):
+        """适配器管理页面"""
+        # 检查认证状态
+        try:
+            username = await check_auth(request)
+            if not username:
+                # 未认证，重定向到登录页面
+                return RedirectResponse(url="/login?next=/adapters", status_code=303)
+
+            logger.debug(f"用户 {username} 访问适配器管理页面")
+
+            # 获取版本信息
+            version_info = get_version_info()
+            version = version_info.get("version", "1.0.0")
+            update_available = version_info.get("update_available", False)
+            latest_version = version_info.get("latest_version", "")
+            update_url = version_info.get("update_url", "")
+            update_description = version_info.get("update_description", "")
+
+            # 认证成功，显示适配器管理页面
+            return templates.TemplateResponse("adapters.html", {
+                "request": request,
+                "active_page": "adapters",
+                "version": version,
+                "update_available": update_available,
+                "latest_version": latest_version,
+                "update_url": update_url,
+                "update_description": update_description
+            })
+        except Exception as e:
+            logger.error(f"适配器管理页面访问失败: {str(e)}")
+            return RedirectResponse(url="/login?next=/adapters", status_code=303)
+
+    # 添加Web聊天页面路由
+    @app.get("/webchat", response_class=HTMLResponse)
+    async def webchat_page(request: Request):
+        """Web聊天页面"""
+        # 检查认证状态
+        try:
+            username = await check_auth(request)
+            if not username:
+                return RedirectResponse(url="/login?next=/webchat", status_code=303)
+
+            logger.debug(f"用户 {username} 访问Web聊天页面")
+
+            # 获取版本信息
+            version_info = get_version_info()
+            version = version_info.get("version", "1.0.0")
+            update_available = version_info.get("update_available", False)
+            latest_version = version_info.get("latest_version", "")
+            update_url = version_info.get("update_url", "")
+            update_description = version_info.get("update_description", "")
+
+            return templates.TemplateResponse("webchat.html", {
+                "request": request,
+                "active_page": "webchat",
+                "version": version,
+                "update_available": update_available,
+                "latest_version": latest_version,
+                "update_url": update_url,
+                "update_description": update_description
+            })
+        except Exception as e:
+            logger.error(f"Web聊天页面访问失败: {str(e)}")
+            return RedirectResponse(url="/login?next=/webchat", status_code=303)
 
     # API: 重启容器 - 已移至restart_api.py
 
@@ -1238,14 +1343,48 @@ def setup_routes():
             logger.error(f"登录处理出错: {str(e)}")
             return {"success": False, "error": f"登录处理出错: {str(e)}"}
 
-    # 使用app.state.check_auth作为统一的认证函数
-    check_auth = app.state.check_auth
+    # 检查会话认证
+    async def check_auth(request: Request):
+        """检查用户是否已认证"""
+        try:
+            # 从Cookie中获取会话数据
+            session_cookie = request.cookies.get("session")
+            if not session_cookie:
+                logger.debug("未找到会话Cookie")
+                return None
+
+            # 调试日志
+            logger.debug(f"获取到会话Cookie: {session_cookie[:15]}...")
+
+            # 解码会话数据
+            try:
+                serializer = URLSafeSerializer(config["secret_key"], "session")
+                session_data = serializer.loads(session_cookie)
+
+                # 输出会话数据，辅助调试
+                logger.debug(f"解析会话数据成功: {session_data}")
+
+                # 检查会话是否已过期
+                expires = session_data.get("expires", 0)
+                if expires < time.time():
+                    logger.debug(f"会话已过期: 当前时间 {time.time()}, 过期时间 {expires}")
+                    return None
+
+                # 会话有效
+                logger.debug(f"会话有效，用户: {session_data.get('username')}")
+                return session_data.get("username")
+            except Exception as e:
+                logger.error(f"解析会话数据失败: {str(e)}")
+                return None
+        except Exception as e:
+            logger.error(f"检查认证失败: {str(e)}")
+            return None
 
     def require_auth(func):
         """认证装饰器"""
         @wraps(func)
         async def wrapper(request: Request, *args, **kwargs):
-            await check_auth(request)
+            check_auth(request)
             return await func(request, *args, **kwargs)
         return wrapper
 
@@ -1465,14 +1604,17 @@ def setup_routes():
             }
         )
 
-    # 添加终端页面路由
-    @app.get("/terminal", response_class=HTMLResponse)
-    async def terminal_page(request: Request):
+    # 系统设置页面
+    @app.get("/settings", response_class=HTMLResponse)
+    async def settings_page(request: Request):
+        """系统设置页面"""
         # 检查认证状态
         try:
             username = await check_auth(request)
+            if not username:
+                return RedirectResponse(url="/login?next=/settings", status_code=303)
         except HTTPException:
-            return RedirectResponse(url="/login?next=/terminal")
+            return RedirectResponse(url="/login?next=/settings", status_code=303)
 
         # 获取版本信息
         version_info = get_version_info()
@@ -1482,13 +1624,12 @@ def setup_routes():
         update_url = version_info.get("update_url", "")
         update_description = version_info.get("update_description", "")
 
-        # 返回终端页面
-        logger.info(f"用户请求访问终端页面")
+        # 返回设置页面
         return templates.TemplateResponse(
-            "terminal.html",
+            "settings.html",
             {
                 "request": request,
-                "active_page": "terminal",
+                "active_page": "settings",
                 "version": version,
                 "update_available": update_available,
                 "latest_version": latest_version,
@@ -1564,6 +1705,76 @@ def setup_routes():
                 },
                 "error": str(e)
             })
+
+    # API: 获取结构化配置 (需要认证)
+    @app.get("/api/system/config", response_class=JSONResponse)
+    async def api_get_system_config(request: Request):
+        """获取系统配置的结构化数据"""
+        # 检查认证状态
+        username = await check_auth(request)
+        if not username:
+            return JSONResponse(status_code=401, content={"success": False, "error": "未认证"})
+
+        try:
+            import tomllib
+
+            # 读取配置文件
+            main_config_path = os.path.join(os.path.dirname(current_dir), "main_config.toml")
+            if not os.path.exists(main_config_path):
+                return {"success": False, "error": "配置文件不存在"}
+
+            with open(main_config_path, "rb") as f:
+                config_data = tomllib.load(f)
+
+            return {
+                "success": True,
+                "data": config_data
+            }
+        except Exception as e:
+            logger.error(f"获取系统配置失败: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    # API: 保存结构化配置 (需要认证)
+    @app.post("/api/system/config", response_class=JSONResponse)
+    async def api_save_system_config(request: Request):
+        """保存系统配置的结构化数据"""
+        # 检查认证状态
+        username = await check_auth(request)
+        if not username:
+            return JSONResponse(status_code=401, content={"success": False, "error": "未认证"})
+
+        try:
+            import tomli_w
+
+            # 获取请求数据
+            data = await request.json()
+            config_data = data.get('config')
+
+            if not config_data:
+                return {"success": False, "error": "配置数据不能为空"}
+
+            # 配置文件路径
+            main_config_path = os.path.join(os.path.dirname(current_dir), "main_config.toml")
+
+            # 备份原配置文件
+            if os.path.exists(main_config_path):
+                backup_path = f"{main_config_path}.bak"
+                try:
+                    import shutil
+                    shutil.copy2(main_config_path, backup_path)
+                    logger.info(f"已备份配置文件到 {backup_path}")
+                except Exception as e:
+                    logger.warning(f"备份配置文件失败: {str(e)}")
+
+            # 保存新配置
+            with open(main_config_path, "wb") as f:
+                tomli_w.dump(config_data, f)
+
+            logger.info(f"用户 {username} 保存了系统配置")
+            return {"success": True, "message": "配置已保存，请重启服务使配置生效"}
+        except Exception as e:
+            logger.error(f"保存系统配置失败: {str(e)}")
+            return {"success": False, "error": str(e)}
 
     # API: 机器人状态 (需要认证)
     @app.get("/api/bot/status", response_class=JSONResponse)
@@ -1725,12 +1936,12 @@ def setup_routes():
             import zipfile
             import io
 
-            temp_dir = tempfile.mkdtemp(prefix="xxxbot_update_")
+            temp_dir = tempfile.mkdtemp(prefix="allbot_update_")
             logger.info(f"创建临时目录: {temp_dir}")
 
             try:
                 # 构建ZIP下载链接
-                zip_url = get_github_url("https://github.com/NanSsye/xbot/archive/refs/heads/main.zip")
+                zip_url = get_github_url("https://github.com/sxkiss/allbot/archive/refs/heads/main.zip")
                 logger.info(f"正在从 {zip_url} 下载最新代码...")
 
                 # 下载ZIP文件
@@ -1774,7 +1985,6 @@ def setup_routes():
                     "version.json",
                     "bot_core.py",
                     "main_config.toml.example",
-                    "wx849_callback_daemon.py",
                     "main.py"
                 ]
 
@@ -2044,6 +2254,8 @@ except:
             # 使用try-except语句导入插件管理器
             try:
                 from utils.plugin_manager import plugin_manager
+                import os
+                import toml
 
                 # 获取插件信息列表
                 plugins_info = plugin_manager.get_plugin_info()
@@ -2053,13 +2265,49 @@ except:
                     plugins_info = []
                     logger.error("plugin_manager.get_plugin_info()返回了非列表类型")
 
+                # 获取适配器信息
+                adapters_info = []
+                adapter_dir = "adapter"
+                if os.path.exists(adapter_dir) and os.path.isdir(adapter_dir):
+                    for dirname in os.listdir(adapter_dir):
+                        # 跳过特殊目录
+                        if dirname.startswith('.') or dirname == '__pycache__':
+                            continue
+                        adapter_path = os.path.join(adapter_dir, dirname)
+                        if os.path.isdir(adapter_path):
+                            # 读取适配器的 config.toml
+                            config_path = os.path.join(adapter_path, "config.toml")
+                            adapter_info = {
+                                "name": dirname,
+                                "version": "未知",
+                                "description": "适配器",
+                                "author": "未知",
+                                "enabled": False,
+                                "type": "adapter"
+                            }
+
+                            if os.path.exists(config_path):
+                                try:
+                                    with open(config_path, "r", encoding="utf-8") as f:
+                                        config = toml.load(f)
+                                        adapter_info["version"] = config.get("version", "未知")
+                                        adapter_info["description"] = config.get("description", "适配器")
+                                        adapter_info["author"] = config.get("author", "未知")
+                                except Exception as e:
+                                    logger.warning(f"读取适配器 {dirname} 配置失败: {str(e)}")
+
+                            adapters_info.append(adapter_info)
+
                 # 记录调试信息
-                logger.debug(f"获取到{len(plugins_info)}个插件信息")
+                logger.debug(f"获取到{len(plugins_info)}个插件信息和{len(adapters_info)}个适配器信息")
+
+                # 合并插件和适配器信息
+                all_items = plugins_info + adapters_info
 
                 return {
                     "success": True,
                     "data": {
-                        "plugins": plugins_info
+                        "plugins": all_items
                     }
                 }
             except ImportError as e:
@@ -2153,6 +2401,106 @@ except:
             return {"success": True, "message": f"插件 {plugin_name} 已成功删除"}
         except Exception as e:
             logger.error(f"删除插件失败: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    # API: 删除适配器
+    @app.post("/api/adapters/{adapter_name}/delete", response_class=JSONResponse)
+    async def api_delete_adapter(adapter_name: str, request: Request):
+        # 检查认证状态
+        username = await check_auth(request)
+        if not username:
+            return JSONResponse(status_code=401, content={"success": False, "error": "未认证"})
+
+        try:
+            import shutil
+            import os
+
+            # 检查适配器目录是否存在
+            adapter_dir = os.path.join("adapter", adapter_name)
+            if not os.path.exists(adapter_dir) or not os.path.isdir(adapter_dir):
+                return {"success": False, "error": f"找不到适配器 {adapter_name} 的目录"}
+
+            # 删除适配器目录
+            shutil.rmtree(adapter_dir)
+            logger.info(f"适配器 {adapter_name} 已成功删除")
+
+            return {"success": True, "message": f"适配器 {adapter_name} 已成功删除"}
+        except Exception as e:
+            logger.error(f"删除适配器失败: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    # API: 获取适配器配置
+    @app.get("/api/adapters/{adapter_name}/config", response_class=JSONResponse)
+    async def api_get_adapter_config(adapter_name: str, request: Request):
+        # 检查认证状态
+        username = await check_auth(request)
+        if not username:
+            return JSONResponse(status_code=401, content={"success": False, "error": "未认证"})
+
+        try:
+            import os
+
+            # 检查适配器目录是否存在
+            adapter_dir = os.path.join("adapter", adapter_name)
+            if not os.path.exists(adapter_dir) or not os.path.isdir(adapter_dir):
+                return {"success": False, "error": f"找不到适配器 {adapter_name}"}
+
+            # 读取配置文件
+            config_path = os.path.join(adapter_dir, "config.toml")
+            if not os.path.exists(config_path):
+                return {"success": False, "error": f"适配器 {adapter_name} 没有配置文件"}
+
+            with open(config_path, "r", encoding="utf-8") as f:
+                config_content = f.read()
+
+            return {"success": True, "config": config_content}
+        except Exception as e:
+            logger.error(f"获取适配器配置失败: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    # API: 保存适配器配置
+    @app.post("/api/adapters/{adapter_name}/config", response_class=JSONResponse)
+    async def api_save_adapter_config(adapter_name: str, request: Request):
+        # 检查认证状态
+        username = await check_auth(request)
+        if not username:
+            return JSONResponse(status_code=401, content={"success": False, "error": "未认证"})
+
+        try:
+            import os
+
+            # 获取请求数据
+            data = await request.json()
+            config_content = data.get('config')
+
+            if not config_content:
+                return {"success": False, "error": "配置内容不能为空"}
+
+            # 检查适配器目录是否存在
+            adapter_dir = os.path.join("adapter", adapter_name)
+            if not os.path.exists(adapter_dir) or not os.path.isdir(adapter_dir):
+                return {"success": False, "error": f"找不到适配器 {adapter_name}"}
+
+            # 备份原配置文件
+            config_path = os.path.join(adapter_dir, "config.toml")
+            if os.path.exists(config_path):
+                backup_path = f"{config_path}.bak"
+                try:
+                    with open(config_path, "r", encoding="utf-8") as src:
+                        with open(backup_path, "w", encoding="utf-8") as dst:
+                            dst.write(src.read())
+                    logger.info(f"已备份适配器配置文件到 {backup_path}")
+                except Exception as e:
+                    logger.warning(f"备份适配器配置文件失败: {str(e)}")
+
+            # 保存新配置文件
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.write(config_content)
+
+            logger.info(f"适配器 {adapter_name} 配置文件已保存")
+            return {"success": True, "message": "配置已保存"}
+        except Exception as e:
+            logger.error(f"保存适配器配置失败: {str(e)}")
             return {"success": False, "error": str(e)}
 
     # API: 删除插件（备用路由）
@@ -2453,8 +2801,10 @@ except:
             return {"success": False, "error": str(e)}
 
     # 插件市场API配置
+    # 说明：前端已统一走同源 /api/plugin_market*，这里决定后端代理的上游市场地址。
+    # 可通过环境变量 PLUGIN_MARKET_BASE_URL 覆盖（本地开发可设为 http://127.0.0.1:9091）。
     PLUGIN_MARKET_API = {
-        "BASE_URL": "http://xianan.xin:1562/api",  # 从https改为http
+        "BASE_URL": os.environ.get("PLUGIN_MARKET_BASE_URL", "http://v.sxkiss.top"),
         "LIST": "/plugins/?status=approved",  # 添加尾部斜杠，避免重定向
         "SUBMIT": "/plugins/",  # 添加尾部斜杠，避免重定向
         "INSTALL": "/plugins/install/",
@@ -2580,6 +2930,113 @@ except:
             logger.error(f"从缓存加载插件市场数据失败: {str(e)}")
             return {"success": False, "error": f"加载缓存数据失败: {str(e)}"}
 
+    # API: 获取插件分类列表
+    @app.get("/api/plugin_market/categories", response_class=JSONResponse)
+    async def api_get_plugin_categories(request: Request):
+        # 检查认证状态
+        username = await check_auth(request)
+        if not username:
+            return JSONResponse(status_code=401, content={"success": False, "error": "未认证"})
+
+        try:
+            # 实例化httpx客户端
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # 构建请求头
+                headers = {
+                    "X-Client-ID": get_client_id(),
+                    "X-Bot-Version": get_bot_version(),
+                    "User-Agent": f"XYBot/{get_bot_version()}"
+                }
+
+                try:
+                    # 请求远程API获取分类列表
+                    response = await client.get(
+                        f"{PLUGIN_MARKET_API['BASE_URL']}/categories",
+                        headers=headers,
+                        follow_redirects=True
+                    )
+
+                    if response.status_code == 200:
+                        data = response.json()
+                        logger.info(f"成功获取插件分类列表，共 {len(data.get('categories', []))} 个分类")
+                        return data
+                    else:
+                        logger.warning(f"获取分类列表失败，状态码: {response.status_code}")
+                        # 返回默认分类
+                        return await get_default_categories()
+
+                except httpx.RequestError as e:
+                    logger.error(f"请求分类列表失败: {str(e)}")
+                    # 返回默认分类
+                    return await get_default_categories()
+
+        except Exception as e:
+            logger.error(f"获取插件分类失败: {str(e)}")
+            # 返回默认分类
+            return await get_default_categories()
+
+    # 获取默认分类列表（当远程API不可用时使用）
+    async def get_default_categories():
+        return {
+            "success": True,
+            "categories": [
+                {
+                    "id": 1,
+                    "value": "all",
+                    "label": "全部",
+                    "icon": "bi-grid-3x3-gap-fill",
+                    "description": "所有插件",
+                    "sort_order": 0,
+                    "is_active": True
+                },
+                {
+                    "id": 2,
+                    "value": "tools",
+                    "label": "工具",
+                    "icon": "bi-tools",
+                    "description": "工具类插件",
+                    "sort_order": 1,
+                    "is_active": True
+                },
+                {
+                    "id": 3,
+                    "value": "ai",
+                    "label": "AI",
+                    "icon": "bi-cpu",
+                    "description": "AI 相关插件",
+                    "sort_order": 2,
+                    "is_active": True
+                },
+                {
+                    "id": 4,
+                    "value": "entertainment",
+                    "label": "娱乐",
+                    "icon": "bi-controller",
+                    "description": "娱乐类插件",
+                    "sort_order": 3,
+                    "is_active": True
+                },
+                {
+                    "id": 5,
+                    "value": "adapter",
+                    "label": "适配器",
+                    "icon": "bi-plug",
+                    "description": "适配器插件",
+                    "sort_order": 4,
+                    "is_active": True
+                },
+                {
+                    "id": 6,
+                    "value": "other",
+                    "label": "其他",
+                    "icon": "bi-three-dots",
+                    "description": "其他类型插件",
+                    "sort_order": 5,
+                    "is_active": True
+                }
+            ]
+        }
+
     # API: 提交插件到市场
     @app.post("/api/plugin_market/submit", response_class=JSONResponse)
     async def api_submit_plugin(request: Request):
@@ -2682,6 +3139,7 @@ except:
             plugin_data = data.get('plugin_data', {})
             plugin_name = plugin_data.get('name')
             github_url = plugin_data.get('github_url')
+            plugin_type = plugin_data.get('type', 'plugin')  # 新增：获取类型，默认为plugin
 
             if not plugin_name or not github_url:
                 return {"success": False, "error": "缺少必要参数"}
@@ -2697,7 +3155,14 @@ except:
             from pathlib import Path
 
             temp_dir = tempfile.mkdtemp()
-            plugin_dir = os.path.join("plugins", plugin_name)
+
+            # 根据类型选择安装目录
+            if plugin_type == 'adapter':
+                install_dir = "adapter"
+            else:
+                install_dir = "plugins"
+
+            plugin_dir = os.path.join(install_dir, plugin_name)
 
             # 预先初始化config_backup变量，防止未定义错误
             config_backup = None
@@ -2710,7 +3175,7 @@ except:
 
                 # 尝试下载main分支
                 zip_url = get_github_url(f"{github_url}/archive/refs/heads/main.zip")
-                logger.info(f"正在从 {zip_url} 下载插件...")
+                logger.info(f"正在从 {zip_url} 下载{plugin_type}...")
 
                 try:
                     response = requests.get(zip_url, timeout=30)
@@ -2721,7 +3186,7 @@ except:
                         response = requests.get(zip_url, timeout=30)
 
                     if response.status_code != 200:
-                        return {"success": False, "error": f"下载插件失败: HTTP {response.status_code}"}
+                        return {"success": False, "error": f"下载{plugin_type}失败: HTTP {response.status_code}"}
 
                     # 解压ZIP文件到临时目录
                     z = zipfile.ZipFile(io.BytesIO(response.content))
@@ -2772,12 +3237,12 @@ except:
                         config_path = os.path.join(plugin_dir, "config.toml")
                         if not os.path.exists(config_path):
                             with open(config_path, "w", encoding="utf-8") as f:
-                                f.write("# 插件配置文件\n")
+                                f.write(f"# {plugin_type}配置文件\n")
 
                     # 安装依赖
                     requirements_file = os.path.join(plugin_dir, "requirements.txt")
                     if os.path.exists(requirements_file):
-                        logger.info(f"正在安装插件依赖...")
+                        logger.info(f"正在安装{plugin_type}依赖...")
                         process = subprocess.Popen(
                             [sys.executable, "-m", "pip", "install", "-r", requirements_file],
                             stdout=subprocess.PIPE,
@@ -2789,17 +3254,19 @@ except:
                         if process.returncode != 0:
                             logger.warning(f"安装依赖可能失败: {stderr}")
 
-                    # 安装完成后，立即加载插件
-                    try:
-                        from utils.plugin_manager import plugin_manager
-                        await plugin_manager.load_plugin_from_directory(bot_instance, plugin_name)
-                    except Exception as e:
-                        logger.warning(f"自动加载插件失败，用户需要手动启用: {str(e)}")
+                    # 安装完成后，立即加载插件（仅对plugin类型）
+                    if plugin_type == 'plugin':
+                        try:
+                            from utils.plugin_manager import plugin_manager
+                            await plugin_manager.load_plugin_from_directory(bot_instance, plugin_name)
+                        except Exception as e:
+                            logger.warning(f"自动加载插件失败，用户需要手动启用: {str(e)}")
 
-                    return {"success": True, "message": "插件安装成功"}
+                    type_name = "适配器" if plugin_type == 'adapter' else "插件"
+                    return {"success": True, "message": f"{type_name}安装成功"}
 
                 except Exception as e:
-                    logger.error(f"下载和安装插件失败: {str(e)}")
+                    logger.error(f"下载和安装{plugin_type}失败: {str(e)}")
                     return {"success": False, "error": f"安装失败: {str(e)}"}
 
             finally:
@@ -2808,7 +3275,7 @@ except:
                     shutil.rmtree(temp_dir)
 
         except Exception as e:
-            logger.error(f"安装插件失败: {str(e)}")
+            logger.error(f"安装{plugin_type if 'plugin_type' in locals() else '插件'}失败: {str(e)}")
             return {"success": False, "error": str(e)}
 
     # 周期性任务：同步本地待处理的插件提交到服务器
@@ -4608,6 +5075,7 @@ except:
                 "logs/latest.log",
                 "logs/xybot.log",
                 "logs/XYBot_*.log",
+                "logs/*.log",
                 "_data/logs/XYBot_*.log",
                 "../logs/XYBot_*.log",
                 "./logs/XYBot_*.log",
@@ -4615,6 +5083,7 @@ except:
                 os.path.join(current_dir, "../logs/latest.log"),
                 os.path.join(current_dir, "../logs/xybot.log"),
                 os.path.join(current_dir, "../logs/XYBot_*.log"),
+                os.path.join(current_dir, "../logs/*.log"),
                 os.path.join(current_dir, "./logs/latest.log"),
             ]
 
@@ -7321,7 +7790,10 @@ def get_bot(wxid):
             async with aiohttp.ClientSession() as session:
                 try:
                     # 设置超时时间防止长时间等待
-                    async with session.get('https://api.xybot.icu/plugin_market', timeout=10) as response:
+                    async with session.get(
+                        f"{PLUGIN_MARKET_API['BASE_URL']}{PLUGIN_MARKET_API['LIST']}",
+                        timeout=10
+                    ) as response:
                         if response.status == 200:
                             data = await response.json()
                             plugins = data.get('plugins', [])
@@ -7356,7 +7828,10 @@ def get_bot(wxid):
             async with aiohttp.ClientSession() as session:
                 try:
                     # 设置超时时间防止长时间等待
-                    async with session.get('https://api.xybot.icu/plugin_market', timeout=10) as response:
+                    async with session.get(
+                        f"{PLUGIN_MARKET_API['BASE_URL']}{PLUGIN_MARKET_API['LIST']}",
+                        timeout=10
+                    ) as response:
                         if response.status == 200:
                             data = await response.json()
                             plugins = data.get('plugins', [])
@@ -7381,7 +7856,7 @@ def get_bot(wxid):
                                 "description": "dify会话管理器，集成Dify接口对话，可以进行对话管理",
                                 "author": "全部的运营",
                                 "version": "1.2.0",
-                                "github_url": "https://github.com/xxxbot-plugins/DifyConversationManager",
+                                "github_url": "https://github.com/sxkiss/allbot",
                                 "tags": ["AI", "对话"],
                                 "category": "ai",
                                 "update_time": datetime.now().isoformat()
@@ -7392,7 +7867,7 @@ def get_bot(wxid):
                                 "description": "快速总结文本内容的插件，让你的文章一键生成摘要",
                                 "author": "全部的运营",
                                 "version": "1.3.0",
-                                "github_url": "https://github.com/xxxbot-plugins/AutoSummary",
+                                "github_url": "https://github.com/sxkiss/allbot",
                                 "tags": ["AI", "工具"],
                                 "category": "ai",
                                 "update_time": datetime.now().isoformat()
@@ -7403,7 +7878,7 @@ def get_bot(wxid):
                                 "description": "聊天记录总结工具，自动分析对话内容，提取关键信息",
                                 "author": "全部的运营",
                                 "version": "1.1.9",
-                                "github_url": "https://github.com/xxxbot-plugins/ChatSummary",
+                                "github_url": "https://github.com/sxkiss/allbot",
                                 "tags": ["AI", "聊天"],
                                 "category": "ai",
                                 "update_time": datetime.now().isoformat()
@@ -7442,14 +7917,14 @@ def get_bot(wxid):
 
             # 处理图标（如果有）
             if "icon" in data and data["icon"]:
-                plugin_data["icon_base64"] = data["icon"]
+                plugin_data["icon"] = data["icon"]
 
             # 发送到远程服务器
             async with aiohttp.ClientSession() as session:
                 try:
                     # 将数据发送到远程服务器进行审核
                     async with session.post(
-                        'https://api.xybot.icu/plugin_market/submit',
+                        f"{PLUGIN_MARKET_API['BASE_URL']}{PLUGIN_MARKET_API['SUBMIT']}",
                         json=plugin_data,
                         timeout=30
                     ) as response:
@@ -7465,7 +7940,8 @@ def get_bot(wxid):
                     # 保存到本地临时文件，稍后重试
                     temp_dir = os.path.join(current_dir, 'pending_plugins')
                     os.makedirs(temp_dir, exist_ok=True)
-                    temp_file = os.path.join(temp_dir, f"{int(time.time())}_{name.replace(' ', '_')}.json")
+                    safe_name = (plugin_data.get('name') or 'plugin').replace(' ', '_')
+                    temp_file = os.path.join(temp_dir, f"{int(time.time())}_{safe_name}.json")
 
                     with open(temp_file, 'w', encoding='utf-8') as f:
                         json.dump(plugin_data, f, ensure_ascii=False, indent=2)
@@ -7722,8 +8198,9 @@ def get_bot(wxid):
         asyncio.create_task(periodic_sync())
 
     # 插件市场API配置
+    # 说明：用于插件安装/详情等场景的上游地址；与前面的同名配置保持一致。
     PLUGIN_MARKET_API = {
-        "BASE_URL": "http://xianan.xin:1562/api",  # 从https改为http
+        "BASE_URL": os.environ.get("PLUGIN_MARKET_BASE_URL", "http://v.sxkiss.top"),
         "LIST": "/plugins/?status=approved",  # 添加尾部斜杠，避免重定向
         "DETAIL": "/plugins/",
         "INSTALL": "/plugins/install/",
@@ -8215,7 +8692,7 @@ def get_bot(wxid):
         <!DOCTYPE html>
         <html>
         <head>
-            <title>XXXBot终端</title>
+            <title>AllBot终端</title>
             <style>
                 body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
                 iframe { width: 100%; height: 100%; border: none; }
@@ -8327,183 +8804,6 @@ def get_bot(wxid):
             return HTMLResponse(content=error_html, status_code=503)
 
     # 添加一个简单的终端页面，直接嵌入wetty服务
-    @app.get("/simple-terminal", response_class=HTMLResponse)
-    async def simple_terminal_page(request: Request):
-        """提供一个简单的终端页面，直接嵌入wetty服务iframe"""
-        # 检查认证状态
-        username = await check_auth(request)
-        if not username:
-            return RedirectResponse(url="/login?next=/simple-terminal")
-
-        logger.info(f"用户 {username} 访问简易终端页面")
-
-        html_content = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>简易终端 - XXXBot</title>
-            <style>
-                body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
-                .container { display: flex; flex-direction: column; height: 100vh; }
-                .header { background: #1a1a1a; color: white; padding: 10px; display: flex; justify-content: space-between; }
-                .title { font-size: 18px; font-weight: bold; }
-                .content { flex: 1; }
-                iframe { width: 100%; height: 100%; border: none; }
-                .message { padding: 10px; color: white; text-align: center; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="title">XXXBot 简易终端</div>
-                    <div>
-                        <a href="/system" style="color: white; text-decoration: none;">返回</a>
-                    </div>
-                </div>
-                <div class="content">
-                    <iframe src="http://127.0.0.1:3000" id="terminal-frame" sandbox="allow-same-origin allow-scripts allow-forms"></iframe>
-                </div>
-                <div class="message" id="message">正在连接终端服务...</div>
-            </div>
-
-            <script>
-                document.getElementById('terminal-frame').onload = function() {
-                    document.getElementById('message').style.display = 'none';
-                };
-
-                document.getElementById('terminal-frame').onerror = function() {
-                    document.getElementById('message').innerHTML = '连接终端服务失败';
-                    document.getElementById('message').style.color = 'red';
-                };
-            </script>
-        </body>
-        </html>
-        """
-        return HTMLResponse(content=html_content)
-
-    # 添加一个专门的终端代理页面，处理/terminal-proxy路径
-    @app.get("/terminal-proxy", response_class=HTMLResponse)
-    async def terminal_proxy_page(request: Request):
-        """提供一个终端代理页面，通过服务器代理访问wetty"""
-        # 检查认证状态
-        username = await check_auth(request)
-        if not username:
-            return RedirectResponse(url="/login?next=/terminal-proxy")
-
-        logger.info(f"用户 {username} 访问终端代理页面")
-
-        html_content = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>终端代理 - XXXBot</title>
-            <style>
-                body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
-                .container { display: flex; flex-direction: column; height: 100vh; }
-                .header { background: #1a1a1a; color: white; padding: 10px; display: flex; justify-content: space-between; }
-                .title { font-size: 18px; font-weight: bold; }
-                .content { flex: 1; position: relative; }
-                iframe { width: 100%; height: 100%; border: none; }
-                .message {
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    padding: 20px;
-                    color: white;
-                    background: rgba(0,0,0,0.7);
-                    border-radius: 5px;
-                    z-index: 100;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <div class="title">XXXBot 终端代理</div>
-                    <div>
-                        <a href="/system" style="color: white; text-decoration: none;">返回</a>
-                    </div>
-                </div>
-                <div class="content">
-                    <div class="message" id="message">正在连接终端服务...</div>
-                    <div id="terminal-content"></div>
-                </div>
-            </div>
-
-            <script>
-                // 使用fetch API向服务器请求终端内容
-                async function fetchTerminal() {
-                    try {
-                        const response = await fetch('/terminal-proxy-content');
-
-                        if (!response.ok) {
-                            throw new Error('服务器返回错误: ' + response.status);
-                        }
-
-                        const html = await response.text();
-                        document.getElementById('terminal-content').innerHTML = html;
-                        document.getElementById('message').style.display = 'none';
-                    } catch (error) {
-                        console.error('获取终端内容失败:', error);
-                        document.getElementById('message').innerHTML = '连接终端服务失败: ' + error.message;
-                        document.getElementById('message').style.color = 'red';
-                    }
-                }
-
-                // 页面加载后获取终端内容
-                document.addEventListener('DOMContentLoaded', fetchTerminal);
-            </script>
-        </body>
-        </html>
-        """
-        return HTMLResponse(content=html_content)
-
-    # 添加一个终端内容代理，通过服务器代理访问wetty
-    @app.get("/terminal-proxy-content", response_class=HTMLResponse)
-    async def terminal_proxy_content(request: Request):
-        """提供终端内容，通过服务器代理访问wetty"""
-        # 检查认证状态
-        username = await check_auth(request)
-        if not username:
-            return JSONResponse(status_code=401, content={"error": "未认证"})
-
-        logger.info(f"用户 {username} 请求终端代理内容")
-
-        try:
-            # 访问wetty服务
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get("http://127.0.0.1:3000")
-
-                if response.status_code != 200:
-                    return HTMLResponse(
-                        content=f"<div>无法连接到终端服务，状态码: {response.status_code}</div>",
-                        status_code=response.status_code
-                    )
-
-                # 获取wetty HTML内容
-                html_content = response.text
-
-                # 修改HTML内容，使资源引用路径正确
-                # 替换相对路径为绝对路径
-                html_content = html_content.replace('href="/', 'href="http://127.0.0.1:3000/')
-                html_content = html_content.replace('src="/', 'src="http://127.0.0.1:3000/')
-
-                # 用iframe包装内容
-                wrapped_content = f"""
-                <iframe src="http://127.0.0.1:3000" style="width:100%;height:100%;border:none;"
-                        sandbox="allow-same-origin allow-scripts allow-forms"></iframe>
-                """
-
-                return HTMLResponse(content=wrapped_content)
-
-        except Exception as e:
-            logger.error(f"获取终端内容失败: {str(e)}")
-            return HTMLResponse(
-                content=f"<div>连接终端服务失败: {str(e)}</div>",
-                status_code=503
-            )
-
     # 添加提醒相关的API
     def get_reminder_file_path(wxid: str) -> str:
         """获取用户提醒数据文件路径"""

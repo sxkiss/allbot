@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}Web对话 - AllBot管理后台{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- 左侧：会话列表 -->
+        <div class="col-md-4 col-lg-3">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">会话列表</h5>
+                    <button class="btn btn-sm btn-outline-primary" onclick="createNewSession()">
+                        <i class="bi bi-plus"></i> 新建会话
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush" id="session-list">
+                        <!-- 会话列表将在这里动态加载 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 右侧：聊天区域 -->
+        <div class="col-md-8 col-lg-9">
+            <div class="card h-100">
+                <div class="card-header" id="chat-header">
+                    <h5 class="mb-0" id="current-session-title">选择一个会话</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="chat-container" id="chat-container">
+                        <div class="chat-messages" id="chat-messages">
+                            <!-- 消息将在这里动态加载 -->
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-chat-dots" style="font-size: 3rem;"></i>
+                                <p class="mt-3">选择或创建一个会话开始对话</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="message-input" 
+                               placeholder="输入消息..." 
+                               onkeypress="if(event.key === 'Enter') sendMessage()">
+                        <button class="btn btn-primary" onclick="sendMessage()">
+                            <i class="bi bi-send"></i> 发送
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.chat-container {
+    height: 500px;
+    overflow-y: auto;
+    padding: 20px;
+    background-color: #f8f9fa;
+}
+
+.chat-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.message {
+    max-width: 70%;
+    padding: 10px 15px;
+    border-radius: 10px;
+    position: relative;
+}
+
+.message.user {
+    align-self: flex-end;
+    background-color: #007bff;
+    color: white;
+    margin-left: auto;
+}
+
+.message.bot {
+    align-self: flex-start;
+    background-color: #e9ecef;
+    color: #333;
+    margin-right: auto;
+}
+
+.message-time {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    margin-top: 5px;
+}
+
+.session-item {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.session-item:hover {
+    background-color: #f8f9fa;
+}
+
+.session-item.active {
+    background-color: #e7f1ff;
+}
+
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top-color: #007bff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+</style>
+
+<script>
+let currentSessionId = null;
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    loadSessions();
+    checkWebChatStatus();
+});
+
+// 检查Web聊天状态
+async function checkWebChatStatus() {
+    try {
+        const response = await fetch('/api/webchat/status');
+        const result = await response.json();
+        
+        if (!result.success || !result.data.enabled) {
+            const chatMessages = document.getElementById('chat-messages');
+            chatMessages.innerHTML = `
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-exclamation-triangle" style="font-size: 3rem; color: #dc3545;"></i>
+                    <p class="mt-3 text-danger">Web适配器未启用</p>
+                    <p>请先在适配器管理中启用Web适配器</p>
+                </div>
+            `;
+            document.getElementById('message-input').disabled = true;
+            document.querySelector('#message-input + button').disabled = true;
+        }
+    } catch (error) {
+        console.error('检查Web聊天状态失败:', error);
+    }
+}
+
+// 加载会话列表
+async function loadSessions() {
+    try {
+        const response = await fetch('/api/webchat/sessions');
+        const result = await response.json();
+        
+        if (result.success) {
+            const sessionList = document.getElementById('session-list');
+            sessionList.innerHTML = '';
+            
+            if (result.data.length === 0) {
+                sessionList.innerHTML = '<div class="p-3 text-muted text-center">暂无会话</div>';
+                return;
+            }
+            
+            result.data.forEach(session => {
+                const item = document.createElement('a');
+                item.className = 'list-group-item list-group-item-action session-item';
+                item.dataset.sessionId = session.session_id;
+                item.innerHTML = `
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">会话 ${session.session_id.substring(0, 8)}</h6>
+                        <small>${session.message_count} 条消息</small>
+                    </div>
+                    <small class="text-muted">${new Date(session.created_at * 1000).toLocaleString()}</small>
+                `;
+                item.onclick = () => selectSession(session.session_id);
+                sessionList.appendChild(item);
+            });
+        }
+    } catch (error) {
+        console.error('加载会话列表失败:', error);
+    }
+}
+
+// 创建新会话
+function createNewSession() {
+    const newSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    selectSession(newSessionId);
+}
+
+// 选择会话
+async function selectSession(sessionId) {
+    currentSessionId = sessionId;
+    
+    // 更新UI
+    document.querySelectorAll('.session-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.sessionId === sessionId) {
+            item.classList.add('active');
+        }
+    });
+    
+    document.getElementById('current-session-title').textContent = `会话 ${sessionId.substring(0, 8)}`;
+    
+    // 加载消息
+    await loadSessionMessages(sessionId);
+}
+
+// 加载会话消息
+async function loadSessionMessages(sessionId) {
+    try {
+        const response = await fetch(`/api/webchat/sessions/${sessionId}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            const chatMessages = document.getElementById('chat-messages');
+            chatMessages.innerHTML = '';
+            
+            if (result.data.messages.length === 0) {
+                chatMessages.innerHTML = '<div class="text-center text-muted py-3">暂无消息</div>';
+                return;
+            }
+            
+            result.data.messages.forEach(msg => {
+                appendMessage(msg.role, msg.content, msg.timestamp);
+            });
+            
+            // 滚动到底部
+            scrollToBottom();
+        }
+    } catch (error) {
+        console.error('加载会话消息失败:', error);
+    }
+}
+
+// 添加消息到聊天区域
+function appendMessage(role, content, timestamp) {
+    const chatMessages = document.getElementById('chat-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${role}`;
+    
+    const timeStr = new Date(timestamp * 1000).toLocaleTimeString();
+    messageDiv.innerHTML = `
+        <div>${escapeHtml(content)}</div>
+        <div class="message-time">${timeStr}</div>
+    `;
+    
+    chatMessages.appendChild(messageDiv);
+    scrollToBottom();
+}
+
+// 发送消息
+async function sendMessage() {
+    const input = document.getElementById('message-input');
+    const content = input.value.trim();
+    
+    if (!content) {
+        return;
+    }
+    
+    if (!currentSessionId) {
+        alert('请先选择或创建一个会话');
+        return;
+    }
+    
+    // 禁用输入
+    input.disabled = true;
+    const sendButton = document.querySelector('#message-input + button');
+    sendButton.disabled = true;
+    
+    // 添加用户消息
+    appendMessage('user', content, Math.floor(Date.now() / 1000));
+    input.value = '';
+    
+    // 显示加载状态
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message bot';
+    loadingDiv.innerHTML = '<div class="loading"></div>';
+    document.getElementById('chat-messages').appendChild(loadingDiv);
+    scrollToBottom();
+    
+    try {
+        const response = await fetch('/api/webchat/send', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                content: content,
+                session_id: currentSessionId,
+                msg_type: 1
+            })
+        });
+        
+        const result = await response.json();
+        
+        // 移除加载状态
+        loadingDiv.remove();
+        
+        if (result.success) {
+            // 添加机器人回复
+            appendMessage('bot', result.data.bot_reply, result.data.timestamp);
+            
+            // 刷新会话列表
+            loadSessions();
+        } else {
+            alert('发送失败: ' + (result.error || '未知错误'));
+        }
+    } catch (error) {
+        console.error('发送消息失败:', error);
+        loadingDiv.remove();
+        alert('发送失败: ' + error.message);
+    } finally {
+        // 重新启用输入
+        input.disabled = false;
+        sendButton.disabled = false;
+        input.focus();
+    }
+}
+
+// 滚动到底部
+function scrollToBottom() {
+    const chatContainer = document.getElementById('chat-container');
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+// HTML转义
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>xbot 文件管理器</title>
+    <title>AllBot 文件管理器</title>
     <!-- Bootstrap 5 CSS -->
     <link href="/static/css/lib/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
@@ -118,6 +118,33 @@
 
         .file-icon-md {
             color: #9E9E9E;
+        }
+
+        @media (max-width: 768px) {
+            .file-manager-container {
+                flex-direction: column;
+                height: auto;
+            }
+
+            .file-sidebar {
+                width: 100%;
+                max-height: 220px;
+                border-right: none;
+                border-bottom: 1px solid #dee2e6;
+            }
+
+            .file-toolbar {
+                padding: 10px;
+            }
+
+            .file-content {
+                padding: 10px;
+            }
+
+            .file-size,
+            .file-date {
+                display: none;
+            }
         }
 
         .file-icon-txt {

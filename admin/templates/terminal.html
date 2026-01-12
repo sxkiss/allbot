@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}终端 - xbot管理面板{% endblock %}
+{% block title %}终端 - AllBot管理面板{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -148,7 +148,7 @@ iframe {
 
 <div class="terminal-container">
     <div class="terminal-header">
-        <div class="terminal-title">xbot 系统终端</div>
+        <div class="terminal-title">AllBot 系统终端</div>
         <div class="terminal-actions">
             <button id="new-cmd-btn" class="btn btn-sm btn-outline-light me-2">
                 <i class="bi bi-plus"></i> 新建命令
@@ -328,7 +328,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const params = new URLSearchParams({
             command: '/bin/bash',
-            title: 'xbot终端',
+            title: 'AllBot终端',
             fontSize: '13',
             theme: 'dark',
             allowTransparency: 'true',
@@ -404,7 +404,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const params = new URLSearchParams({
                 command: command || '/bin/bash',
-                title: 'xbot终端',
+                title: 'AllBot终端',
                 fontSize: '13'
             });
             
@@ -416,7 +416,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const params = new URLSearchParams({
                 command: command || '/bin/bash',
-                title: 'xbot终端',
+                title: 'AllBot终端',
                 fontSize: '13'
             });
             
@@ -646,7 +646,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const baseUrl = getTerminalHost();
             const params = new URLSearchParams({
                 command: command,
-                title: 'xbot终端: ' + command,
+                title: 'AllBot终端: ' + command,
                 fontSize: '13',
                 theme: 'dark'
             });
@@ -661,7 +661,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const baseUrl = getTerminalHost();
         const params = new URLSearchParams({
             command: '/bin/bash',
-            title: 'xbot终端',
+            title: 'AllBot终端',
             fontSize: '13',
             theme: 'dark'
         });

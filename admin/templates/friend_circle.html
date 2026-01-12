@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}朋友圈 - xbOT管理后台{% endblock %}
+{% block title %}朋友圈 - AllBot管理后台{% endblock %}
 
 {% block page_title %}朋友圈{% endblock %}
 
@@ -53,24 +53,31 @@
         gap: 20px;
     }
 
-    @media (max-width: 992px) {
-        .friend-circle-layout {
-            grid-template-columns: 1fr;
+   @media (max-width: 992px) {
+       .friend-circle-layout {
+           grid-template-columns: 1fr;
+       }
+
+        .friend-circle-sidebar {
+            position: relative;
+            top: 0;
+            max-height: 300px;
+            overflow-y: auto;
         }
-    }
+   }
 
-    .friend-circle-sidebar {
-        position: sticky;
-        top: 20px;
-        height: fit-content;
-        z-index: 100;
-    }
+   .friend-circle-sidebar {
+       position: sticky;
+       top: 20px;
+       height: fit-content;
+       z-index: 100;
+   }
 
-    /* 朋友圈页面特定样式，不修改全局导航栏 */
+   /* 朋友圈页面特定样式，不修改全局导航栏 */
 
-    .friend-circle-container {
-        max-width: 100%;
-    }
+   .friend-circle-container {
+       max-width: 100%;
+   }
 
     .friend-circle-card {
         margin-bottom: 20px;

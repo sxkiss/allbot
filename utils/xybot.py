@@ -1,12 +1,15 @@
 import asyncio
 import base64
+import hashlib
 import html
 import io
 import os
 import re
+import shutil
 import time
 import tomllib
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import Any, Dict
 
 from loguru import logger
@@ -42,11 +45,10 @@ class XYBot:
                 f"配置文件 {config_path} 存在，大小: {os.path.getsize(config_path)} 字节"
             )
             try:
-                # 使用同步方式读取配置文件
                 with open(config_path, "rb") as f:
                     main_config = tomllib.load(f)
-                # 打印配置文件的所有键
-                logger.debug(f"配置文件的所有键: {list(main_config.keys())}")
+                    # 打印配置文件的所有键
+                    logger.debug(f"配置文件的所有键: {list(main_config.keys())}")
             except Exception as e:
                 logger.error(f"加载配置文件失败: {e}")
                 main_config = {}
@@ -92,17 +94,16 @@ class XYBot:
         logger.info(f"白名单: {self.whitelist}")
         logger.info(f"黑名单: {self.blacklist}")
 
-        # MessageDB初始化
         self.msg_db = MessageDB()
 
-    async def update_profile(self, wxid: str, nickname: str, alias: str, phone: str):
+    def update_profile(self, wxid: str, nickname: str, alias: str, phone: str):
         """更新机器人信息"""
         self.wxid = wxid
         self.nickname = nickname
         self.alias = alias
         self.phone = phone
 
-    async def is_logged_in(self):
+    def is_logged_in(self):
         """检查机器人是否已登录
 
         Returns:
@@ -151,23 +152,22 @@ class XYBot:
                     # 读取协议版本配置
                     try:
                         import tomllib
-                        
-                        # 使用同步方式读取配置文件
+
                         with open("main_config.toml", "rb") as f:
                             config = tomllib.load(f)
-                        protocol_version = config.get("Protocol", {}).get(
-                            "version", "849"
-                        )
-
-                        # 根据协议版本选择前缀
-                        if protocol_version == "849":
-                            api_prefix = "/VXAPI"
-                            logger.info(f"使用849协议前缀: {api_prefix}")
-                        else:  # 855 或 ipad
-                            api_prefix = "/api"
-                            logger.info(
-                                f"使用{protocol_version}协议前缀: {api_prefix}"
+                            protocol_version = config.get("Protocol", {}).get(
+                                "version", "849"
                             )
+
+                            # 根据协议版本选择前缀
+                            if protocol_version == "849":
+                                api_prefix = "/VXAPI"
+                                logger.info(f"使用849协议前缀: {api_prefix}")
+                            else:  # 855 或 ipad
+                                api_prefix = "/api"
+                                logger.info(
+                                    f"使用{protocol_version}协议前缀: {api_prefix}"
+                                )
                     except Exception as e:
                         logger.warning(f"读取协议版本失败，使用默认前缀: {e}")
                         # 默认使用 849 的前缀
@@ -685,13 +685,12 @@ class XYBot:
             message["IsGroup"] = False
 
         try:
-            # 使用asyncio.to_thread将XML解析操作移至线程池中执行，避免阻塞事件循环
-            def parse_xml(xml_str):
-                root = ET.fromstring(xml_str)
-                ats_elem = root.find("atuserlist")
-                return ats_elem.text if ats_elem is not None else ""
-            
-            ats = await asyncio.to_thread(parse_xml, message.get("MsgSource", ""))
+            root = ET.fromstring(message.get("MsgSource", ""))
+            ats = (
+                root.find("atuserlist").text
+                if root.find("atuserlist") is not None
+                else ""
+            )
         except Exception as e:
             if not message.get("MsgSource"):  # 空字符串常见于普通文本消息
                 logger.debug("MsgSource 为空，跳过 atuserlist 解析，无需报错。")
@@ -724,7 +723,7 @@ class XYBot:
                 message["Ats"],
                 message["Content"],
             )
-            if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+            if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
                 if self.ignore_protection or not protector.check(14400):
                     # 先检查消息是否包含唤醒词
                     wakeup_handled = await self.check_wakeup_words(message)
@@ -751,7 +750,7 @@ class XYBot:
 
         # 群聊消息和私聊消息都处理
         # 无论是否@机器人，都处理消息
-        if should_process and await self.ignore_check(
+        if should_process and self.ignore_check(
             message["FromWxid"], message["SenderWxid"]
         ):
             if self.ignore_protection or not protector.check(14400):
@@ -761,9 +760,9 @@ class XYBot:
 
     async def process_image_message(self, message: Dict[str, Any]):
         """处理图片消息"""
+        image_base64 = message.get("ImageBase64")
         message["Content"] = (
-            message.get("Content", {})
-            .get("string", "")
+            (image_base64 if isinstance(image_base64, str) else message.get("Content", {}).get("string", ""))
             .replace("\n", "")
             .replace("\t", "")
         )
@@ -820,7 +819,13 @@ class XYBot:
                 message["ImageMD5"] = md5
         except Exception as e:
             logger.error("解析图片消息失败: {}, 内容: {}", e, message["Content"])
-            return
+            aeskey = cdnmidimgurl = None
+            length = md5 = None
+
+        # 如果适配器提供了本地缓存路径，优先建立 files 映射，方便后续引用
+        self._sync_resource_media(message)
+        self._ensure_image_xml(message)
+        self._embed_base64_from_resource(message)
 
         # 直接使用 get_msg_image 下载高清图片（新版接口，返回二进制数据）
         try:
@@ -851,18 +856,16 @@ class XYBot:
 
                 # 确保files目录存在
                 files_dir = os.path.join(os.getcwd(), "files")
-                import aiofiles.os as async_os
-                await async_os.makedirs(files_dir, exist_ok=True)
+                os.makedirs(files_dir, exist_ok=True)
 
                 # 根据MD5值生成文件名
-                file_extension = await self._get_image_extension(image_data)
+                file_extension = self._get_image_extension(image_data)
                 file_name = f"{message['ImageMD5']}.{file_extension}"
                 file_path = os.path.join(files_dir, file_name)
 
                 # 保存图片文件
-                import aiofiles
-                async with aiofiles.open(file_path, "wb") as f:
-                    await f.write(image_data)
+                with open(file_path, "wb") as f:
+                    f.write(image_data)
                 logger.info(f"图片已保存到: {file_path}")
 
                 # 将文件路径添加到消息中，方便后续使用
@@ -870,13 +873,13 @@ class XYBot:
             except Exception as save_error:
                 logger.error(f"保存图片文件失败: {save_error}")
 
-        if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+        if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
                 await EventManager.emit("image_message", self.bot, message)
             else:
                 logger.warning("风控保护: 新设备登录后4小时内请挂机")
 
-    async def _get_image_extension(self, image_data):
+    def _get_image_extension(self, image_data):
         """根据图片数据判断文件扩展名"""
         try:
             import io
@@ -890,6 +893,77 @@ class XYBot:
         except Exception as e:
             logger.error(f"获取图片格式失败: {e}")
             return "jpg"  # 默认返回jpg
+
+    def _sync_resource_media(self, message: Dict[str, Any]) -> None:
+        path = message.get("ResourcePath")
+        if not path:
+            return
+        resolved = Path(path)
+        if not resolved.exists():
+            logger.debug(f"ResourcePath 不存在: {resolved}")
+            return
+        md5_value = message.get("ImageMD5")
+        if not md5_value:
+            md5_value = self._calculate_file_md5(resolved)
+            if not md5_value:
+                return
+            message["ImageMD5"] = md5_value
+        try:
+            files_dir = Path(os.getcwd()) / "files"
+            files_dir.mkdir(parents=True, exist_ok=True)
+            suffix = resolved.suffix or ".bin"
+            dest = files_dir / f"{md5_value}{suffix}"
+            if not dest.exists():
+                shutil.copy2(resolved, dest)
+                logger.info(f"同步本地媒体到 {dest}")
+            message["ImagePath"] = str(resolved)
+        except Exception as exc:
+            logger.warning(f"同步 ResourcePath 媒体失败: {exc}")
+
+    @staticmethod
+    def _calculate_file_md5(path: Path) -> str:
+        try:
+            hasher = hashlib.md5()
+            with open(path, "rb") as source:
+                for chunk in iter(lambda: source.read(8192), b""):
+                    if chunk:
+                        hasher.update(chunk)
+            return hasher.hexdigest()
+        except Exception:
+            return ""
+
+    def _ensure_image_xml(self, message: Dict[str, Any]) -> None:
+        content = (message.get("Content") or "").strip()
+        if content.startswith("<msg") and "<img" in content:
+            return
+        path = message.get("ResourcePath") or message.get("ImagePath")
+        if not path:
+            return
+        md5_value = message.get("ImageMD5")
+        if not md5_value:
+            md5_value = self._calculate_file_md5(Path(path)) if os.path.exists(path) else ""
+            if md5_value:
+                message["ImageMD5"] = md5_value
+        safe_path = path.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        md5_attr = f' md5="{md5_value}"' if md5_value else ""
+        rebuilt = f"<msg><img resource_path=\"{safe_path}\"{md5_attr} /></msg>"
+        message["Content"] = rebuilt
+
+    def _embed_base64_from_resource(self, message: Dict[str, Any]) -> None:
+        if message.get("ImageBase64"):
+            message["Content"] = message["ImageBase64"]
+            return
+
+        path = message.get("ImagePath") or message.get("ResourcePath")
+        if not path or not os.path.exists(path):
+            return
+        try:
+            with open(path, "rb") as source:
+                encoded = base64.b64encode(source.read()).decode("utf-8")
+            message["Content"] = encoded
+            logger.debug(f"已将图片 {path} 编码为 base64 内联内容")
+        except Exception as exc:
+            logger.warning(f"嵌入 base64 图片失败: {exc}")
 
     async def process_voice_message(self, message: Dict[str, Any]):
         """处理语音消息"""
@@ -956,7 +1030,7 @@ class XYBot:
             silk_base64 = message.get("ImgBuf", {}).get("buffer", "")
             message["Content"] = await self.bot.silk_base64_to_wav_byte(silk_base64)
 
-        if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+        if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
                 await EventManager.emit("voice_message", self.bot, message)
             else:
@@ -1009,7 +1083,7 @@ class XYBot:
         # 检查是否需要处理该消息（群聊唤醒词检查）
         should_process = await self.check_group_wakeup_word(message)
 
-        if should_process and await self.ignore_check(
+        if should_process and self.ignore_check(
             message["FromWxid"], message["ActualUserWxid"]
         ):
             if self.ignore_protection or not protector.check(14400):
@@ -1079,7 +1153,7 @@ class XYBot:
             await self.process_quote_message(message)
         elif type_value == 6:  # 文件消息
             # 先触发 xml_message 事件，再处理文件消息
-            if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+            if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
                 if self.ignore_protection or not protector.check(14400):
                     logger.debug(
                         "触发文件消息的 xml_message 事件: 消息ID: {}",
@@ -1100,7 +1174,7 @@ class XYBot:
                 message["Content"],
             )
             logger.debug("完整 XML 内容: {}", message["Content"])
-            if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+            if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
                 if self.ignore_protection or not protector.check(14400):
                     logger.debug(
                         "触发 article_message 事件: 消息ID: {}",
@@ -1121,7 +1195,7 @@ class XYBot:
             )
 
         # 触发 xml_message 事件，无论 XML 类型如何
-        if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+        if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
                 logger.debug(
                     "触发 xml_message 事件: 消息ID: {}", message.get("MsgId", "")
@@ -1336,7 +1410,7 @@ class XYBot:
             message["Quote"],
         )
 
-        if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+        if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
                 # 在发送给插件之前，先检查引用消息中的触发词/唤醒词
                 logger.info(f"开始检查引用消息触发词: {message.get('Content', '')}")
@@ -1370,7 +1444,14 @@ class XYBot:
         if not content:
             return False
 
+        content_lower = content.lower()
         logger.debug(f"检查引用消息中的触发词: {content}")
+
+        def normalize_token(token: Any) -> Optional[str]:
+            if isinstance(token, str):
+                value = token.strip()
+                return value or None
+            return None
 
         # 遍历所有已加载的插件，按优先级排序
         plugins_by_priority = {}
@@ -1400,8 +1481,12 @@ class XYBot:
                 # 1. 检查插件是否有唤醒词属性
                 if hasattr(plugin, "wakeup_words") and plugin.wakeup_words:
                     for wakeup_word in plugin.wakeup_words:
-                        if content.lower().startswith(wakeup_word.lower()) or f" {wakeup_word.lower()}" in content.lower():
-                            logger.info(f"引用消息中检测到插件 {plugin_name} 的唤醒词: {wakeup_word}")
+                        normalized = normalize_token(wakeup_word)
+                        if not normalized:
+                            continue
+                        wake_lower = normalized.lower()
+                        if content_lower.startswith(wake_lower) or f" {wake_lower}" in content_lower:
+                            logger.info(f"引用消息中检测到插件 {plugin_name} 的唤醒词: {normalized}")
                             # 触发该插件的引用消息处理方法
                             for method_name in dir(plugin):
                                 method = getattr(plugin, method_name)
@@ -1415,10 +1500,12 @@ class XYBot:
                 if (plugin_name == "Dify" and hasattr(plugin, "wakeup_word_to_model")
                     and plugin.wakeup_word_to_model):
                     for wakeup_word in plugin.wakeup_word_to_model.keys():
-                        content_lower = content.lower()
-                        wakeup_lower = wakeup_word.lower()
-                        if content_lower.startswith(wakeup_lower) or f" {wakeup_lower}" in content_lower:
-                            logger.info(f"引用消息中检测到Dify插件的唤醒词: {wakeup_word}")
+                        normalized = normalize_token(wakeup_word)
+                        if not normalized:
+                            continue
+                        wake_lower = normalized.lower()
+                        if content_lower.startswith(wake_lower) or f" {wake_lower}" in content_lower:
+                            logger.info(f"引用消息中检测到Dify插件的唤醒词: {normalized}")
 
                             # 为Dify插件特殊处理：直接调用文本消息处理方法
                             # 创建一个修改后的消息副本，构建包含引用信息的查询
@@ -1456,8 +1543,11 @@ class XYBot:
                 # 3. 检查插件的触发词属性
                 if hasattr(plugin, "trigger_words") and plugin.trigger_words:
                     for trigger_word in plugin.trigger_words:
-                        if trigger_word.lower() in content.lower():
-                            logger.info(f"引用消息中检测到插件 {plugin_name} 的触发词: {trigger_word}")
+                        normalized = normalize_token(trigger_word)
+                        if not normalized:
+                            continue
+                        if normalized.lower() in content_lower:
+                            logger.info(f"引用消息中检测到插件 {plugin_name} 的触发词: {normalized}")
                             # 触发该插件的引用消息处理方法
                             for method_name in dir(plugin):
                                 method = getattr(plugin, method_name)
@@ -1470,10 +1560,13 @@ class XYBot:
                 # 4. 检查插件的commands属性
                 if hasattr(plugin, "commands") and plugin.commands:
                     for command in plugin.commands:
-                        content_first_word = content.split(" ", 1)[0].lower()
-                        if (content.lower().startswith(command.lower())
-                            or content_first_word == command.lower()):
-                            logger.info(f"引用消息中检测到插件 {plugin_name} 的命令: {command}")
+                        normalized = normalize_token(command)
+                        if not normalized:
+                            continue
+                        command_lower = normalized.lower()
+                        content_first_word = content_lower.split(" ", 1)[0]
+                        if content_lower.startswith(command_lower) or content_first_word == command_lower:
+                            logger.info(f"引用消息中检测到插件 {plugin_name} 的命令: {normalized}")
                             # 触发该插件的引用消息处理方法
                             for method_name in dir(plugin):
                                 method = getattr(plugin, method_name)
@@ -1525,7 +1618,7 @@ class XYBot:
 
         message["Video"] = await self.bot.download_video(message.get("MsgId", 0))
 
-        if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+        if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
                 await EventManager.emit("video_message", self.bot, message)
             else:
@@ -1564,7 +1657,7 @@ class XYBot:
 
         message["File"] = await self.bot.download_attach(attach_id)
 
-        if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+        if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
                 await EventManager.emit("file_message", self.bot, message)
             else:
@@ -1605,7 +1698,7 @@ class XYBot:
             pass
         else:
             logger.info("收到系统消息: {}, 完整内容: {}", message, message["Content"])
-            if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+            if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
                 if self.ignore_protection or not protector.check(14400):
                     await EventManager.emit("system_message", self.bot, message)
                 else:
@@ -1646,7 +1739,7 @@ class XYBot:
             is_group=message["IsGroup"],
         )
 
-        if await self.ignore_check(message["FromWxid"], message["SenderWxid"]):
+        if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
                 await EventManager.emit("pat_message", self.bot, message)
             else:
@@ -2169,7 +2262,7 @@ class XYBot:
         # 没有唤醒词，返回True让消息继续传递给处理链
         return True
 
-    async def ignore_check(self, FromWxid: str, SenderWxid: str):
+    def ignore_check(self, FromWxid: str, SenderWxid: str):
         # 过滤公众号消息（公众号wxid通常以gh_开头）
         if SenderWxid and isinstance(SenderWxid, str) and SenderWxid.startswith("gh_"):
             logger.debug(f"忽略公众号消息: {SenderWxid}")

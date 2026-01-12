@@ -1,0 +1,15 @@
+services:
+  allbot:
+    build: .
+    image: sxkiss/allbot:local
+    container_name: allbot
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./:/app
+      - redis_data:/data/redis
+
+volumes:
+  redis_data:
+    name: redis_data

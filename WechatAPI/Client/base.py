@@ -55,6 +55,7 @@ class WechatAPIClientBase:
         self.phone = ""
 
         self.ignore_protect = False
+        self.reply_router = None
 
         # 调用所有 Mixin 的初始化方法
         super().__init__()
@@ -104,3 +105,7 @@ class WechatAPIClientBase:
             raise Exception(json_resp.get("Message"))
         elif code == -13:  # 上传失败
             raise Exception(json_resp.get("Message"))
+
+    def set_reply_router(self, router):
+        """绑定统一回复路由"""
+        self.reply_router = router
