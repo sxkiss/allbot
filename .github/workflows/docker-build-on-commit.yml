@@ -12,6 +12,7 @@ on:
       - "**.conf"
       - "**.toml"
       - "**.yml"
+      - "**.sh"
       - ".github/workflows/docker-build-on-commit.yml"
       - ".dockerignore"
 
