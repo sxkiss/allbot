@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 # @input: /app/main_config.toml, /app/requirements.txt, /etc/redis/redis.conf
-# @output: 启动容器内 Redis，并运行 /app/main.py
+# @output: 每次启动安装 Python 依赖，启动容器内 Redis，并运行 /app/main.py
 # @position: Docker 容器入口脚本（安装依赖 -> 启动 Redis -> 启动主程序）
 # @auto-doc: Update header and related docs when startup flow changes
 
@@ -23,16 +23,10 @@ fi
 cd ..
 echo "启动 Python 运行环境...请确保 /app/main_config.toml 已按当前部署环境填写"
 cd /app
-DEPS_MARKER=/app/.deps_installed
-if [ ! -f "$DEPS_MARKER" ]; then
-    echo "首次启动，安装 Python 依赖..."
-    pip install -r requirements.txt
-    pip install --upgrade pip
-    date > "$DEPS_MARKER"
-    echo "依赖安装完成，已写入标记文件 $DEPS_MARKER"
-else
-    echo "依赖已安装，跳过 pip install（如需重装请删除 $DEPS_MARKER）"
-fi
+echo "安装 Python 依赖..."
+pip install -r requirements.txt
+pip install --upgrade pip
+echo "Python 依赖安装完成"
 
 # 启动系统Redis服务（使用持久化目录）
 echo "启动系统Redis服务..."
