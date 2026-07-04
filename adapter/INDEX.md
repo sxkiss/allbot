@@ -2,7 +2,7 @@
 
 # adapter
 
-多平台适配层：负责把外部平台消息统一写入 `allbot` 队列，并从平台专属 `replyQueue` 消费回复，覆盖 QQ、Telegram、Web、Win、wx-filehelper 与微信 clawbot 渠道。
+多平台适配层：负责把外部平台消息统一写入 `allbot` 队列，并从平台专属 `replyQueue` 消费回复，覆盖 QQ、Telegram、Web、Win、wx-filehelper、微信 clawbot 与 WeChat Observatory 渠道。
 
 ## Files
 
@@ -17,3 +17,4 @@
 | web/web_adapter.py | Platform | Web 管理后台对话桥接 |
 | win/win_adapter.py | Platform | Win 协议桥接 |
 | wx/wx_adapter.py | Platform | wx-filehelper-api 协议桥接（含在线检测+扫码登录） |
+| wechat_observatory/wechat_observatory_adapter.py | Platform | WeChat Observatory Public API v1 桥接（WebSocket/HTTP 入站、媒体缓存与 outbox ACK 出站） |

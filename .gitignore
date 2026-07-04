@@ -45,6 +45,7 @@ Thumbs.db
 *.temp
 .cache/
 .*
+tests/
 
 
 # Spec workflow 临时文件

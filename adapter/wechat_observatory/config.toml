@@ -1,0 +1,36 @@
+[adapter]
+name = "wechat_observatory"
+enabled = false
+module = "adapter.wechat_observatory"
+class = "WechatObservatoryAdapter"
+replyQueue = "allbot_reply:wechat_observatory"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[wechat_observatory]
+enable = false
+platform = "wechat_observatory"
+baseUrl = "http://127.0.0.1:8088"
+apiKey = ""
+requestTimeout = 20
+pollingInterval = 2
+pollingLimit = 100
+outboxPollTimeout = 30
+outboxPollInterval = 2
+enableWebSocket = true
+webSocketReplay = 20
+skipHistoryOnStart = true
+startupSyncLimit = 200
+startupSyncMaxPages = 20
+includeSent = false
+statePath = "admin/static/temp/wechat_observatory/state.json"
+mediaCacheDir = "admin/static/temp/wechat_observatory/media"
+
+[wechat_observatory.redis]
+queue = "allbot"
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""
