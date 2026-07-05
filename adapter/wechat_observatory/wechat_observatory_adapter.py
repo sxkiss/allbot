@@ -177,6 +177,11 @@ class WechatObservatoryAdapter:
         self.stop_event = threading.Event()
         self._cursor_lock = threading.Lock()
         self._cursor = self._load_cursor()
+        # When skipping history on start, set cursor to -1 sentinel so HTTP polling
+        # does not re-pull historical messages from after_id=0. WS will establish
+        # a positive cursor via replay + real-time events.
+        if self.skip_history_on_start and self._cursor <= 0:
+            self._cursor = -1
         self._recent_event_keys: set[str] = set()
         self._recent_event_order: List[str] = []
         self._startup_synced = not (self.skip_history_on_start and self._cursor <= 0)
@@ -241,6 +246,12 @@ class WechatObservatoryAdapter:
                     self._logger.warning(f"启动去重: 已跳过历史消息，cursor={skipped}")
 
                 cursor = self._get_cursor()
+                if cursor < 0:
+                    # HTTP polling deferred until WebSocket establishes a positive cursor.
+                    # WS replay + real-time events will drive cursor upward naturally.
+                    self.stop_event.wait(self.polling_interval)
+                    continue
+
                 data = self._request_json(
                     "GET",
                     "/api/v1/messages",
