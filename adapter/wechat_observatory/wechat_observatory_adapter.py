@@ -184,7 +184,9 @@ class WechatObservatoryAdapter:
             self._cursor = -1
         self._recent_event_keys: set[str] = set()
         self._recent_event_order: List[str] = []
-        self._startup_synced = not (self.skip_history_on_start and self._cursor <= 0)
+        # skipHistoryOnStart=true: never run _sync_startup_cursor() (which pulls all history from cursor=0)
+        # Normal case: only sync startup if we have a saved cursor > 0 (resuming after crash)
+        self._startup_synced = self.skip_history_on_start or self._cursor > 0
 
         self.polling_thread = threading.Thread(
             target=self._poll_loop,
