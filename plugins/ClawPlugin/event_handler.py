@@ -199,8 +199,8 @@ class EventHandler:
                     data = payload.get("data") if isinstance(payload, dict) else None
                     data_phase = _safe_text(data.get("phase") if isinstance(data, dict) else "").strip()
                     is_tool_or_lifecycle = bool(data_phase) and data_phase not in ("text", "delta", "content")
-                    log_level = "--" if is_tool_or_lifecycle else "INFO"
-                    logger.info(
+                    log_fn = logger.debug if is_tool_or_lifecycle else logger.info
+                    log_fn(
                         "[Claw] agent 事件未提取到文本 run_id={} payload_keys={} data_keys={} phase={}",
                         run_id,
                         list(payload.keys()) if isinstance(payload, dict) else "-",

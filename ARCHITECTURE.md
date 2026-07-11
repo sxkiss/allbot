@@ -14,6 +14,7 @@ Admin security now enforces non-default credentials, challenge-protected 869 log
 869 operational methods are exposed to plugins through the runtime client rather than admin HTTP debug endpoints.
 Plugin installation is routed through a guarded service that validates GitHub URLs, blocks ZIP Slip/symlink payloads, and disables dependency installation by default.
 Static contract checks live in `tools/route_audit.py`, which now correctly parses multiple `/api/*` references on the same line.
+Built-in plugins also cover lightweight live information retrieval such as official typhoon tracking summaries, official page screenshots, satellite cloud imagery delivery, and multi-source disaster warning pushes.
 
 - `adapter/INDEX.md`: Multi-platform adapters and queue bridge contracts
 - `admin/INDEX.md`: Admin server, update pipeline, and related APIs

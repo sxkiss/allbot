@@ -472,9 +472,6 @@ class DependencyManager(PluginBase):
     @on_text_message(priority=80)
     async def handle_text_message(self, bot: WechatAPIClient, message: dict):
         """处理文本消息，检查是否为依赖管理命令"""
-        # 在最开始就记录收到消息，即使未启用也记录，便于调试
-        logger.critical(f"[DependencyManager] 收到消息调用: {message.get('Content', '')}")
-        
         if not self.enable:
             logger.debug("[DependencyManager] 插件未启用，跳过处理")
             return True  # 插件未启用，允许其他插件处理
@@ -484,27 +481,18 @@ class DependencyManager(PluginBase):
         from_user = message.get("SenderWxid", "")
         conversation_id = message.get("FromWxid", "")
         
-        # 记录所有消息，用于调试
-        logger.info(f"[DependencyManager] 收到消息: '{content}'")
-
         # 检查是否为管理员
         sender_id = from_user
         if not sender_id and "IsGroup" in message and message["IsGroup"]:
             # 如果是群聊消息，则SenderWxid应该已经包含发送者ID
             logger.debug(f"[DependencyManager] 群消息，发送者ID: {sender_id}")
-        
-        # 记录消息处理信息
-        logger.info(f"[DependencyManager] 发送者ID: {sender_id}")
-        logger.info(f"[DependencyManager] 会话ID: {conversation_id}")
-        logger.info(f"[DependencyManager] GitHub安装前缀: {self.github_install_prefix}")
             
         # 检查是否为管理员
         if sender_id not in self.admin_list:
-            logger.critical(f"[DependencyManager] 用户 {sender_id} 不在管理员列表中")
-            logger.critical(f"[DependencyManager] 当前管理员列表: {self.admin_list}")
+            logger.debug("[DependencyManager] 非管理员消息，sender={} conversation={}", sender_id, conversation_id)
             return True  # 非管理员，允许其他插件处理
         
-        logger.critical(f"[DependencyManager] 管理员 {sender_id} 发送命令: {content}")
+        logger.info("[DependencyManager] 管理员命令进入处理，sender={} conversation={}", sender_id, conversation_id)
         
         # ====================== 命令处理部分 ======================
         # 按照优先级排序，先处理特殊命令，再处理标准命令模式
@@ -519,7 +507,7 @@ class DependencyManager(PluginBase):
         
         # 2.1 检查是否明确以GitHub前缀开头 - 要求明确的安装意图
         starts_with_prefix = content.lower().startswith(self.github_install_prefix.lower())
-        logger.critical(f"[DependencyManager] 检查是否以'{self.github_install_prefix}'开头: {starts_with_prefix}, 内容: '{content}'")
+        logger.debug("[DependencyManager] github_prefix_match={} sender={}", starts_with_prefix, sender_id)
         
         # 2.2 GitHub快捷命令 - GeminiImage特殊处理
         if starts_with_prefix and (content.strip().lower() == f"{self.github_install_prefix} gemini" or 
@@ -598,10 +586,10 @@ class DependencyManager(PluginBase):
             
         # 2.4 标准GitHub安装命令处理 - 必须以明确的前缀开头
         if starts_with_prefix:
-            logger.critical(f"[DependencyManager] 检测到GitHub安装命令: {content}")
+            logger.info("[DependencyManager] 检测到 GitHub 安装命令，sender={}", sender_id)
             # 获取前缀后面的内容
             command_content = content[len(self.github_install_prefix):].strip()
-            logger.critical(f"[DependencyManager] 提取的命令内容: '{command_content}'")
+            logger.debug("[DependencyManager] GitHub 命令内容: {}", command_content)
             
             # 处理快捷命令 - gemini
             if command_content.lower() == "gemini" or command_content.lower() == "geminiimage":

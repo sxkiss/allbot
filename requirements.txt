@@ -17,6 +17,7 @@ itsdangerous~=2.1.2
 
 # 文件处理和媒体
 pillow~=10.4.0
+matplotlib>=3.5.0
 filetype~=1.2.0
 pydub~=0.25.1
 pysilk-mod~=1.6.4
@@ -46,3 +47,8 @@ websockets>=10.0
 redis>=4.2.0,<6.0.0
 pytz>=2021.1
 aio_pika>=9.0.0
+
+# 测试依赖
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
