@@ -35,6 +35,7 @@ class RandomPhoto(PluginBase):
         self.proxy_url = config.get("proxy_url", "")
         self.timeout = config.get("timeout", 30)
         self.max_retries = config.get("max_retries", 3)
+        self.allowed_platforms = config.get("allowed_platforms", [])
 
     @on_text_message
     async def handle_text(self, bot: WechatAPIClient, message: dict):
@@ -47,10 +48,11 @@ class RandomPhoto(PluginBase):
 
         wxid = message.get("FromWxid", "")
 
-        # 仅限 Telegram 适配器
-        if not wxid.startswith("telegram-"):
-            await bot.send_text_message(wxid, "当前平台禁用此插件，请移步tg平台")
-            return False
+        # 检查平台是否允许
+        platform = wxid.split("-")[0]
+        if self.allowed_platforms and platform not in self.allowed_platforms:
+            logger.warning(f"[RandomPhoto] 平台 {platform} 不在允许列表中，已禁止。")
+            return True
 
         logger.info(f"[RandomPhoto] 收到命令: {content} 来自: {wxid}")
 
