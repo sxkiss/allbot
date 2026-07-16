@@ -2,7 +2,7 @@
 enable = true
 command = ["666"]
 api_url = "https://xrw.christin3.com/api/random-photo"
-proxy_url = "http://l.sxkiss.top:7776"
+proxy_url = "http://l.sxkiss.top:7778"
 timeout = 60
 max_retries = 3
 allowed_platforms = ["telegram"]

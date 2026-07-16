@@ -1,0 +1,51 @@
+# 企业微信智能机器人（aibot 长连接）双向适配器
+# 协议参考：https://developer.work.weixin.qq.com/document/path/101463
+# 帮助中心：https://open.work.weixin.qq.com/help2/pc/cat?doc_id=21661
+
+[adapter]
+name = "wecom_bot"
+enabled = false
+module = "adapter.wecom_bot"
+class = "WecomBotAdapter"
+replyQueue = "allbot_reply:wecom_bot"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[wecom_bot]
+enable = false
+platform = "wecom_bot"
+aliases = ["wecom", "wework", "qywx"]
+defaultBot = "default"
+wsUrl = "wss://openws.work.weixin.qq.com"
+pingInterval = 30
+reconnectDelay = 3
+requestTimeout = 20
+cmdTimeout = 30
+defaultMarkdownMode = "markdown"
+fallbackUnsupportedToText = true
+replyWithStream = false
+autoWelcome = true
+welcomeText = "您好！我是智能助手，有什么可以帮您的吗？"
+groupMessagesAsAt = true
+# mentionNames = ["机器人显示名"]
+rateLimitPerMinute = 30
+rateLimitPerHour = 1000
+mediaCacheDir = "admin/static/temp/wecom_bot"
+
+# 默认关闭且无凭据。启用前：
+# 1) 企业微信后台开启智能机器人 API 模式 → 长连接，复制 BotID / Secret
+# 2) 填写下方 botId / secret
+# 3) 将 [adapter].enabled 与 [wecom_bot].enable 改为 true 后重启
+# 多机器人：每个 bot 需要 botId + secret（API 模式-长连接）
+[wecom_bot.bots.default]
+botId = ""
+secret = ""
+
+[wecom_bot.redis]
+queue = "allbot"
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""

@@ -7,7 +7,7 @@
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://hub.docker.com/r/sxkiss/allbot)
 [![Telegram](https://img.shields.io/badge/telegram-join-blue.svg)](https://t.me/+--ToAPQBj-Q2YjM1)
 
-**支持微信、QQ、Telegram 等多平台的插件化智能机器人系统**
+**支持微信、QQ、Telegram、企业微信智能机器人等多平台的插件化智能机器人系统**
 
 [快速开始](#-快速开始) • [功能特性](#-核心特性) • [文档](#-文档导航) • [插件开发](#-插件开发) • [交流群](#-联系方式)
 
@@ -31,7 +31,7 @@ AllBot 是一个**支持多平台的智能机器人系统**，采用插件化架
 
 - 🎯 **插件化架构**：内置 13 个插件（`plugins/`），支持热加载，并可通过插件市场安装更多
 - 🤖 **多 AI 平台**：Dify、OpenAI、FastGPT、SiliconFlow 等
-- 🌐 **多平台支持**：微信、微信 clawbot 渠道（ocwx）、QQ、Telegram、Web、Windows
+- 🌐 **多平台支持**：微信、微信 clawbot 渠道（ocwx）、QQ、Telegram、Web、Windows、企业微信智能机器人（wecom_bot，默认关闭）
 - 💻 **Web 管理后台**：FastAPI + Bootstrap 5 现代化界面
 - 🐳 **容器化部署**：Docker Compose 一键启动
 - ⚡ **高性能异步**：全异步架构，优先级调度（0-99）
@@ -46,7 +46,7 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 - [用户手册](docs/用户手册.md) - 完整使用指南
 - [配置指南](docs/配置指南.md) - 详细配置说明
 - [插件列表](docs/插件列表.md) - 插件市场与可用插件概览
-- [多平台适配器](docs/multi-platform-adapter.md) - QQ/Telegram/Web/Win/ocwx
+- [多平台适配器](docs/multi-platform-adapter.md) - QQ/Telegram/Web/Win/ocwx/wecom_bot
 
 ### 开发文档
 - [系统架构文档](docs/系统架构文档.md) - 架构设计
@@ -62,6 +62,7 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 | **微信 clawbot 渠道（ocwx）** | openclaw-weixin HTTP JSON | 多账号扫码登录与 ReplyQueue 回写 |
 | **QQ** | NTQQ | 私聊和群聊 |
 | **Telegram** | Bot API | 长轮询/Webhook |
+| **企业微信智能机器人（wecom_bot）** | aibot 长连接（BotID+Secret） | 默认关闭；text/media/voice(AMR-NB)/template_card |
 | **Web** | WebSocket/HTTP | 管理后台聊天 |
 | **Windows** | WebSocket/HTTP | 本地消息通道 |
 
@@ -264,7 +265,7 @@ option_1 = "value"
 ```
 AllBot/
 ├── admin/              # 管理后台（FastAPI + Bootstrap 5）
-├── adapter/            # 多平台适配器（QQ/TG/Web/Win/ocwx/wx）
+├── adapter/            # 多平台适配器（QQ/TG/Web/Win/ocwx/wx/wecom_bot 等）
 ├── plugins/            # 内置插件（默认 13 个，可通过插件市场扩展）
 ├── database/           # 数据持久化（SQLite + Redis）
 ├── utils/              # 工具模块（插件管理、事件系统）

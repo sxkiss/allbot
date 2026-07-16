@@ -48,6 +48,8 @@ class WechatAPIConfig:
     redis_port: int = 6379
     redis_password: str = ""
     redis_db: int = 0
+    # allbot 入站消费并发：>1 时多 worker 并行 await process_message，避免慢插件堵全站
+    message_consumer_workers: int = 4
 
 
 @dataclass
@@ -359,6 +361,16 @@ class ConfigManager:
                     "redis-db",
                     config.wechat_api.redis_db,
                     "redis-db",
+                ),
+                message_consumer_workers=int(
+                    get_with_legacy_fallback(
+                        api_config,
+                        "message-consumer-workers",
+                        config.wechat_api.message_consumer_workers,
+                        "message-consumer-workers",
+                        "consumer-workers",
+                    )
+                    or config.wechat_api.message_consumer_workers
                 ),
                 ws_url=get_with_legacy_fallback(
                     api_config,

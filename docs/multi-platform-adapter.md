@@ -4,7 +4,7 @@
 
 ## 1. 消息流转流程
 
-1. 外部平台消息进入适配器（QQ/TG/Web/ocwx 等）
+1. 外部平台消息进入适配器（QQ/TG/Web/ocwx/wecom_bot 等）
 2. 适配器将消息写入 Redis 主队列 `allbot`
 3. `bot_core.py` 中的 `message_consumer` 从 `allbot` 取出消息
 4. `XYBot.process_message` 解析并触发插件处理
@@ -159,3 +159,43 @@ Web 适配器不需要长期监听外部平台，只需保证 Redis 可用即可
 - `adapter/tg/README.md`
 - `adapter/web/README.md`
 - `adapter/win/README.md`
+- `adapter/wecom_bot/README.md`
+- `adapter/wechat_observatory/README.md`（如存在）
+
+## 9. wecom_bot 适配器说明
+
+`wecom_bot` 是企业微信智能机器人 **aibot 长连接双向适配器**（BotID + Secret），不是群机器人 webhook。  
+仓库默认 **关闭且无凭据**（`enabled/enable=false`，`botId/secret=""`）。
+
+- 协议：`wss://openws.work.weixin.qq.com`（`aibot_subscribe` / `aibot_msg_callback` / `aibot_respond_msg` / `aibot_send_msg` / 分片上传）
+- 入站队列：`allbot`
+- ReplyQueue：`allbot_reply:wecom_bot`
+- 平台名：`wecom_bot`（别名 `wecom` / `wework` / `qywx`）
+- 入站：text / image / file / video / voice(转文本) / mixed / enter_chat / template_card_event / feedback_event
+- 出站映射：
+  - text/html/msg → markdown（协议侧无 `msgtype=text`）
+  - stream：有 req_id 走 respond，否则 markdown
+  - image/file/video：分片上传
+  - voice/audio：AMR-NB 校验；非 AMR 自动 `ffmpeg`→8k wav + `amrnb-enc` 转码；空壳 AMR 拒绝
+  - link/news/url 与 appmsg 链接 XML → `template_card`（非纯文本）
+  - template_card / welcome / update_template_card / raw
+- 群聊：`groupMessagesAsAt=true` 时合成 `Ats`/`MsgSource` 以触发框架 `at_message`；企微侧通常仍需 @ 机器人才回调
+- 依赖：`ffmpeg` + `adapter/wecom_bot/bin/amrnb-enc`
+- 限速：每会话 30 条/分钟、1000 条/小时
+- 连接约束：同一 bot 仅一条有效长连接；必须先 WebSocket reader 再 `aibot_subscribe`
+
+启用步骤：
+
+```toml
+[adapter]
+enabled = true
+
+[wecom_bot]
+enable = true
+
+[wecom_bot.bots.default]
+botId = "YOUR_BOT_ID"
+secret = "YOUR_SECRET"
+```
+
+说明文档：`adapter/wecom_bot/README.md`

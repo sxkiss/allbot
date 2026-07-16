@@ -4,7 +4,7 @@
 
 AllBot is a multi-protocol bot with a FastAPI admin server and a plugin/adapter ecosystem.
 Runtime updates are handled by the admin update subsystem (download -> backup -> apply).
-The adapter layer now includes QQ, Telegram, Web, Win, wx-filehelper-api, ocwx clawbot, and WeChat Observatory public API bridges.
+The adapter layer now includes QQ, Telegram, Web, Win, wx-filehelper-api, ocwx clawbot, WeChat Observatory public API, and WeCom aibot long-connection bridges (wecom_bot defaults off; voice AMR-NB transcode + link template cards).
 Adapters are started inside bot core initialization before message listening starts.
 Wechat login runs asynchronously to avoid blocking adapter message ingestion.
 Wechat protocol access is encapsulated in `WechatAPI/`, including a dedicated 869 client.

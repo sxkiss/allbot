@@ -1,6 +1,6 @@
 """
 @input: WebSocket 消息流、Redis 队列、消息数据库、XYBot 实例与 resource/robot_stat.json（用于兜底 WS key）
-@output: 标准化 AddMsgs 消息入队并驱动插件处理；869 登录恢复时回写状态与缓存
+@output: 标准化 AddMsgs 消息入队并驱动插件处理（可配置多 worker 并发消费）；869 登录恢复时回写状态与缓存
 @position: bot_core 启动流程中的消息接收与分发入口
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -98,29 +98,36 @@ def _parse_invalid_status_payload(error: Exception) -> Dict[str, Any]:
     return payload
 
 
-async def message_consumer(xybot, redis, message_db):
-    logger.info("[Consumer] 消费者任务已启动，开始监听队列: {}", QUEUE_NAME)
+async def message_consumer(xybot, redis, message_db, worker_id: int = 0):
+    """单个入站消费 worker。多个 worker 并行 BLPOP，避免慢消息串行堵全站。"""
+    logger.info("[Consumer-{}] 消费者任务已启动，开始监听队列: {}", worker_id, QUEUE_NAME)
     try:
         await redis.ping()
-        logger.info("[Consumer] Redis 连接健康检查通过")
+        logger.info("[Consumer-{}] Redis 连接健康检查通过", worker_id)
     except Exception as exc:
-        logger.error("[Consumer] Redis 连接健康检查失败: {}", exc)
+        logger.error("[Consumer-{}] Redis 连接健康检查失败: {}", worker_id, exc)
         raise
     while True:
         try:
-            logger.debug("[Consumer] 等待消息，队列: {} ...", QUEUE_NAME)
+            logger.debug("[Consumer-{}] 等待消息，队列: {} ...", worker_id, QUEUE_NAME)
             _, msg_json = await redis.blpop(QUEUE_NAME)
             message = json.loads(msg_json)
-            logger.info("消息已出队并开始处理，队列: {}，消息ID: {}", QUEUE_NAME, message.get("MsgId") or message.get("msgId"))
+            msg_id = message.get("MsgId") or message.get("msgId")
+            logger.info(
+                "[Consumer-{}] 消息已出队并开始处理，队列: {}，消息ID: {}",
+                worker_id,
+                QUEUE_NAME,
+                msg_id,
+            )
             try:
                 await xybot.process_message(message)
             except Exception as error:
-                logger.error("消息处理异常: {}", error)
+                logger.error("[Consumer-{}] 消息处理异常: {}", worker_id, error)
         except asyncio.CancelledError:
-            logger.info("[Consumer] 消费者任务收到取消信号，退出")
+            logger.info("[Consumer-{}] 消费者任务收到取消信号，退出", worker_id)
             raise
         except Exception as exc:
-            logger.error("[Consumer] 消费者循环异常: {}", exc)
+            logger.error("[Consumer-{}] 消费者循环异常: {}", worker_id, exc)
             await asyncio.sleep(1)
 
 
@@ -476,7 +483,14 @@ class MessageListener:
         redis_url = f"redis://{api_config.redis_host}:{api_config.redis_port}"
         self.redis = aioredis.from_url(redis_url, decode_responses=True)
 
-        self.consumer_tasks = [asyncio.create_task(message_consumer(self.xybot, self.redis, message_db)) for _ in range(1)]
+        worker_count = max(1, min(32, int(getattr(api_config, "message_consumer_workers", 4) or 4)))
+        self.consumer_tasks = [
+            asyncio.create_task(
+                message_consumer(self.xybot, self.redis, message_db, worker_id=i + 1)
+            )
+            for i in range(worker_count)
+        ]
+        logger.success("[Consumer] 已启动 {} 个并发消费 worker，队列: {}", worker_count, QUEUE_NAME)
 
         try:
             if api_config.enable_websocket:

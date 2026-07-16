@@ -61,13 +61,15 @@ class RandomPhoto(PluginBase):
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 }
-
-                proxy_cfg = {}
-                if self.proxy_url:
-                    proxy_cfg["proxies"] = self.proxy_url
-
-                async with httpx.AsyncClient(timeout=self.timeout, verify=False, **proxy_cfg) as client:
-                    resp = await client.get(self.api_url, headers=headers, follow_redirects=True)
+                
+                async with httpx.AsyncClient(
+                    timeout=self.timeout,
+                    verify=False,
+                    headers=headers,
+                    proxies=self.proxy_url if self.proxy_url else None,
+                    follow_redirects=True,
+                ) as client:
+                    resp = await client.get(self.api_url)
                     resp.raise_for_status()
 
                     image_data = resp.content
