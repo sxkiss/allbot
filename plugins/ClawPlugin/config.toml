@@ -1,6 +1,6 @@
 [Claw]
 # 插件总开关
-enable = true
+enable = false
 
 # OpenClaw Gateway WebSocket 地址
 ws-url = "ws://:18789"

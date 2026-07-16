@@ -1,6 +1,6 @@
 [DifyConversationManager]
 # 基础设置
-enable = true                                    # 是否启用插件
+enable = false                                    # 是否启用插件
 api-key = "app-E3t4r9qAPiwsEepSMwXhFdZ9"       # Dify API密钥
 base-url = "http://sxkiss.top/v1"        # Dify API基础URL
 http-proxy = ""                                 # HTTP代理设置（可选）

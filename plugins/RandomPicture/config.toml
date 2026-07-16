@@ -1,3 +1,3 @@
 [RandomPicture]
-enable = true
+enable = false
 command = ["随机图片", "随机图图"]

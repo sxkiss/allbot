@@ -1,5 +1,5 @@
 [VideoDemand]
-enable = true
+enable = false
 command = ["视频菜单"]
 random-command = ["随机视频"]
 random-video-url = "https://sj.tuituiya.cn/sjdsp/zsxjj669.php"

@@ -1,5 +1,5 @@
 [Reminder]
-enable = true
+enable = false
 
 commands = ["记录", "我的记录", "删除"]
 # 这里配置其他插件的唤醒词，备忘录会自动识别并触发

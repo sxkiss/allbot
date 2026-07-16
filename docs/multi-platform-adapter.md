@@ -2,6 +2,12 @@
 
 > 目标：在不改动核心处理逻辑的前提下，让外部平台消息进入 AllBot，并通过统一的回复队列回写。
 
+## 0. 默认启用策略
+
+- 默认仅启用 `web` 适配器（`adapter/web/config.toml`）。
+- 其余适配器（`qq`/`tg`/`wx`/`win`/`ocwx`/`wechat_observatory`/`wecom_bot`）默认关闭，需按需改 `enabled/enable = true`。
+- 内置插件默认全部关闭：各插件 `config.toml` 主开关为 `false`；`disabled-plugins` 默认保持空列表。
+
 ## 1. 消息流转流程
 
 1. 外部平台消息进入适配器（QQ/TG/Web/ocwx/wecom_bot 等）

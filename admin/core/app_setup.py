@@ -10,11 +10,12 @@ AllBot 管理后台 - 核心应用设置模块
 - 静态文件与模板引擎设置
 
 @input: main_config.toml 管理后台配置、bot_core 写入的 bot_status.json、运行时 bot_instance
-@output: FastAPI app 初始化与 app.state 依赖注入（含 bot 状态读取函数）
+@output: FastAPI app 初始化与 app.state 依赖注入（含 bot 状态读取函数）；未设置 secret-key 时自动生成并写回
 @position: 管理后台应用装配入口，负责将 bot_core 状态桥接到前端
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
 import os
+import re
 import sys
 import json
 import secrets
@@ -203,20 +204,147 @@ def load_config():
         if cors_origins.strip():
             config["cors_origins"] = [item.strip() for item in cors_origins.split(",") if item.strip()]
 
+        main_config_path = os.path.join(os.path.dirname(admin_dir), "main_config.toml")
+        _ensure_admin_secret_key(main_config_path)
+
     except Exception as e:
         logger.error(f"加载管理后台配置失败: {str(e)}")
         logger.warning("使用默认配置")
+        main_config_path = os.path.join(os.path.dirname(admin_dir), "main_config.toml")
+        _ensure_admin_secret_key(main_config_path)
+
+
+DEFAULT_ADMIN_SECRET_KEYS = {
+    "xybotv2_admin_secret_key",
+    "admin_secret_key",
+    "change_me",
+    "change_me_to_a_random_secret",
+}
+
+
+def _is_unset_secret_key(secret_key: str) -> bool:
+    """判断 secret-key 是否未设置（空值或模板默认值）。"""
+    value = str(secret_key or "").strip()
+    return not value or value in DEFAULT_ADMIN_SECRET_KEYS
+
+
+def _needs_secret_key_bootstrap(secret_key: str) -> bool:
+    """判断 secret-key 是否需要自动生成（未设置、默认值或长度不足）。"""
+    value = str(secret_key or "").strip()
+    return _is_unset_secret_key(value) or len(value) < 24
+
+
+def _generate_secret_key() -> str:
+    """生成足够长度的随机会话签名密钥。"""
+    return secrets.token_urlsafe(32)
+
+
+def _persist_admin_secret_key_text(content: str, secret_key: str) -> str:
+    """在无 tomlkit 时用文本替换写回 secret-key，尽量保留原文件内容。"""
+    key_pattern = re.compile(
+        r'(?m)^([ \t]*(?:secret-key|secret_key)[ \t]*=[ \t]*)(["\'])(.*?)(\2)([ \t]*(?:#.*)?)?$'
+    )
+    escaped = secret_key.replace("\\", "\\\\").replace('"', '\\"')
+
+    def _replace_key(match: re.Match) -> str:
+        prefix, _quote, _old, _q2, suffix = match.groups()
+        suffix = suffix or ""
+        return f'{prefix}"{escaped}"{suffix}'
+
+    if key_pattern.search(content):
+        return key_pattern.sub(_replace_key, content, count=1)
+
+    admin_header = re.compile(r'(?m)^[ \t]*\[Admin\][ \t]*$')
+    match = admin_header.search(content)
+    line = f'secret-key = "{escaped}"\n'
+    if match:
+        insert_at = match.end()
+        return content[:insert_at] + "\n" + line + content[insert_at:].lstrip("\n")
+
+    suffix = "" if content.endswith("\n") or not content else "\n"
+    return content + f"{suffix}\n[Admin]\n{line}"
+
+
+def _persist_admin_secret_key(secret_key: str, config_path: str) -> bool:
+    """将自动生成的 secret-key 写回 main_config.toml，尽量保留原有格式。"""
+    path = Path(config_path)
+    if not path.exists():
+        logger.warning(f"配置文件不存在，无法持久化 secret-key: {config_path}")
+        return False
+
+    try:
+        try:
+            import tomlkit
+        except ImportError:
+            tomlkit = None
+
+        if tomlkit is not None:
+            with open(path, "r", encoding="utf-8") as f:
+                doc = tomlkit.load(f)
+
+            if "Admin" not in doc:
+                doc["Admin"] = tomlkit.table()
+
+            admin = doc["Admin"]
+            # 优先沿用已有字段名，模板默认使用 secret-key
+            if "secret-key" in admin or "secret_key" not in admin:
+                admin["secret-key"] = secret_key
+                if "secret_key" in admin:
+                    del admin["secret_key"]
+            else:
+                admin["secret_key"] = secret_key
+
+            with open(path, "w", encoding="utf-8") as f:
+                tomlkit.dump(doc, f)
+            return True
+
+        original = path.read_text(encoding="utf-8")
+        updated = _persist_admin_secret_key_text(original, secret_key)
+        path.write_text(updated, encoding="utf-8")
+        return True
+    except Exception as e:
+        logger.warning(f"写回自动生成的 secret-key 失败: {e}")
+        return False
+
+
+def _ensure_admin_secret_key(config_path: str | None = None) -> None:
+    """启动时若 secret-key 未设置/默认/过短，则自动生成并尽量持久化。"""
+    global config
+
+    secret_key = str(config.get("secret_key", "") or "").strip()
+    if not _needs_secret_key_bootstrap(secret_key):
+        return
+
+    reason = "未设置"
+    if secret_key and secret_key in DEFAULT_ADMIN_SECRET_KEYS:
+        reason = "仍为默认值"
+    elif secret_key and len(secret_key) < 24:
+        reason = "长度不足 24"
+
+    generated = _generate_secret_key()
+    config["secret_key"] = generated
+
+    # 环境变量覆盖时只作用于当前进程，避免回写宿主配置造成误导
+    if "ADMIN_SECRET_KEY" in os.environ:
+        logger.warning(
+            f"检测到 ADMIN_SECRET_KEY {reason}，已自动生成临时 secret-key（仅当前进程生效）"
+        )
+        return
+
+    target = config_path or os.path.join(os.path.dirname(admin_dir), "main_config.toml")
+    if _persist_admin_secret_key(generated, target):
+        logger.warning(
+            f"[Admin].secret-key {reason}，已自动生成并写入配置文件: {target}"
+        )
+    else:
+        logger.warning(
+            f"[Admin].secret-key {reason}，已自动生成临时密钥（仅当前进程生效，写回配置失败）"
+        )
 
 
 def _assert_secure_admin_config():
     """拒绝以默认高风险凭据启动管理后台。"""
     default_passwords = {"admin123", "change_me", "admin"}
-    default_secret_keys = {
-        "xybotv2_admin_secret_key",
-        "admin_secret_key",
-        "change_me",
-        "change_me_to_a_random_secret",
-    }
 
     username = str(config.get("username", "") or "").strip()
     password = str(config.get("password", "") or "").strip()
@@ -225,8 +353,9 @@ def _assert_secure_admin_config():
     errors = []
     if username == "admin" and password in default_passwords:
         errors.append("管理后台仍在使用默认账号口令，请修改 [Admin].username/password")
-    if secret_key in default_secret_keys or len(secret_key) < 24:
-        errors.append("管理后台 secret_key 过弱或仍为默认值，请修改 [Admin].secret-key")
+    # 正常启动路径会先自动生成；此处仅兜底拦截极端失败场景
+    if _needs_secret_key_bootstrap(secret_key):
+        errors.append("管理后台 secret_key 自动生成失败，请检查 [Admin].secret-key 写入权限")
 
     if errors:
         raise RuntimeError("；".join(errors))
@@ -335,6 +464,8 @@ def get_version_info():
 def create_app() -> FastAPI:
     """创建并配置 FastAPI 应用实例"""
     global app, templates
+    # 兜底：未走 load_config 时也自动补齐 secret-key
+    _ensure_admin_secret_key()
     _assert_secure_admin_config()
 
     # 创建 FastAPI 应用

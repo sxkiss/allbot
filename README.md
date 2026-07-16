@@ -106,21 +106,21 @@ cd allbot
 cp main_config.template.toml main_config.toml
 # 编辑 main_config.toml 设置管理员、协议服务等
 #
-# 关键项：必须修改 [Admin].password 和 [Admin].secret-key
-# secret-key 需要至少 24 位随机字符串；缺失、过弱或保持默认值时，管理后台会拒绝启动
+# 关键项：必须修改 [Admin].password
+# secret-key 可留空；启动时若未设置/默认值/过短，会自动生成并写回 main_config.toml
 #
 # [Admin]
 # username = "admin"
 # password = "请改成强密码"
-# secret-key = "请替换为至少24位随机字符串"
+# secret-key = ""  # 可留空，启动自动生成
 # session-cookie-secure = false  # HTTPS / 反向代理终止 TLS 时改为 true
 # cors-origins = ["http://127.0.0.1", "http://localhost"]  # 生产环境按实际域名收紧
 
 # 启动服务
 docker-compose up -d
 
-# 说明：docker-compose.yml 默认挂载当前项目目录到 /app
-# 请确保在本项目根目录执行，容器才会与本地代码/配置保持同步
+# 说明：docker-compose.yml 使用命名卷 allbot:/app，不挂载当前宿主目录
+# 本地开发需要代码热同步时，请使用 docker-compose.local.yml
 
 # 查看日志
 docker-compose logs -f
@@ -143,7 +143,7 @@ python main.py
 
 - 地址：`http://localhost:9090`
 - 用户名/密码：在 `main_config.toml` 中配置
-- 启动前请确认 `[Admin].secret-key` 已改为强随机值；保持模板默认值或留空时，后台不会启动
+- `[Admin].secret-key` 可留空；未设置、默认值或过短时启动会自动生成并写回配置文件
 
 详细安装步骤请参考 [配置指南](docs/配置指南.md)。
 
@@ -247,14 +247,14 @@ option_1 = "value"
 - 检查 SpeechRecognition 依赖
 
 **插件不生效**
-- 检查 `config.toml` 中 `enable = true`
+- 检查插件 `config.toml` 中主开关为 `enable = true`（默认均为关闭）
 - 查看日志 `logs/allbot_*.log`
 - 确认优先级未被覆盖
 
 **无法访问管理后台**
 - 确认服务运行在 9090 端口
 - 检查用户名密码配置
-- 检查 `[Admin].secret-key` 是否已替换为强随机字符串；默认值、缺失或过弱会导致后台拒绝启动
+- 检查 `[Admin].secret-key`：未设置、默认值或过短（<24）时启动会自动生成并写回配置
 - 如果使用 HTTPS/反向代理，检查 `session-cookie-secure` 与 `cors-origins` 是否按部署环境正确配置
 - 检查防火墙设置
 

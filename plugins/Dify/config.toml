@@ -1,5 +1,5 @@
 [Dify]
-enable = true
+enable = false
 default-model = "学姐"
 commands = [ "聊天", "AI", "重置对话" ]
 support_agent_mode = true

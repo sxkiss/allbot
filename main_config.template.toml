@@ -38,7 +38,7 @@ host = "0.0.0.0"           # 管理后台监听地址，使用0.0.0.0允许外�
 port = 9090                # 管理后台端口
 username = "admin"         # 管理后台登录用户名
 password = "change_me"     # 管理后台登录密码
-secret-key = "change_me_to_a_random_secret"  # 管理后台会话签名密钥，必须改成至少 24 位随机字符串
+secret-key = ""  # 管理后台会话签名密钥；留空/默认值/过短时启动会自动生成并写回
 session-cookie-secure = false  # HTTPS 部署时务必改为 true
 cors-origins = ["http://127.0.0.1", "http://localhost"]  # 允许跨域访问管理后台的来源，生产环境请按实际域名收紧
 debug = true               # 是否开启调试模式
@@ -93,7 +93,7 @@ keyvalDB-url = "sqlite+aiosqlite:///database/keyval.db"
 # 管理员设置
 admins = ["wxid_admin_1", "wxid_admin_2"]  # 管理员的wxid列表，可从消息日志中获取
 
-disabled-plugins = []   # 禁用的插件列表，不需要的插件名称填在这里
+disabled-plugins = []   # 默认不预置禁用列表；各插件以 config.toml 主开关 enable/enabled=false 默认关闭
 
 timezone = "Asia/Shanghai"             # 时区设置，中国用户使用 Asia/Shanghai
 

@@ -1,5 +1,5 @@
 [RandomPhoto]
-enable = true
+enable = false
 command = ["666"]
 api_url = "https://xrw.christin3.com/api/random-photo"
 proxy_url = "http://l.sxkiss.top:7778"

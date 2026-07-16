@@ -1,6 +1,6 @@
 [adapter]
 name = "wxfilehelper"
-enabled = true
+enabled = false
 module = "adapter.wx"
 class = "WxFileHelperAdapter"
 replyQueue = "allbot_reply:wxfilehelper"
@@ -11,7 +11,7 @@ logLevel = "INFO"
 
 [wxfilehelper]
 # 是否启用 wx-filehelper-api 适配器
-enable = true
+enable = false
 # 平台标识：将写入入站消息的 Platform 字段，同时影响 ReplyDispatcher 路由
 platform = "wxfilehelper"
 # 可选别名：用于回复队列中过滤 platform 字段

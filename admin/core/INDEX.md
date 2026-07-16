@@ -9,5 +9,5 @@
 | File | Role | Function |
 |------|------|----------|
 | __init__.py | Entry | 包声明（可为空） |
-| app_setup.py | Core | 管理后台应用装配、全局依赖注入（含 `app.state.get_bot_status`）、默认凭据拦截与会话/CORS 安全策略 |
+| app_setup.py | Core | 管理后台应用装配、全局依赖注入（含 `app.state.get_bot_status`）、secret-key 自动生成/持久化、默认凭据拦截与会话/CORS 安全策略 |
 | helpers.py | Utility | 管理后台通用辅助函数（状态文件、版本信息、路径等） |

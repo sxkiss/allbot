@@ -2,7 +2,7 @@
 
 # adapter
 
-多平台适配层：负责把外部平台消息统一写入 `allbot` 队列，并从平台专属 `replyQueue` 消费回复，覆盖 QQ、Telegram、Web、Win、wx-filehelper、微信 clawbot、WeChat Observatory 与企业微信智能机器人（aibot 长连接）渠道。
+多平台适配层：负责把外部平台消息统一写入 `allbot` 队列，并从平台专属 `replyQueue` 消费回复，覆盖 QQ、Telegram、Web、Win、wx-filehelper、微信 clawbot、WeChat Observatory 与企业微信智能机器人（aibot 长连接）渠道。默认仅启用 `web`，其余适配器默认关闭。
 
 ## Files
 

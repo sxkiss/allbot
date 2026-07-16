@@ -1,6 +1,6 @@
 [RevokeBotMessage]
 # 插件开关
-enable = true
+enable = false
 
 # 触发词（需“引用机器人消息”一起使用）
 trigger = "撤回"

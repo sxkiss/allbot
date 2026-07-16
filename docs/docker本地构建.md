@@ -60,6 +60,7 @@ docker-compose -f docker-compose.local.yml up -d
 - 容器名：allbot
 - 管理后台端口：9090
 - 镜像：sxkiss/allbot:latest
+- 代码/数据卷：allbot:/app（命名卷，非宿主目录）
 - Redis 数据卷：redis_data:/data/redis
 
 ### 3.2 本地构建配置（docker-compose.local.yml）

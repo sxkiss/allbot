@@ -91,7 +91,7 @@ keyvalDB-url = "sqlite+aiosqlite:///database/keyval.db"
 # 管理员设置
 admins = ["wxid_admin_1", "wxid_admin_2"]  # 管理员的wxid列表，可从消息日志中获取
 
-disabled-plugins = ["GroupMonitorPlugin", "ClawPlugin"]   # 禁用的插件列表，不需要的插件名称填在这里
+disabled-plugins = []   # 默认不预置禁用列表；各插件以 config.toml 主开关 enable/enabled=false 默认关闭
 
 timezone = "Asia/Shanghai"             # 时区设置，中国用户使用 Asia/Shanghai
 

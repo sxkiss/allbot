@@ -1,6 +1,6 @@
 [Protocol869Demo]
 # 插件开关
-enable = true
+enable = false
 
 # 说明：
 # - 该插件是 869 能力示例插件，只在 protocol=869 时生效。

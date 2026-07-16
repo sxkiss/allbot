@@ -7,9 +7,11 @@ services:
     ports:
       - "9090:9090" # 管理后台端口
     volumes:
-      - ./:/app # 挂载整个项目目录，保证容器与本地代码/配置实时同步
+      - allbot:/app
       - redis_data:/data/redis # Redis数据持久化
 
 volumes:
+  allbot:
+    name: allbot
   redis_data:
     name: redis_data
