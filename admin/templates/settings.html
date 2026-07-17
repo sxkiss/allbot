@@ -7,13 +7,13 @@
 {% block extra_css %}
 <style>
     .config-section {
-        margin-bottom: 2rem;
+        margin-bottom: 1.25rem;
     }
 
     .section-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #3498DB 0%, #2ECC71 100%);
         color: white;
-        padding: 1rem 1.5rem;
+        padding: 0.9rem 1.25rem;
         border-radius: 8px 8px 0 0;
         margin-bottom: 0;
         cursor: pointer;
@@ -23,7 +23,7 @@
     }
 
     .section-header:hover {
-        opacity: 0.9;
+        opacity: 0.95;
     }
 
     .section-header i.bi-chevron-down {
@@ -38,7 +38,7 @@
         border: 1px solid #dee2e6;
         border-top: none;
         border-radius: 0 0 8px 8px;
-        padding: 1.5rem;
+        padding: 1.25rem;
         background: white;
     }
 
@@ -55,45 +55,32 @@
 
     .btn-save-config {
         min-width: 120px;
-        position: sticky;
-        top: 20px;
-        z-index: 100;
-    }
-
-    .alert-config {
-        margin-top: 1rem;
     }
 
     .array-input-group {
         margin-bottom: 0.5rem;
     }
 
-    .array-input-group .input-group {
-        margin-bottom: 0.5rem;
-    }
-
-    .btn-add-item {
-        margin-top: 0.5rem;
-    }
-
-    .config-tabs {
+    .config-mode-bar {
         position: sticky;
         top: 0;
-        background: white;
-        z-index: 99;
-        padding: 1rem 0;
-        border-bottom: 2px solid #dee2e6;
-        margin-bottom: 1.5rem;
+        z-index: 20;
+        background: #fff;
+        border-bottom: 1px solid #e9ecef;
+        padding: 0.75rem 0;
+        margin-bottom: 1rem;
     }
 
-    .nav-pills .nav-link {
-        border-radius: 20px;
-        padding: 0.5rem 1.5rem;
-        margin-right: 0.5rem;
+    .mode-btn.active {
+        background: #3498DB;
+        border-color: #3498DB;
+        color: #fff;
     }
 
-    .nav-pills .nav-link.active {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    #config-editor {
+        height: 560px;
+        font-family: var(--font-mono, monospace);
+        font-size: 0.9rem;
     }
 </style>
 {% endblock %}
@@ -103,12 +90,16 @@
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h5 class="mb-0">
                         <i class="bi bi-gear me-2 text-primary"></i>系统配置管理
                     </h5>
-                    <div>
-                        <button class="btn btn-sm btn-outline-secondary me-2" id="btn-reload-config">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="form-check form-switch me-2">
+                            <input class="form-check-input" type="checkbox" id="toggle-advanced-fields">
+                            <label class="form-check-label" for="toggle-advanced-fields">显示高级项</label>
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" id="btn-reload-config">
                             <i class="bi bi-arrow-clockwise"></i> 重新加载
                         </button>
                         <button class="btn btn-sm btn-primary btn-save-config" id="btn-save-config">
@@ -119,16 +110,38 @@
                 <div class="card-body">
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle me-2"></i>
-                        <strong>提示：</strong>修改配置后需要重启服务才能生效。保存前会自动备份原配置文件。
+                        <strong>提示：</strong>这里按中文说明展示常用设置，普通用户无需直接编辑配置文件。修改后一般需要重启服务才会完全生效。
                     </div>
 
                     <div id="alert-container"></div>
 
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle me-2"></i>
-                        <strong>原文编辑模式：</strong>直接读取并保存 `main_config.toml`，避免表格化编辑破坏注释和结构。
+                    <div class="config-mode-bar d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="btn-group" role="group" aria-label="配置模式">
+                            <button type="button" class="btn btn-outline-primary mode-btn active" id="btn-mode-visual">
+                                <i class="bi bi-sliders me-1"></i>可视化配置
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary mode-btn" id="btn-mode-raw">
+                                <i class="bi bi-code-slash me-1"></i>高级原文
+                            </button>
+                        </div>
+                        <div class="text-muted small" id="config-path-label">main_config.toml</div>
                     </div>
-                    <textarea id="config-editor" class="form-control" style="height: 520px; font-family: monospace;"></textarea>
+
+                    <div id="visual-config-pane">
+                        <div id="config-form-loading" class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status"></div>
+                            <div class="mt-2 text-muted">正在加载配置...</div>
+                        </div>
+                        <div id="config-form-root"></div>
+                    </div>
+
+                    <div id="raw-config-pane" class="d-none">
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            高级原文模式会直接保存 `main_config.toml`。若不确定语法，请回到可视化配置。
+                        </div>
+                        <textarea id="config-editor" class="form-control" spellcheck="false"></textarea>
+                    </div>
                 </div>
             </div>
         </div>
@@ -137,100 +150,103 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="/static/js/config_form.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const btnSave = document.getElementById('btn-save-config');
     const btnReload = document.getElementById('btn-reload-config');
     const alertContainer = document.getElementById('alert-container');
-    const configEditor = document.getElementById('config-editor');
+    const loadingEl = document.getElementById('config-form-loading');
+    const pathLabel = document.getElementById('config-path-label');
 
-    // 显示提示信息
+    const controller = window.ConfigForm.createController({
+        formContainer: '#config-form-root',
+        rawEditor: '#config-editor',
+        modeVisualBtn: '#btn-mode-visual',
+        modeRawBtn: '#btn-mode-raw',
+        advancedToggle: '#toggle-advanced-fields',
+        visualPane: '#visual-config-pane',
+        rawPane: '#raw-config-pane',
+    });
+
     function showAlert(message, type = 'info') {
         const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${type} alert-dismissible fade show alert-config`;
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
         alertDiv.innerHTML = `
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
         alertContainer.innerHTML = '';
         alertContainer.appendChild(alertDiv);
-
-        setTimeout(() => {
-            alertDiv.remove();
-        }, 5000);
+        setTimeout(() => alertDiv.remove(), 5000);
     }
 
-    // 加载配置
-    function loadConfig() {
-        fetch('/api/files/read?path=main_config.toml')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`服务器响应状态码: ${response.status}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (!data.success) {
-                    throw new Error(data.error || '读取配置文件失败');
-                }
-                configEditor.value = data.content || '';
-                showAlert('配置文件加载成功（原文模式）', 'success');
-            })
-            .catch(error => {
-                showAlert(`加载配置出错: ${error.message}`, 'danger');
+    async function loadConfig() {
+        loadingEl.classList.remove('d-none');
+        try {
+            const response = await fetch('/api/system/config', { credentials: 'include' });
+            if (!response.ok) {
+                throw new Error(`服务器响应状态码: ${response.status}`);
+            }
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || data.message || '读取配置失败');
+            }
+            controller.load({
+                schema: data.schema || [],
+                values: data.data || {},
+                raw: data.raw || '',
             });
+            if (pathLabel && data.path) {
+                pathLabel.textContent = data.path.split('/').slice(-2).join('/') || data.path;
+            }
+            showAlert('配置加载成功', 'success');
+        } catch (error) {
+            showAlert(`加载配置出错: ${error.message}`, 'danger');
+        } finally {
+            loadingEl.classList.add('d-none');
+        }
     }
 
-    // 保存配置
-    function saveConfig() {
-        if (!confirm('确定要保存配置文件原文吗？系统将保持当前格式。')) {
+    async function saveConfig() {
+        const payload = controller.collect();
+        const modeLabel = payload.mode === 'raw' ? '原文配置' : '可视化配置';
+        if (!confirm(`确定保存${modeLabel}吗？保存前会自动备份。`)) {
             return;
         }
 
         btnSave.disabled = true;
+        const oldHtml = btnSave.innerHTML;
         btnSave.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中...';
 
-        fetch('/api/files/write', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-                path: 'main_config.toml',
-                content: configEditor.value
-            })
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('配置保存成功，系统准备重启...', 'success');
-                    setTimeout(() => {
-                        fetch('/api/system/restart', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'include'
-                        }).catch(() => {});
-                    }, 600);
-                } else {
-                    showAlert(`保存配置失败: ${data.error || '未知错误'}`, 'danger');
-                }
-            })
-            .catch(error => {
-                showAlert(`保存配置出错: ${error.message}`, 'danger');
-            })
-            .finally(() => {
-                btnSave.disabled = false;
-                btnSave.innerHTML = '<i class="bi bi-save"></i> 保存配置';
+        try {
+            const body = payload.mode === 'raw'
+                ? { mode: 'raw', content: payload.content }
+                : { mode: 'visual', values: payload.values };
+
+            const response = await fetch('/api/system/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(body),
             });
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || data.message || '保存失败');
+            }
+            showAlert(data.message || '配置保存成功', 'success');
+            await loadConfig();
+        } catch (error) {
+            showAlert(`保存配置出错: ${error.message}`, 'danger');
+        } finally {
+            btnSave.disabled = false;
+            btnSave.innerHTML = oldHtml;
+        }
     }
 
-    // 初始加载配置
-    loadConfig();
-
-    // 绑定事件
-    btnSave.addEventListener('click', saveConfig);
     btnReload.addEventListener('click', loadConfig);
+    btnSave.addEventListener('click', saveConfig);
+    loadConfig();
 });
 </script>
 {% endblock %}

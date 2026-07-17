@@ -128,23 +128,77 @@
     padding: 2px 6px;
     border-radius: 3px;
 }
+
+.config-section { margin-bottom: 1rem; }
+.section-header {
+    background: linear-gradient(135deg, #3498DB 0%, #2ECC71 100%);
+    color: #fff;
+    padding: 0.75rem 1rem;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.section-header.collapsed i.bi-chevron-down { transform: rotate(-90deg); }
+.section-header i.bi-chevron-down { transition: transform .3s; }
+.section-body {
+    border: 1px solid #dee2e6;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 1rem;
+    background: #fff;
+}
+.mode-btn.active {
+    background: #3498DB;
+    border-color: #3498DB;
+    color: #fff;
+}
 </style>
 {% endblock %}
 
 {% block modals %}
 <div class="modal fade" id="adapter-config-modal" tabindex="-1" aria-labelledby="adapter-config-modal-title" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="adapter-config-modal-title">配置适配器</h5>
+                <div>
+                    <h5 class="modal-title" id="adapter-config-modal-title">配置适配器</h5>
+                    <div class="small text-muted" id="adapter-config-path-label"></div>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle me-2"></i>
-                    <span>编辑 TOML 配置文件。保存后需要重启服务才能生效。</span>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <div class="btn-group" role="group" aria-label="配置模式">
+                        <button type="button" class="btn btn-sm btn-outline-primary mode-btn active" id="adapter-btn-mode-visual">
+                            <i class="bi bi-sliders me-1"></i>可视化配置
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary mode-btn" id="adapter-btn-mode-raw">
+                            <i class="bi bi-code-slash me-1"></i>高级原文
+                        </button>
+                    </div>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" id="adapter-toggle-advanced-fields">
+                        <label class="form-check-label" for="adapter-toggle-advanced-fields">显示高级项</label>
+                    </div>
                 </div>
-                <textarea class="form-control font-monospace" id="adapter-config-content" rows="20" style="font-size: 0.9rem;"></textarea>
+
+                <div class="alert alert-info py-2">
+                    <i class="bi bi-info-circle me-2"></i>
+                    按中文说明修改适配器参数。保存后需要重启服务才会生效。
+                </div>
+
+                <div id="adapter-visual-config-pane">
+                    <div id="adapter-config-form-root"></div>
+                </div>
+                <div id="adapter-raw-config-pane" class="d-none">
+                    <div class="alert alert-warning py-2">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        原文模式直接写入 TOML，语法错误可能导致适配器无法启动。
+                    </div>
+                    <textarea class="form-control font-monospace" id="adapter-config-content" rows="16" style="font-size: 0.9rem;" spellcheck="false"></textarea>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
@@ -159,5 +213,6 @@
 
 {% block extra_js %}
 <script src="/static/js/lib/marked.min.js"></script>
+<script src="/static/js/config_form.js"></script>
 <script src="/static/js/adapters.js"></script>
 {% endblock %}

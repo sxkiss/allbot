@@ -273,6 +273,36 @@
         font-weight: 500;
     }
 
+
+    .config-section { margin-bottom: 1rem; }
+    .section-header {
+        background: linear-gradient(135deg, #3498DB 0%, #2ECC71 100%);
+        color: #fff;
+        padding: 0.75rem 1rem;
+        border-radius: 8px 8px 0 0;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .section-header.collapsed i.bi-chevron-down { transform: rotate(-90deg); }
+    .section-header i.bi-chevron-down { transition: transform .3s; }
+    .section-body {
+        border: 1px solid #dee2e6;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        padding: 1rem;
+        background: #fff;
+    }
+    #plugin-config-editor {
+        min-height: 360px;
+        font-size: 0.9rem;
+    }
+    .mode-btn.active {
+        background: #3498DB;
+        border-color: #3498DB;
+        color: #fff;
+    }
     #plugin-config-form .form-control {
         background-color: #f8f9fa;
         border: 1px solid #ced4da;
@@ -517,14 +547,16 @@
 {% block modals %}
 <!-- 插件配置模态框 -->
 <div class="modal" id="plugin-config-modal" tabindex="-1" aria-labelledby="plugin-config-title" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="plugin-config-title"></h5>
+                <div>
+                    <h5 class="modal-title" id="plugin-config-title"></h5>
+                    <div class="small text-muted" id="plugin-config-path-label"></div>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
             </div>
             <div class="modal-body">
-                <!-- 加载状态 -->
                 <div id="plugin-config-loading" class="text-center py-4">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">加载中...</span>
@@ -532,14 +564,43 @@
                     <p class="mt-2">正在加载配置...</p>
                 </div>
 
-                <!-- 错误提示 -->
                 <div id="plugin-config-error" class="alert alert-danger d-none" role="alert">
                     <i class="bi bi-exclamation-triangle-fill me-2"></i>
                     <span></span>
                 </div>
 
-                <!-- 配置表单容器 -->
-                <div id="plugin-config-form"></div>
+                <div id="plugin-config-form">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <div class="btn-group" role="group" aria-label="配置模式">
+                            <button type="button" class="btn btn-sm btn-outline-primary mode-btn active" id="plugin-btn-mode-visual">
+                                <i class="bi bi-sliders me-1"></i>可视化配置
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mode-btn" id="plugin-btn-mode-raw">
+                                <i class="bi bi-code-slash me-1"></i>高级原文
+                            </button>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="plugin-toggle-advanced-fields">
+                            <label class="form-check-label" for="plugin-toggle-advanced-fields">显示高级项</label>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info py-2">
+                        <i class="bi bi-info-circle me-2"></i>
+                        按中文说明修改插件参数。若识别不全，可切换到“高级原文”。
+                    </div>
+
+                    <div id="plugin-visual-config-pane">
+                        <div id="plugin-config-form-root"></div>
+                    </div>
+                    <div id="plugin-raw-config-pane" class="d-none">
+                        <div class="alert alert-warning py-2">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            原文模式直接写入 TOML，语法错误会导致插件无法启动。
+                        </div>
+                        <textarea id="plugin-config-editor" class="form-control font-monospace" rows="16" spellcheck="false"></textarea>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
@@ -724,6 +785,7 @@
 <!-- 引入插件管理JS -->
 <!-- Markdown渲染库 -->
 <script src="/static/js/lib/marked.min.js"></script>
+<script src="/static/js/config_form.js"></script>
 <script src="/static/js/plugins.js"></script>
 <script src="/admin/static/js/custom.js?v={{ version }}"></script>
 <!-- 引入插件显示修复脚本 -->

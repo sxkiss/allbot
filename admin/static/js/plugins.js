@@ -222,10 +222,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // 监听模态框关闭事件
     const configModal = document.getElementById('plugin-config-modal');
     configModal.addEventListener('hidden.bs.modal', function() {
-        // 清理表单
-        document.getElementById('plugin-config-form').innerHTML = '';
-        // 重置错误状态
-        document.getElementById('plugin-config-error').style.display = 'none';
+        currentConfigPluginId = null;
+        const root = document.getElementById('plugin-config-form-root');
+        if (root) root.innerHTML = '';
+        const editor = document.getElementById('plugin-config-editor');
+        if (editor) editor.value = '';
+        const errorEl = document.getElementById('plugin-config-error');
+        if (errorEl) {
+            errorEl.classList.add('d-none');
+            errorEl.style.display = 'none';
+        }
     });
 
     // 框架选择按钮的事件监听器现在已经合并到过滤按钮的事件处理中
@@ -815,6 +821,26 @@ async function openReadmeModal(pluginId) {
     }
 }
 
+// 插件配置表单控制器（复用 ConfigForm）
+let pluginConfigController = null;
+let currentConfigPluginId = null;
+
+function ensurePluginConfigController() {
+    if (pluginConfigController || !window.ConfigForm) {
+        return pluginConfigController;
+    }
+    pluginConfigController = window.ConfigForm.createController({
+        formContainer: '#plugin-config-form-root',
+        rawEditor: '#plugin-config-editor',
+        modeVisualBtn: '#plugin-btn-mode-visual',
+        modeRawBtn: '#plugin-btn-mode-raw',
+        advancedToggle: '#plugin-toggle-advanced-fields',
+        visualPane: '#plugin-visual-config-pane',
+        rawPane: '#plugin-raw-config-pane',
+    });
+    return pluginConfigController;
+}
+
 // 打开配置模态框
 async function openConfigModal(pluginId) {
     try {
@@ -824,74 +850,71 @@ async function openConfigModal(pluginId) {
             return;
         }
 
-        // 获取模态框元素
         const modalEl = document.getElementById('plugin-config-modal');
         if (!modalEl) {
             throw new Error('找不到配置模态框元素');
         }
 
-        // 重置表单状态
+        currentConfigPluginId = pluginId;
         document.getElementById('plugin-config-loading').style.display = 'block';
-        document.getElementById('plugin-config-error').style.display = 'none';
-        document.getElementById('plugin-config-form').innerHTML = '';
+        const errorEl = document.getElementById('plugin-config-error');
+        errorEl.classList.add('d-none');
+        errorEl.style.display = 'none';
+        errorEl.querySelector('span').textContent = '';
 
-        // 设置标题
-        document.getElementById('plugin-config-title').textContent = `${plugin.name} 配置文件`;
+        document.getElementById('plugin-config-title').textContent = `${plugin.name} 配置`;
+        const pathLabel = document.getElementById('plugin-config-path-label');
+        if (pathLabel) pathLabel.textContent = '';
 
-        // 确保销毁旧的模态框实例
         const oldModal = bootstrap.Modal.getInstance(modalEl);
         if (oldModal) {
             oldModal.dispose();
         }
-
-        // 创建新的模态框实例
         const modal = new bootstrap.Modal(modalEl, {
             backdrop: 'static',
             keyboard: true
         });
-
-        // 显示模态框
         modal.show();
 
         try {
-            // 获取配置文件路径
-            const response = await fetch(`/api/plugin_config_file?plugin_id=${pluginId}`);
-            const data = await response.json();
-
-            if (data.success && data.config_file) {
-                // 获取文件内容
-                const contentResponse = await fetch(`/api/files/read?path=${encodeURIComponent(data.config_file)}`);
-                const contentData = await contentResponse.json();
-
-                if (contentData.success) {
-                    // 创建文本编辑器
-                    const formContainer = document.getElementById('plugin-config-form');
-                    formContainer.innerHTML = `
-                        <div class="alert alert-info mb-3">
-                            <i class="bi bi-info-circle-fill me-2"></i>
-                            正在编辑: ${data.config_file}
-                        </div>
-                        <div class="mb-3">
-                            <textarea id="config-editor" class="form-control" style="min-height: 300px; font-family: monospace;">${contentData.content}</textarea>
-                        </div>
-                    `;
-
-                    // 存储当前配置文件路径，用于保存
-                    document.getElementById('plugin-config-save').setAttribute('data-config-file', data.config_file);
-                    document.getElementById('plugin-config-save').textContent = '保存';
-
-                    document.getElementById('plugin-config-loading').style.display = 'none';
-                } else {
-                    throw new Error(contentData.error || '无法读取配置文件内容');
-                }
-            } else {
-                throw new Error(data.error || '无法获取配置文件');
+            if (!window.ConfigForm) {
+                throw new Error('配置表单组件未加载，请刷新页面后重试');
             }
+            const controller = ensurePluginConfigController();
+            if (!controller) {
+                throw new Error('配置表单初始化失败');
+            }
+
+            const response = await fetch(`/api/plugin_config?plugin_id=${encodeURIComponent(pluginId)}`);
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || data.message || '无法获取配置文件');
+            }
+
+            controller.load({
+                schema: data.schema || [],
+                values: data.data || data.values || data.config || {},
+                raw: data.raw || '',
+            });
+            controller.setMode('visual');
+
+            const saveBtn = document.getElementById('plugin-config-save');
+            saveBtn.setAttribute('data-plugin-id', pluginId);
+            if (data.path || data.config_file) {
+                saveBtn.setAttribute('data-config-file', data.path || data.config_file);
+                if (pathLabel) {
+                    const full = data.path || data.config_file;
+                    pathLabel.textContent = full.split('/').slice(-3).join('/');
+                }
+            }
+            saveBtn.textContent = '保存';
+            document.getElementById('plugin-config-loading').style.display = 'none';
         } catch (error) {
             console.error('加载配置文件失败:', error);
             document.getElementById('plugin-config-loading').style.display = 'none';
-            document.getElementById('plugin-config-error').style.display = 'block';
-            document.getElementById('plugin-config-error').querySelector('span').textContent = `加载配置失败: ${error.message}`;
+            errorEl.classList.remove('d-none');
+            errorEl.style.display = 'block';
+            errorEl.querySelector('span').textContent = `加载配置失败: ${error.message}`;
         }
     } catch (error) {
         console.error('打开配置失败:', error);
@@ -902,61 +925,47 @@ async function openConfigModal(pluginId) {
 // 保存配置
 async function savePluginConfig() {
     try {
-        // 获取配置文件路径
-        const configFile = document.getElementById('plugin-config-save').getAttribute('data-config-file');
-        if (!configFile) {
-            throw new Error('未找到配置文件路径');
-        }
-
-        // 获取编辑器内容
-        let content = document.getElementById('config-editor').value;
-
-        // 检查是否是JSON文件
-        if (configFile.toLowerCase().endsWith('.json')) {
-            try {
-                // 尝试解析JSON
-                const jsonObj = JSON.parse(content);
-                // 重新格式化JSON，确保格式正确
-                content = JSON.stringify(jsonObj, null, 4);
-                console.log("JSON格式化成功");
-            } catch (jsonError) {
-                throw new Error(`JSON格式错误: ${jsonError.message}`);
-            }
-        }
-
-        // 显示保存中状态
         const saveBtn = document.getElementById('plugin-config-save');
+        const pluginId = saveBtn.getAttribute('data-plugin-id') || currentConfigPluginId;
+        if (!pluginId) {
+            throw new Error('未找到插件 ID');
+        }
+
+        const controller = ensurePluginConfigController();
+        if (!controller) {
+            throw new Error('配置表单未初始化');
+        }
+
+        const payload = controller.collect();
         saveBtn.disabled = true;
         saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>保存中...';
 
-        // 发送保存请求
-        const response = await fetch('/api/files/write', {
+        const response = await fetch('/api/save_plugin_config', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                path: configFile,
-                content: content
+                plugin_id: pluginId,
+                mode: payload.mode,
+                values: payload.mode === 'visual' ? payload.values : undefined,
+                content: payload.mode === 'raw' ? payload.content : undefined,
             })
         });
 
         const data = await response.json();
-
         if (data.success) {
             showToast('配置已保存', 'success');
-            // 关闭模态框
             const modalEl = document.getElementById('plugin-config-modal');
             const modalInstance = bootstrap.Modal.getInstance(modalEl);
-            modalInstance.hide();
+            if (modalInstance) modalInstance.hide();
         } else {
-            throw new Error(data.error || '保存失败');
+            throw new Error(data.error || data.message || '保存失败');
         }
     } catch (error) {
         console.error('保存配置失败:', error);
         showToast(`保存配置失败: ${error.message}`, 'danger');
     } finally {
-        // 恢复保存按钮状态
         const saveBtn = document.getElementById('plugin-config-save');
         saveBtn.disabled = false;
         saveBtn.textContent = '保存';

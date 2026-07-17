@@ -212,68 +212,82 @@ def register_plugins_routes(app, current_dir, plugin_manager=None):
             logger.error(f"删除适配器失败: {str(e)}")
             return {"success": False, "error": str(e)}
 
-    # API: 获取适配器配置
+    # API: 获取适配器配置（可视化 schema + 原文）
     @app.get("/api/adapters/{adapter_name}/config", response_class=JSONResponse)
     async def api_get_adapter_config(adapter_name: str, request: Request, username: str = Depends(require_auth)):
-        # 检查认证状态
         try:
-            import os
+            from admin.services.config_service import load_generic_config_view
 
-            # 检查适配器目录是否存在
             adapter_dir = os.path.join("adapter", adapter_name)
             if not os.path.exists(adapter_dir) or not os.path.isdir(adapter_dir):
                 return {"success": False, "error": f"找不到适配器 {adapter_name}"}
 
-            # 读取配置文件
-            config_path = os.path.join(adapter_dir, "config.toml")
-            if not os.path.exists(config_path):
+            config_path = Path(adapter_dir) / "config.toml"
+            if not config_path.exists():
                 return {"success": False, "error": f"适配器 {adapter_name} 没有配置文件"}
 
-            with open(config_path, "r", encoding="utf-8") as f:
-                config_content = f.read()
-
-            return {"success": True, "config": config_content}
+            view = load_generic_config_view(config_path, title=f"适配器 {adapter_name}")
+            return {
+                "success": True,
+                "config": view["raw"],  # 兼容旧前端
+                "data": view["values"],
+                "schema": view["schema"],
+                "raw": view["raw"],
+                "path": view["path"],
+                "values": view["values"],
+            }
         except Exception as e:
             logger.error(f"获取适配器配置失败: {str(e)}")
             return {"success": False, "error": str(e)}
 
-    # API: 保存适配器配置
+    # API: 保存适配器配置（可视化/原文）
     @app.post("/api/adapters/{adapter_name}/config", response_class=JSONResponse)
     async def api_save_adapter_config(adapter_name: str, request: Request, username: str = Depends(require_auth)):
-        # 检查认证状态
         try:
-            import os
+            from admin.services.config_service import (
+                load_generic_config_view,
+                save_generic_config_raw,
+                save_generic_config_values,
+            )
 
-            # 获取请求数据
             data = await request.json()
-            config_content = data.get('config')
-
-            if not config_content:
-                return {"success": False, "error": "配置内容不能为空"}
-
-            # 检查适配器目录是否存在
             adapter_dir = os.path.join("adapter", adapter_name)
             if not os.path.exists(adapter_dir) or not os.path.isdir(adapter_dir):
                 return {"success": False, "error": f"找不到适配器 {adapter_name}"}
 
-            # 备份原配置文件
-            config_path = os.path.join(adapter_dir, "config.toml")
-            if os.path.exists(config_path):
-                backup_path = f"{config_path}.bak"
-                try:
-                    with open(config_path, "r", encoding="utf-8") as src:
-                        with open(backup_path, "w", encoding="utf-8") as dst:
-                            dst.write(src.read())
-                    logger.info(f"已备份适配器配置文件到 {backup_path}")
-                except Exception as e:
-                    logger.warning(f"备份适配器配置文件失败: {str(e)}")
+            config_path = Path(adapter_dir) / "config.toml"
+            if not config_path.exists():
+                return {"success": False, "error": f"适配器 {adapter_name} 没有配置文件"}
 
-            # 保存新配置文件
-            with open(config_path, "w", encoding="utf-8") as f:
-                f.write(config_content)
+            # 兼容旧调用：{"config": "..."} 当作原文保存
+            if isinstance(data, dict) and data.get("mode") == "raw":
+                content = data.get("content")
+                if not isinstance(content, str) or not content.strip():
+                    return {"success": False, "error": "配置内容不能为空"}
+                result = save_generic_config_raw(config_path, content)
+            elif isinstance(data, dict) and "config" in data and data.get("mode") is None and "values" not in data:
+                content = data.get("config")
+                if not isinstance(content, str) or not content.strip():
+                    return {"success": False, "error": "配置内容不能为空"}
+                result = save_generic_config_raw(config_path, content)
+            else:
+                payload = data.get("values") if isinstance(data, dict) and "values" in data else data
+                if not isinstance(payload, dict):
+                    return {"success": False, "error": "可视化配置数据必须是对象"}
+                result = save_generic_config_values(config_path, payload)
 
+            view = load_generic_config_view(config_path, title=f"适配器 {adapter_name}")
             logger.info(f"适配器 {adapter_name} 配置文件已保存")
-            return {"success": True, "message": "配置已保存"}
+            return {
+                "success": True,
+                "message": "配置已保存，重启服务后生效",
+                "backup": result.get("backup"),
+                "path": result.get("path"),
+                "data": view["values"],
+                "schema": view["schema"],
+                "raw": view["raw"],
+                "config": view["raw"],
+            }
         except Exception as e:
             logger.error(f"保存适配器配置失败: {str(e)}")
             return {"success": False, "error": str(e)}
@@ -390,25 +404,33 @@ def register_plugins_routes(app, current_dir, plugin_manager=None):
         # 否则使用插件ID作为目录名
         return os.path.join("plugins", plugin_id, "config.toml")
 
-    # API: 获取插件配置
+    # API: 获取插件配置（可视化 schema + 原文）
     @app.get("/api/plugin_config", response_class=JSONResponse)
     async def api_get_plugin_config(plugin_id: str, request: Request, username: str = Depends(require_auth)):
-        # 检查认证状态
         try:
-            import tomllib
+            from admin.services.config_service import load_generic_config_view
 
-            # 查找配置文件路径
             config_path = find_plugin_config_path(plugin_id)
-            if not config_path:
-                return {"success": False, "message": f"插件 {plugin_id} 的配置文件不存在"}
+            path = Path(config_path) if config_path else Path("plugins") / plugin_id / "config.toml"
 
-            # 读取配置
-            with open(config_path, "rb") as f:
-                config_content = tomllib.load(f)
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    "# 插件配置文件\n\n[basic]\n# 是否启用插件\nenable = true\n",
+                    encoding="utf-8",
+                )
+                logger.info(f"创建了新的插件配置文件: {path}")
 
+            view = load_generic_config_view(path, title=f"插件 {plugin_id}")
             return {
                 "success": True,
-                "config": config_content
+                "config": view["values"],  # 兼容旧调用
+                "data": view["values"],
+                "values": view["values"],
+                "schema": view["schema"],
+                "raw": view["raw"],
+                "path": view["path"],
+                "config_file": str(path),
             }
         except Exception as e:
             logger.error(f"获取插件配置失败: {str(e)}")
@@ -513,44 +535,61 @@ def register_plugins_routes(app, current_dir, plugin_manager=None):
             logger.error(f"获取插件README.md失败: {str(e)}")
             return {"success": False, "error": str(e)}
 
-    # API: 保存插件配置
+    # API: 保存插件配置（可视化/原文）
     @app.post("/api/save_plugin_config", response_class=JSONResponse)
     async def api_save_plugin_config(request: Request, username: str = Depends(require_auth)):
-        # 检查认证状态
         try:
-            # 获取请求数据
+            from admin.services.config_service import (
+                load_generic_config_view,
+                save_generic_config_raw,
+                save_generic_config_values,
+            )
+
             data = await request.json()
-            plugin_id = data.get('plugin_id')
-            config = data.get('config')
+            plugin_id = data.get("plugin_id")
+            if not plugin_id:
+                return {"success": False, "message": "缺少必要参数 plugin_id"}
 
-            if not plugin_id or not config:
-                return {"success": False, "message": "缺少必要参数"}
-
-            # 找到配置文件路径
             config_path = find_plugin_config_path(plugin_id)
-            if not config_path:
-                # 如果配置文件不存在，创建默认位置
-                config_path = os.path.join("plugins", plugin_id, "config.toml")
-                os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            path = Path(config_path) if config_path else Path("plugins") / plugin_id / "config.toml"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                path.write_text(
+                    "# 插件配置文件\n\n[basic]\n# 是否启用插件\nenable = true\n",
+                    encoding="utf-8",
+                )
 
-            # 生成TOML内容
-            toml_content = ""
-            for section, values in config.items():
-                toml_content += f"[{section}]\n"
-                for key, value in values.items():
-                    if isinstance(value, str):
-                        toml_content += f'{key} = "{value}"\n'
-                    elif isinstance(value, bool):
-                        toml_content += f"{key} = {str(value).lower()}\n"
-                    else:
-                        toml_content += f"{key} = {value}\n"
-                toml_content += "\n"
+            mode = data.get("mode")
+            if mode == "raw" or (isinstance(data.get("content"), str) and "values" not in data and "config" not in data):
+                content = data.get("content")
+                if not isinstance(content, str) or not content.strip():
+                    return {"success": False, "message": "配置内容不能为空"}
+                result = save_generic_config_raw(path, content)
+            else:
+                payload = None
+                if isinstance(data.get("values"), dict):
+                    payload = data["values"]
+                elif isinstance(data.get("config"), dict):
+                    payload = data["config"]  # 兼容旧结构化保存
+                elif isinstance(data.get("config"), str):
+                    result = save_generic_config_raw(path, data["config"])
+                    payload = None
+                else:
+                    return {"success": False, "message": "缺少配置数据"}
 
-            # 保存配置
-            with open(config_path, "w", encoding="utf-8") as f:
-                f.write(toml_content)
+                if payload is not None:
+                    result = save_generic_config_values(path, payload)
 
-            return {"success": True, "message": "配置已保存"}
+            view = load_generic_config_view(path, title=f"插件 {plugin_id}")
+            return {
+                "success": True,
+                "message": "配置已保存",
+                "backup": result.get("backup"),
+                "path": str(path),
+                "data": view["values"],
+                "schema": view["schema"],
+                "raw": view["raw"],
+            }
         except Exception as e:
             logger.error(f"保存插件配置失败: {str(e)}")
             return {"success": False, "error": str(e)}

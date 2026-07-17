@@ -7,6 +7,7 @@ import os
 import socket
 import platform
 from datetime import datetime
+from pathlib import Path
 from fastapi import Request, Depends
 from fastapi.responses import JSONResponse, FileResponse
 from loguru import logger
@@ -133,22 +134,23 @@ def register_system_routes(app, get_system_info, get_system_status, handle_syste
 
     @app.get("/api/system/config", response_class=JSONResponse, tags=["系统"])
     async def api_get_system_config(username: str = Depends(require_auth)):
-        """获取系统配置的结构化数据"""
+        """获取系统配置的可视化 schema 与当前值"""
         try:
-            if tomllib is None:
-                return {"success": False, "error": "tomllib 库不可用"}
+            from admin.services.config_service import load_main_config_view, get_main_config_path
 
-            # 读取配置文件
-            main_config_path = os.path.join(os.path.dirname(current_dir), "main_config.toml")
-            if not os.path.exists(main_config_path):
-                return {"success": False, "error": "配置文件不存在"}
+            config_path = get_main_config_path()
+            if current_dir:
+                candidate = Path(current_dir).resolve().parent / "main_config.toml"
+                if candidate.exists():
+                    config_path = candidate
 
-            with open(main_config_path, "rb") as f:
-                config_data = tomllib.load(f)
-
+            view = load_main_config_view(config_path)
             return {
                 "success": True,
-                "data": config_data
+                "data": view["values"],
+                "schema": view["schema"],
+                "raw": view["raw"],
+                "path": view["path"],
             }
         except Exception as e:
             logger.error(f"获取系统配置失败: {str(e)}")
@@ -157,37 +159,43 @@ def register_system_routes(app, get_system_info, get_system_status, handle_syste
 
     @app.post("/api/system/config", response_class=JSONResponse, tags=["系统"])
     async def api_save_system_config(request: Request, username: str = Depends(require_auth)):
-        """保存系统配置的结构化数据"""
+        """保存系统配置（可视化表单或原文模式）"""
         try:
-            # 获取请求体
-            config_data = await request.json()
+            from admin.services.config_service import (
+                get_main_config_path,
+                save_main_config_raw,
+                save_main_config_values,
+            )
 
-            # 配置文件路径
-            main_config_path = os.path.join(os.path.dirname(current_dir), "main_config.toml")
+            body = await request.json()
+            config_path = get_main_config_path()
+            if current_dir:
+                candidate = Path(current_dir).resolve().parent / "main_config.toml"
+                if candidate.exists():
+                    config_path = candidate
 
-            # 将配置转换为 TOML 格式并保存
-            try:
-                import toml
-                with open(main_config_path, "w", encoding="utf-8") as f:
-                    toml.dump(config_data, f)
-            except ImportError:
-                # 如果没有 toml 库，使用简单的字符串拼接
-                logger.warning("toml 库不可用，使用简单格式保存")
-                with open(main_config_path, "w", encoding="utf-8") as f:
-                    f.write("# AllBot 配置文件\n")
-                    for section, values in config_data.items():
-                        f.write(f"\n[{section}]\n")
-                        for key, value in values.items():
-                            if isinstance(value, str):
-                                f.write(f'{key} = "{value}"\n')
-                            elif isinstance(value, bool):
-                                f.write(f'{key} = {str(value).lower()}\n')
-                            else:
-                                f.write(f'{key} = {value}\n')
+            # 原文模式：{"mode":"raw","content":"..."}
+            if isinstance(body, dict) and body.get("mode") == "raw":
+                content = body.get("content")
+                if not isinstance(content, str):
+                    return {"success": False, "error": "原文内容必须是字符串"}
+                result = save_main_config_raw(content, config_path)
+                return {
+                    "success": True,
+                    "message": "配置原文保存成功",
+                    "backup": result.get("backup"),
+                    "path": result.get("path"),
+                }
 
+            # 兼容旧调用：直接传 section map
+            payload = body.get("values") if isinstance(body, dict) and "values" in body else body
+            result = save_main_config_values(payload, config_path)
             return {
                 "success": True,
-                "message": "配置保存成功"
+                "message": "配置保存成功，重启服务后生效",
+                "backup": result.get("backup"),
+                "path": result.get("path"),
+                "data": result.get("values"),
             }
         except Exception as e:
             logger.error(f"保存系统配置失败: {str(e)}")

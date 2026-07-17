@@ -14,4 +14,5 @@
 | contacts.html | UI | 联系人管理页面 |
 | plugins.html | UI | 插件管理页面 |
 | plugin_market.html | UI | 独立插件市场页面（分类/搜索/安装，提交插件弹窗） |
-| settings.html | UI | 系统设置页（已改为 `main_config.toml` 原文编辑/保存） |
+| settings.html | UI | 系统设置页（可视化表单 + 高级原文，读写 `main_config.toml`） |
+| adapters.html | UI | 适配器管理页（可视化配置弹窗） |

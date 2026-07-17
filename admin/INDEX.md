@@ -10,8 +10,8 @@ FastAPI 管理后台：提供页面模板、系统/联系人/插件等路由、�
 |------|------|----------|
 | core/ | Core | 应用初始化与依赖注入（含 Bot 状态读取函数注入） |
 | routes/ | API | 管理后台业务路由注册与模块化接口（含 `/media/files/{filename}` 公网媒体访问路由） |
-| services/ | Service | 高风险后台能力服务（当前含受控插件安装器） |
-| templates/ | UI | 前端页面模板（index/qrcode/system/settings 等；settings 已改为原文编辑 `main_config.toml`） |
+| services/ | Service | 高风险后台能力服务（受控插件安装器、配置可视化读写） |
+| templates/ | UI | 前端页面模板（index/qrcode/system/settings/adapters 等；settings/插件/适配器支持可视化配置） |
 | static/ | Frontend | 管理后台静态资源（js/css/img/旧插件市场脚本） |
 | utils/ | Helper | 认证依赖、路径校验与路由辅助工具 |
 | friend_circle_api.py | API | 朋友圈 API（拉取/解析/同步） |

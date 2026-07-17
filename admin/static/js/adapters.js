@@ -11,7 +11,24 @@
 let adapters = [];
 let needRestart = false;
 let adapterConfigModal = null;
+let adapterConfigController = null;
 const SAVE_CONFIG_BTN_DEFAULT_HTML = '<i class="bi bi-save me-1"></i>保存配置';
+
+function ensureAdapterConfigController() {
+    if (adapterConfigController || !window.ConfigForm) {
+        return adapterConfigController;
+    }
+    adapterConfigController = window.ConfigForm.createController({
+        formContainer: '#adapter-config-form-root',
+        rawEditor: '#adapter-config-content',
+        modeVisualBtn: '#adapter-btn-mode-visual',
+        modeRawBtn: '#adapter-btn-mode-raw',
+        advancedToggle: '#adapter-toggle-advanced-fields',
+        visualPane: '#adapter-visual-config-pane',
+        rawPane: '#adapter-raw-config-pane',
+    });
+    return adapterConfigController;
+}
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -43,6 +60,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const content = document.getElementById('adapter-config-content');
             if (content) {
                 content.value = '';
+            }
+            const root = document.getElementById('adapter-config-form-root');
+            if (root) {
+                root.innerHTML = '';
+            }
+            const pathLabel = document.getElementById('adapter-config-path-label');
+            if (pathLabel) {
+                pathLabel.textContent = '';
             }
         });
     }
@@ -453,16 +478,31 @@ async function openAdapterConfig(adapterName) {
     const contentElement = document.getElementById('adapter-config-content');
     const titleElement = document.getElementById('adapter-config-modal-title');
     const saveBtn = document.getElementById('save-adapter-config-btn');
+    const pathLabel = document.getElementById('adapter-config-path-label');
 
-    if (!modalElement || !contentElement || !titleElement || !saveBtn) {
+    if (!modalElement || !titleElement || !saveBtn) {
         console.error('适配器配置模态框未正确初始化');
         return;
     }
 
+    if (!window.ConfigForm) {
+        showToast('error', '配置表单组件未加载，请刷新页面后重试');
+        return;
+    }
+
+    const controller = ensureAdapterConfigController();
+    if (!controller) {
+        showToast('error', '配置表单初始化失败');
+        return;
+    }
+
     titleElement.textContent = `配置适配器: ${adapterName}`;
+    if (pathLabel) pathLabel.textContent = '';
     saveBtn.dataset.adapterName = adapterName;
-    contentElement.value = '正在加载配置...';
-    contentElement.disabled = true;
+    if (contentElement) {
+        contentElement.value = '';
+        contentElement.disabled = true;
+    }
     saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>加载中';
     saveBtn.disabled = true;
 
@@ -472,22 +512,35 @@ async function openAdapterConfig(adapterName) {
     adapterConfigModal.show();
 
     try {
-        const response = await fetch(`/api/adapters/${adapterName}/config`);
+        const response = await fetch(`/api/adapters/${encodeURIComponent(adapterName)}/config`);
         const result = await response.json();
 
         if (!result.success) {
             throw new Error(result.error || result.message || '获取适配器配置失败');
         }
 
-        contentElement.value = result.config || '';
-        contentElement.disabled = false;
+        controller.load({
+            schema: result.schema || [],
+            values: result.data || result.values || {},
+            raw: result.raw || result.config || '',
+        });
+        controller.setMode('visual');
+
+        if (pathLabel && result.path) {
+            pathLabel.textContent = String(result.path).split('/').slice(-3).join('/');
+        }
+        if (contentElement) {
+            contentElement.disabled = false;
+        }
         saveBtn.innerHTML = SAVE_CONFIG_BTN_DEFAULT_HTML;
         saveBtn.disabled = false;
     } catch (error) {
         console.error('打开适配器配置失败:', error);
         showToast('error', `打开配置失败: ${error.message}`);
-        contentElement.value = '';
-        contentElement.disabled = false;
+        if (contentElement) {
+            contentElement.value = '';
+            contentElement.disabled = false;
+        }
         saveBtn.innerHTML = SAVE_CONFIG_BTN_DEFAULT_HTML;
         saveBtn.disabled = false;
     }
@@ -500,20 +553,31 @@ async function saveAdapterConfig(adapterName) {
     const contentElement = document.getElementById('adapter-config-content');
     const saveBtn = document.getElementById('save-adapter-config-btn');
 
-    if (!adapterName || !contentElement || !saveBtn) {
+    if (!adapterName || !saveBtn) {
         return;
     }
 
     try {
-        const configContent = contentElement.value;
+        const controller = ensureAdapterConfigController();
+        if (!controller) {
+            throw new Error('配置表单未初始化');
+        }
+
+        const payload = controller.collect();
         saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>保存中...';
         saveBtn.disabled = true;
-        contentElement.disabled = true;
+        if (contentElement) {
+            contentElement.disabled = true;
+        }
 
-        const response = await fetch(`/api/adapters/${adapterName}/config`, {
+        const body = payload.mode === 'raw'
+            ? { mode: 'raw', content: payload.content }
+            : { mode: 'visual', values: payload.values };
+
+        const response = await fetch(`/api/adapters/${encodeURIComponent(adapterName)}/config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ config: configContent })
+            body: JSON.stringify(body)
         });
 
         const result = await response.json();
