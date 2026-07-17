@@ -94,19 +94,19 @@ def _is_enabled(config: Dict) -> bool:
 
 
 def _send_adapter_error_notification(adapter_name: str, error_msg: str) -> None:
-    """发送适配器错误通知（非阻塞）"""
+    """发送适配器错误通知（非阻塞，兼容无事件循环线程）"""
     try:
         from utils.notification_service import get_notification_service
         notification_service = get_notification_service()
-        if notification_service and notification_service.enabled and notification_service.token:
-            import asyncio
-            asyncio.create_task(
-                notification_service.send_error_notification(
-                    f"adapter:{adapter_name}",
-                    f"适配器 {adapter_name} 异常: {error_msg}",
-                )
+        if not notification_service:
+            return
+        notification_service.schedule(
+            lambda: notification_service.send_adapter_error_notification(
+                adapter_name,
+                error_msg,
             )
-            logger.info(f"已触发适配器 {adapter_name} 错误通知")
+        )
+        logger.info(f"已触发适配器 {adapter_name} 错误通知")
     except Exception as e:
         logger.warning(f"发送适配器 {adapter_name} 错误通知失败: {e}")
 

@@ -25,6 +25,49 @@ from bot_core.ws_message_normalizer import normalize_addmsg, normalize_ws_payloa
 QUEUE_NAME = "allbot"
 
 
+def _notify_ws_event(kind: str, **kwargs) -> None:
+    """安全触发 WS 相关通知。"""
+    try:
+        from utils.notification_service import get_notification_service
+
+        service = get_notification_service()
+        if not service:
+            return
+        if kind == "retry":
+            service.schedule(
+                lambda: service.send_adapter_retry_notification(
+                    adapter=kwargs.get("adapter", "wechat-ws"),
+                    reason=kwargs.get("reason", ""),
+                    retry_in=kwargs.get("retry_in"),
+                    account=kwargs.get("account", ""),
+                )
+            )
+        elif kind == "offline":
+            service.schedule(
+                lambda: service.send_offline_notification(kwargs.get("account") or "system")
+            )
+        elif kind == "login_qrcode":
+            service.schedule(
+                lambda: service.send_login_qrcode_notification(
+                    source=kwargs.get("source", "wechat"),
+                    account=kwargs.get("account", "") or "system",
+                    qrcode_url=kwargs.get("qrcode_url", ""),
+                    login_link=kwargs.get("login_link", ""),
+                    extra=kwargs.get("extra", ""),
+                )
+            )
+        elif kind == "error":
+            service.schedule(
+                lambda: service.send_error_notification(
+                    kwargs.get("account") or "system",
+                    kwargs.get("error") or "未知错误",
+                )
+            )
+    except Exception as error:
+        logger.warning("触发 WS 通知失败: {}", error)
+
+
+
 def _first_non_empty(*values: Any) -> str:
     for value in values:
         if value in (None, ""):
@@ -168,11 +211,42 @@ async def listen_ws_messages(xybot, ws_url: str | Callable[[], str], redis, mess
             except Exception:
                 pass
 
+            wxid = getattr(bot, "wxid", "") or "system"
+            _notify_ws_event("offline", account=wxid)
+            _notify_ws_event(
+                "retry",
+                adapter="wechat-869",
+                account=wxid,
+                reason=f"掉线唤醒: {reason}",
+                retry_in=0,
+            )
+
             try:
                 ok = await bot.try_wakeup_login()
             except Exception as error:
                 logger.warning("869 免扫码唤醒登录失败: {}", error)
                 ok = False
+
+            if not ok:
+                qrcode_url = ""
+                for attr in ("qrcode_url", "qr_url", "login_qrcode_url"):
+                    value = str(getattr(bot, attr, "") or "").strip()
+                    if value:
+                        qrcode_url = value
+                        break
+                if not qrcode_url:
+                    display_uuid = str(getattr(bot, "display_uuid", "") or "").strip()
+                    if display_uuid:
+                        qrcode_url = f"http://weixin.qq.com/x/{display_uuid}"
+                if qrcode_url:
+                    _notify_ws_event(
+                        "login_qrcode",
+                        source="wechat-869",
+                        account=wxid,
+                        qrcode_url=qrcode_url,
+                        login_link=qrcode_url,
+                        extra=f"掉线后需扫码: {reason}",
+                    )
 
             if ok:
                 try:
@@ -209,6 +283,13 @@ async def listen_ws_messages(xybot, ws_url: str | Callable[[], str], redis, mess
 
                         if isinstance(msg, str) and ("已关闭连接" in msg or "connection closed" in msg.lower()):
                             logger.warning("检测到服务端主动关闭连接消息，主动关闭本地ws，准备重连...")
+                            _notify_ws_event(
+                                "retry",
+                                adapter="wechat-ws",
+                                account=getattr(getattr(xybot, "bot", None), "wxid", "") or "system",
+                                reason="服务端主动关闭连接",
+                                retry_in=reconnect_interval,
+                            )
                             await websocket.close()
                             break
 
@@ -234,6 +315,13 @@ async def listen_ws_messages(xybot, ws_url: str | Callable[[], str], redis, mess
                             getattr(error, "reason", None),
                             reconnect_interval,
                         )
+                        _notify_ws_event(
+                            "retry",
+                            adapter="wechat-ws",
+                            account=getattr(getattr(xybot, "bot", None), "wxid", "") or "system",
+                            reason=f"连接关闭 code={getattr(error, 'code', None)} reason={getattr(error, 'reason', None)}",
+                            retry_in=reconnect_interval,
+                        )
                         break
 
                     except Exception as error:
@@ -245,19 +333,19 @@ async def listen_ws_messages(xybot, ws_url: str | Callable[[], str], redis, mess
             payload = _parse_invalid_status_payload(error)
             status_code = payload.get("_status_code")
             code = payload.get("Code")
-            text = _first_non_empty(payload.get("Text"), payload.get("Message"), str(error))
+            text_msg = _first_non_empty(payload.get("Text"), payload.get("Message"), str(error))
             if status_code == 200 and str(code) == "300":
                 masked_key = _mask_key(_extract_url_key(runtime_ws_url))
                 wait_seconds = max(reconnect_interval, 8)
                 # 869：若已掉线则尝试免扫码唤醒登录（避免一直空转重连）
-                relogin_ok = await _maybe_relogin_869(text)
+                relogin_ok = await _maybe_relogin_869(text_msg)
                 if relogin_ok:
                     reconnect_count = 0
                     wait_seconds = reconnect_interval
                 logger.warning(
                     "869 WS 长链接未就绪（key={}）: {}，第{}次重试，{}秒后继续",
                     masked_key,
-                    text,
+                    text_msg,
                     reconnect_count,
                     wait_seconds,
                 )
@@ -270,6 +358,13 @@ async def listen_ws_messages(xybot, ws_url: str | Callable[[], str], redis, mess
                 reconnect_count,
                 reconnect_interval,
             )
+            _notify_ws_event(
+                "retry",
+                adapter="wechat-ws",
+                account=getattr(getattr(xybot, "bot", None), "wxid", "") or "system",
+                reason=f"握手失败: {error}",
+                retry_in=reconnect_interval,
+            )
             await asyncio.sleep(reconnect_interval)
 
         except Exception as error:
@@ -281,6 +376,13 @@ async def listen_ws_messages(xybot, ws_url: str | Callable[[], str], redis, mess
                 reconnect_count,
                 reconnect_interval,
                 traceback.format_exc(),
+            )
+            _notify_ws_event(
+                "retry",
+                adapter="wechat-ws",
+                account=getattr(getattr(xybot, "bot", None), "wxid", "") or "system",
+                reason=f"{type(error).__name__}: {error}",
+                retry_in=reconnect_interval,
             )
             await asyncio.sleep(reconnect_interval)
 

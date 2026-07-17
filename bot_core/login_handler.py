@@ -29,6 +29,31 @@ class WechatLoginHandler:
     def _resolve_869_qrcode_proxy(self) -> str:
         return str(getattr(self.bot, "login_qrcode_proxy", "") or "").strip()
 
+
+    def _notify_login_qrcode(self, *, source: str, qrcode_url: str, account: str = "", extra: str = "") -> None:
+        """推送登录二维码通知（失败静默）。"""
+        url = str(qrcode_url or "").strip()
+        if not url:
+            return
+        try:
+            from utils.notification_service import get_notification_service
+
+            notification_service = get_notification_service()
+            if not notification_service:
+                return
+            wxid = account or getattr(self.bot, "wxid", "") or "system"
+            notification_service.schedule(
+                lambda: notification_service.send_login_qrcode_notification(
+                    source=source,
+                    account=wxid,
+                    qrcode_url=url,
+                    login_link=url,
+                    extra=extra,
+                )
+            )
+        except Exception as error:
+            logger.warning("发送登录二维码通知失败: {}", error)
+
     async def handle_login(self, enable_wechat_login: bool) -> bool:
         if not enable_wechat_login:
             logger.warning("已禁用原生微信登录（enable-wechat-login=false），系统将仅依赖适配器处理消息")
@@ -310,6 +335,12 @@ class WechatLoginHandler:
             },
         )
         self._verify_status_file(qrcode_url, uuid)
+        self._notify_login_qrcode(
+            source="wechat-869",
+            qrcode_url=qrcode_url,
+            account=getattr(self.bot, "wxid", "") or "system",
+            extra=f"login_mode={login_mode or 'ipad'}",
+        )
 
     def _update_869_error_status(self, message: str, *, needs_auth_key: bool = False) -> None:
         self.update_status(
@@ -328,8 +359,9 @@ class WechatLoginHandler:
             notification_service = get_notification_service()
             if notification_service and notification_service.enabled and notification_service.token:
                 wxid = getattr(self.bot, "wxid", "") or "system"
-                import asyncio
-                asyncio.create_task(notification_service.send_error_notification(wxid, message))
+                notification_service.schedule(
+                    lambda: notification_service.send_error_notification(wxid, message)
+                )
                 logger.info("已触发 869 登录错误通知: {}", message)
         except Exception as e:
             logger.warning("发送 869 登录错误通知失败: {}", e)
@@ -917,6 +949,12 @@ class WechatLoginHandler:
         )
 
         self._verify_status_file(url, uuid)
+        self._notify_login_qrcode(
+            source="wechat",
+            qrcode_url=url,
+            account=getattr(self.bot, "wxid", "") or "system",
+            extra=f"uuid={uuid}",
+        )
         logger.info("等待登录中，过期倒计时：240")
 
         return device_name, device_id

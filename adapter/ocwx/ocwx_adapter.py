@@ -570,6 +570,62 @@ def _patch_framework_downloaders() -> None:
     _PATCHED_DOWNLOADERS = True
 
 
+
+
+def _notify_login_qrcode(source: str, account: str = "", qrcode_url: str = "", login_link: str = "", extra: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_login_qrcode_notification(
+                source=source,
+                account=account,
+                qrcode_url=qrcode_url,
+                login_link=login_link,
+                extra=extra,
+            )
+        )
+    except Exception:
+        pass
+
+
+def _notify_adapter_retry(adapter: str, reason: str, retry_in=None, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_retry_notification(
+                adapter=adapter,
+                reason=reason,
+                retry_in=retry_in,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
+
+def _notify_adapter_error(adapter: str, error: str, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_error_notification(
+                adapter=adapter,
+                error=error,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
+
 @dataclass
 class SlotConfig:
     slot: str
@@ -898,6 +954,11 @@ class OpenClawWeixinAdapter:
                 except Exception as exc:
                     self._logger.error(f"账号槽位 {runtime.config.slot} 登录监督失败: {exc}")
                     self._update_state(runtime, last_error=str(exc))
+                    _notify_adapter_error(
+                        "ocwx",
+                        f"登录监督失败: {exc}",
+                        account=str(runtime.config.slot),
+                    )
             self.stop_event.wait(1.0)
 
     def _tick_slot(self, runtime: SlotRuntime) -> None:
@@ -963,6 +1024,22 @@ class OpenClawWeixinAdapter:
                 f"账号槽位 {runtime.config.slot} 已生成二维码: {runtime.qr_path} "
                 f"access_path={qr_access_path}"
             )
+        admin_cfg = self.main_config.get("Admin", {}) if isinstance(self.main_config, dict) else {}
+        admin_host = str(admin_cfg.get("host") or "127.0.0.1").strip() or "127.0.0.1"
+        if admin_host in {"0.0.0.0", "::"}:
+            admin_host = "127.0.0.1"
+        admin_port = int(admin_cfg.get("port") or 9090)
+        public_qr = qr_access_path or str(runtime.qr_path)
+        if public_qr.startswith("/"):
+            public_qr = f"http://{admin_host}:{admin_port}{public_qr}"
+        public_login = qr_login_link or public_qr
+        _notify_login_qrcode(
+            source="ocwx",
+            account=str(runtime.config.slot),
+            qrcode_url=public_qr,
+            login_link=public_login,
+            extra=f"本地二维码: {runtime.qr_path}",
+        )
 
     def _poll_qr_status(self, runtime: SlotRuntime) -> None:
         if not runtime.qr_token:
@@ -1069,6 +1146,12 @@ class OpenClawWeixinAdapter:
             except Exception as exc:
                 self._logger.error(f"账号槽位 {runtime.config.slot} 长轮询异常: {exc}")
                 self._update_state(runtime, last_error=str(exc))
+                _notify_adapter_retry(
+                    "ocwx",
+                    f"长轮询异常: {exc}",
+                    retry_in=backoff_seconds,
+                    account=str(runtime.config.slot),
+                )
                 runtime.poll_stop_event.wait(backoff_seconds)
                 backoff_seconds = min(backoff_seconds * 2, 30)
 
@@ -1102,6 +1185,12 @@ class OpenClawWeixinAdapter:
         self._save_json(runtime.state_path, runtime.account_data)
         self._clear_qr(runtime)
         self._logger.warning(f"账号槽位 {runtime.config.slot} 已过期: {reason}")
+        _notify_adapter_retry(
+            "ocwx",
+            reason,
+            retry_in=0,
+            account=str(runtime.config.slot),
+        )
 
     def _handle_inbound_message(self, runtime: SlotRuntime, message: Dict[str, Any]) -> None:
         from_user_id = _field_text(message, "from_user_id")

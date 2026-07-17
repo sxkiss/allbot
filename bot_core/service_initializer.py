@@ -1,7 +1,10 @@
-"""服务初始化模块
-
-负责初始化各种服务：数据库、通知服务、插件、定时任务等
 """
+@input: AppConfig、WechatAPIClient、数据库与 plugin_manager
+@output: 初始化后的 XYBot/DB/通知服务实例
+@position: bot_core 服务装配层，通知配置使用 to_service_dict 保留触发条件
+@auto-doc: Update header and folder INDEX.md when this file changes
+"""
+
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -52,10 +55,18 @@ class ServiceInitializer:
         keyval_db = KeyvalDB()
         await keyval_db.initialize()
 
-        # 初始化通知服务（将 dataclass 转换为字典）
-        notification_config_dict = asdict(self.config.notification)
+        # 初始化通知服务（保留 triggers/templates 等嵌套配置）
+        if hasattr(self.config.notification, "to_service_dict"):
+            notification_config_dict = self.config.notification.to_service_dict()
+        else:
+            notification_config_dict = asdict(self.config.notification)
+            # 兼容旧 dataclass：补齐服务侧期望的字段名
+            if "heartbeat_threshold" in notification_config_dict and "heartbeatThreshold" not in notification_config_dict:
+                notification_config_dict["heartbeatThreshold"] = notification_config_dict.pop("heartbeat_threshold")
         notification_service = init_notification_service(notification_config_dict)
-        logger.info(f"通知服务初始化完成，启用状态: {notification_service.enabled}")
+        logger.info(
+            f"通知服务初始化完成，启用状态: {notification_service.enabled}, 触发条件: {notification_service.triggers}"
+        )
 
         # 发送微信重连通知
         await self._send_reconnect_notification(notification_service)

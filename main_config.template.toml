@@ -136,9 +136,9 @@ blacklist = [# 黑名单列表
 # 系统通知设置
 [Notification]
 enabled = false                      # 是否启用通知功能
-token = ""                          # PushPlus Token，请在 http://www.pushplus.plus/ 注册并填写您的Token
-channel = "wechat"                  # 通知渠道：wechat(微信公众号)、sms(短信)、mail(邮件)、webhook、cp(企业微信)
-template = "html"                   # 通知模板
+token = ""                          # xxtui Token，请在 https://www.xxtui.com/ 注册并填写您的Token
+channel = "wechat"                  # xxtui 渠道：wechat/WX_MP、sms、mail、webhook、cp、ding、bark
+template = "text"                   # 通知模板（xxtui 统一发送纯文本正文）
 topic = ""                          # 群组编码，不填仅发送给自己
 heartbeatThreshold = 3              # 心跳失败阈值，连续失败多少次判定为离线
 
@@ -148,12 +148,22 @@ offline = true                      # 微信离线时通知
 reconnect = true                   # 微信重新连接时通知
 restart = true                     # 系统重启时通知
 error = true                       # 系统错误时通知
+login_qrcode = true                # 登录/掉线二维码通知
+adapter_retry = true               # 适配器断线重试通知
+adapter_error = true               # 适配器错误/连接失败通知
 
 # 通知模板设置
 [Notification.templates]
-offlineTitle = "警告：微信离线通知 - {time}"  # 离线通知标题
-offlineContent = "您的微信账号 <b>{wxid}</b> 已于 <span style=\"color:#ff4757;font-weight:bold;\">{time}</span> 离线，请尽快检查您的设备连接状态或重新登录。"  # 离线通知内容
-reconnectTitle = "微信重新连接通知 - {time}"  # 重连通知标题
-reconnectContent = "您的微信账号 <b>{wxid}</b> 已于 <span style=\"color:#2ed573;font-weight:bold;\">{time}</span> 重新连接。"  # 重连通知内容
-restartTitle = "系统重启通知 - {time}"  # 重启通知标题
-restartContent = "系统已于 <span style=\"color:#1e90ff;font-weight:bold;\">{time}</span> 重新启动。"  # 重启通知内容
+offlineTitle = "微信离线通知"  # 离线通知标题（建议 ≤20 字）
+offlineContent = "您的微信账号 {wxid} 已于 {time} 离线，请尽快检查设备连接状态或重新登录。"  # 离线通知内容
+reconnectTitle = "微信重连通知"  # 重连通知标题
+reconnectContent = "您的微信账号 {wxid} 已于 {time} 重新连接。"  # 重连通知内容
+restartTitle = "系统重启通知"  # 重启通知标题
+restartContent = "系统已于 {time} 重新启动。"  # 重启通知内容
+
+loginQrcodeTitle = "登录二维码"
+loginQrcodeContent = "平台 {source} 账号 {account} 需要扫码登录。"
+adapterRetryTitle = "适配器重试"
+adapterRetryContent = "适配器 {adapter} 连接异常，正在重试：{reason}"
+adapterErrorTitle = "适配器错误"
+adapterErrorContent = "适配器 {adapter} 发生错误：{error}"

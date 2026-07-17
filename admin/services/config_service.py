@@ -41,6 +41,10 @@ def _field(
     unit: str = "",
     default: Any = None,
     item_label: str = "项",
+    item_fields: Optional[List[Dict[str, Any]]] = None,
+    key_field: str = "",
+    key_label: str = "",
+    add_label: str = "",
 ) -> Dict[str, Any]:
     data: Dict[str, Any] = {
         "key": key,
@@ -62,6 +66,14 @@ def _field(
         data["max"] = max_value
     if default is not None:
         data["default"] = default
+    if item_fields is not None:
+        data["item_fields"] = item_fields
+    if key_field:
+        data["key_field"] = key_field
+    if key_label:
+        data["key_label"] = key_label
+    if add_label:
+        data["add_label"] = add_label
     return data
 
 
@@ -337,10 +349,10 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
     _section(
         "Notification",
         "系统通知",
-        "离线/重连/重启等事件推送。更完整模板编辑也可在“通知设置”页完成。",
+        "xxtui 推送（短标题 + 纯文本正文）。更完整模板编辑也可在“通知设置”页完成。",
         [
             _field("enabled", "启用通知", "boolean"),
-            _field("token", "通知 Token / API Key", "password", secret=True),
+            _field("token", "xxtui Token / API Key", "password", secret=True),
             _field(
                 "channel",
                 "通知渠道",
@@ -351,15 +363,20 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
                     _option("mail", "邮件"),
                     _option("webhook", "Webhook"),
                     _option("cp", "企业微信"),
+                    _option("ding", "钉钉"),
+                    _option("bark", "Bark"),
                 ],
             ),
-            _field("template", "模板类型", "text", advanced=True, placeholder="html"),
+            _field("template", "模板类型", "text", advanced=True, placeholder="text"),
             _field("topic", "群组编码", "text", description="不填仅发送给自己。"),
             _field("heartbeatThreshold", "心跳失败阈值", "number", min_value=1),
             _field("triggers.offline", "离线通知", "boolean"),
             _field("triggers.reconnect", "重连通知", "boolean"),
             _field("triggers.restart", "重启通知", "boolean"),
             _field("triggers.error", "错误通知", "boolean"),
+            _field("triggers.login_qrcode", "登录二维码通知", "boolean"),
+            _field("triggers.adapter_retry", "适配器断线重试", "boolean"),
+            _field("triggers.adapter_error", "适配器错误通知", "boolean"),
             _field("templates.offlineTitle", "离线通知标题", "text", advanced=True),
             _field("templates.offlineContent", "离线通知内容", "textarea", advanced=True),
             _field("templates.reconnectTitle", "重连通知标题", "text", advanced=True),
@@ -525,9 +542,9 @@ def _default_for_field(field: Dict[str, Any]) -> Any:
         return False
     if field_type == "number":
         return 0
-    if field_type == "list":
+    if field_type in {"list", "object_list"}:
         return []
-    if field_type == "object":
+    if field_type in {"object", "object_map"}:
         return {}
     return ""
 
@@ -605,6 +622,10 @@ def _coerce_value(field: Dict[str, Any], value: Any) -> Any:
         return float(text)
     if field_type == "list":
         return _parse_list_value(value)
+    if field_type == "object_list":
+        return _coerce_object_list(field, value)
+    if field_type == "object_map":
+        return _coerce_object_map(field, value)
     if field_type == "select":
         return "" if value is None else str(value)
     if field_type in {"text", "password", "textarea"}:
@@ -726,6 +747,303 @@ _KEY_COMMENT_RE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*=\s*.*?#\s*(.+?)\s*$")
 _SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*$")
 
 
+_MULTI_ACCOUNT_TEMPLATES: Dict[str, Dict[str, Any]] = {
+    "telegram.bots": {
+        "type": "object_list",
+        "label": "多机器人",
+        "description": "配置后会忽略上方单个 token，并为每个 bot 单独启动轮询。",
+        "item_label": "机器人",
+        "add_label": "添加机器人",
+        "item_fields": [
+            {"key": "name", "label": "名称", "type": "text", "placeholder": "support", "description": "会进入会话 ID，例如 telegram-support-123"},
+            {"key": "token", "label": "Bot Token", "type": "password", "secret": True, "placeholder": "123456:ABC..."},
+            {"key": "polling", "label": "启用轮询", "type": "boolean", "default": True},
+            {"key": "proxyHost", "label": "反代地址", "type": "text", "placeholder": "https://tg.example.com", "advanced": True},
+            {"key": "httpProxy", "label": "HTTP 代理", "type": "text", "placeholder": "http://127.0.0.1:7890", "advanced": True},
+        ],
+        "item_defaults": {
+            "name": "",
+            "token": "",
+            "polling": True,
+            "proxyHost": "",
+            "httpProxy": "",
+        },
+    },
+    "wecom_bot.bots": {
+        "type": "object_map",
+        "label": "多机器人",
+        "description": "每个 bot 需要企业微信智能机器人的 botId 与 secret。",
+        "item_label": "机器人",
+        "add_label": "添加机器人",
+        "key_field": "name",
+        "key_label": "机器人标识",
+        "item_fields": [
+            {"key": "name", "label": "机器人标识", "type": "text", "placeholder": "default", "description": "配置键名，例如 default / support"},
+            {"key": "botId", "label": "Bot ID", "type": "text", "placeholder": "aibot_xxx"},
+            {"key": "secret", "label": "Secret", "type": "password", "secret": True},
+        ],
+        "item_defaults": {
+            "name": "default",
+            "botId": "",
+            "secret": "",
+        },
+    },
+    "ocwx.accounts": {
+        "type": "object_map",
+        "label": "多账号槽位",
+        "description": "每个槽位对应一个 OpenClaw 微信账号，可独立启用。",
+        "item_label": "账号",
+        "add_label": "添加账号",
+        "key_field": "slot",
+        "key_label": "槽位名",
+        "item_fields": [
+            {"key": "slot", "label": "槽位名", "type": "text", "placeholder": "main", "description": "配置键名，例如 main / work"},
+            {"key": "enabled", "label": "启用", "type": "boolean", "default": True},
+            {"key": "displayName", "label": "显示名", "type": "text", "placeholder": "主号"},
+            {"key": "baseUrl", "label": "接口地址", "type": "text", "placeholder": "https://ilinkai.weixin.qq.com", "advanced": True},
+            {"key": "cdnBaseUrl", "label": "CDN 地址", "type": "text", "advanced": True},
+            {"key": "pollTimeoutMs", "label": "轮询超时(ms)", "type": "number", "advanced": True},
+            {"key": "requestTimeoutMs", "label": "请求超时(ms)", "type": "number", "advanced": True},
+        ],
+        "item_defaults": {
+            "slot": "main",
+            "enabled": True,
+            "displayName": "主号",
+            "baseUrl": "",
+            "cdnBaseUrl": "",
+            "pollTimeoutMs": 0,
+            "requestTimeoutMs": 0,
+        },
+    },
+}
+
+
+def _is_secret_key(key: str) -> bool:
+    lower = str(key).lower()
+    return any(token in lower for token in ("password", "token", "secret", "api-key", "apikey", "admin-key"))
+
+
+def _field_from_sample(key: str, sample: Any = None, *, description: str = "") -> Dict[str, Any]:
+    field_type = _infer_field_type(sample) if sample is not None else "text"
+    if field_type in {"object", "object_list", "object_map"}:
+        field_type = "text"
+    secret = _is_secret_key(str(key))
+    return _field(
+        str(key),
+        _humanize_key(str(key)),
+        "password" if secret and field_type == "text" else field_type,
+        description=description,
+        secret=secret,
+        default=sample if sample is not None else _default_for_field({"type": field_type}),
+    )
+
+
+def _build_item_fields_from_samples(samples: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    keys: List[str] = []
+    seen = set()
+    for sample in samples:
+        if not isinstance(sample, dict):
+            continue
+        for key in sample.keys():
+            key_text = str(key)
+            if key_text in seen:
+                continue
+            seen.add(key_text)
+            keys.append(key_text)
+    fields: List[Dict[str, Any]] = []
+    for key in keys:
+        sample_value = None
+        for sample in samples:
+            if isinstance(sample, dict) and key in sample:
+                sample_value = sample.get(key)
+                break
+        fields.append(_field_from_sample(key, sample_value))
+    return fields
+
+
+def _resolve_multi_account_template(section_key: str, field_key: str) -> Optional[Dict[str, Any]]:
+    return _MULTI_ACCOUNT_TEMPLATES.get(f"{section_key}.{field_key}")
+
+
+def _normalize_item_fields(item_fields: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    result: List[Dict[str, Any]] = []
+    for item in item_fields:
+        if not isinstance(item, dict) or not item.get("key"):
+            continue
+        field = _field(
+            str(item["key"]),
+            str(item.get("label") or _humanize_key(str(item["key"]))),
+            str(item.get("type") or "text"),
+            description=str(item.get("description") or ""),
+            placeholder=str(item.get("placeholder") or ""),
+            secret=bool(item.get("secret")),
+            advanced=bool(item.get("advanced")),
+            readonly=bool(item.get("readonly")),
+            unit=str(item.get("unit") or ""),
+            default=item.get("default"),
+            item_label=str(item.get("item_label") or "项"),
+        )
+        result.append(field)
+    return result
+
+
+def _build_multi_account_field(
+    section_key: str,
+    field_key: str,
+    raw_value: Any,
+    *,
+    description: str = "",
+) -> Optional[Dict[str, Any]]:
+    template = _resolve_multi_account_template(section_key, field_key)
+    preferred_type = None
+    if template:
+        preferred_type = template.get("type")
+    elif isinstance(raw_value, list):
+        preferred_type = "object_list"
+    elif isinstance(raw_value, dict):
+        # only treat known multi-account containers or homogeneous nested dicts as object_map
+        if field_key in {"bots", "accounts"}:
+            preferred_type = "object_map"
+        elif raw_value and all(isinstance(v, dict) for v in raw_value.values()):
+            preferred_type = "object_map"
+        else:
+            return None
+    else:
+        return None
+
+    if preferred_type == "object_list":
+        items = raw_value if isinstance(raw_value, list) else []
+        samples = [item for item in items if isinstance(item, dict)]
+        item_fields = _normalize_item_fields(template.get("item_fields") or []) if template else []
+        if not item_fields:
+            item_fields = _build_item_fields_from_samples(samples)
+        if not item_fields and template and template.get("item_defaults"):
+            item_fields = _build_item_fields_from_samples([template["item_defaults"]])
+        if not item_fields:
+            return None
+        return _field(
+            field_key,
+            str((template or {}).get("label") or _humanize_key(field_key)),
+            "object_list",
+            description=str((template or {}).get("description") or description or ""),
+            item_label=str((template or {}).get("item_label") or "项"),
+            add_label=str((template or {}).get("add_label") or ""),
+            item_fields=item_fields,
+            default=deepcopy((template or {}).get("item_defaults") or {}),
+        )
+
+    if preferred_type == "object_map":
+        mapping = raw_value if isinstance(raw_value, dict) else {}
+        samples = []
+        for name, payload in mapping.items():
+            if not isinstance(payload, dict):
+                continue
+            sample = dict(payload)
+            key_field = str((template or {}).get("key_field") or "name")
+            if key_field not in sample:
+                sample[key_field] = str(name)
+            samples.append(sample)
+        item_fields = _normalize_item_fields(template.get("item_fields") or []) if template else []
+        if not item_fields:
+            item_fields = _build_item_fields_from_samples(samples)
+        if not item_fields and template and template.get("item_defaults"):
+            item_fields = _build_item_fields_from_samples([template["item_defaults"]])
+        if not item_fields:
+            return None
+        return _field(
+            field_key,
+            str((template or {}).get("label") or _humanize_key(field_key)),
+            "object_map",
+            description=str((template or {}).get("description") or description or ""),
+            item_label=str((template or {}).get("item_label") or "项"),
+            add_label=str((template or {}).get("add_label") or ""),
+            key_field=str((template or {}).get("key_field") or "name"),
+            key_label=str((template or {}).get("key_label") or "标识"),
+            item_fields=item_fields,
+            default=deepcopy((template or {}).get("item_defaults") or {}),
+        )
+    return None
+
+
+def _coerce_object_item(item_fields: Sequence[Dict[str, Any]], value: Any) -> Dict[str, Any]:
+    raw = value if isinstance(value, dict) else {}
+    result: Dict[str, Any] = {}
+    for field in item_fields:
+        key = field["key"]
+        if key in raw:
+            result[key] = _coerce_value(field, raw.get(key))
+        else:
+            result[key] = _default_for_field(field)
+    return result
+
+
+def _coerce_object_list(field: Dict[str, Any], value: Any) -> List[Dict[str, Any]]:
+    item_fields = field.get("item_fields") or []
+    if not isinstance(value, list):
+        return []
+    return [
+        _coerce_object_item(item_fields, item)
+        for item in value
+        if isinstance(item, dict)
+    ]
+
+
+def _coerce_object_map(field: Dict[str, Any], value: Any) -> Dict[str, Any]:
+    item_fields = field.get("item_fields") or []
+    key_field = str(field.get("key_field") or "name")
+    if not isinstance(value, dict):
+        return {}
+    result: Dict[str, Any] = {}
+    for name, payload in value.items():
+        if not isinstance(payload, dict):
+            continue
+        item = _coerce_object_item(item_fields, payload)
+        key_value = str(item.get(key_field) or name).strip() or str(name)
+        item[key_field] = key_value
+        result[key_value] = item
+    return result
+
+
+def _object_map_to_toml_table(field: Dict[str, Any], value: Any):
+    item_fields = field.get("item_fields") or []
+    key_field = str(field.get("key_field") or "name")
+    mapping = value if isinstance(value, dict) else {}
+    table = tomlkit.table()
+    for name, payload in mapping.items():
+        if not isinstance(payload, dict):
+            continue
+        item = _coerce_object_item(item_fields, payload)
+        key_value = str(item.get(key_field) or name).strip() or str(name)
+        child = tomlkit.table()
+        for item_field in item_fields:
+            item_key = item_field["key"]
+            if item_key == key_field:
+                continue
+            if item_key not in item:
+                continue
+            child[item_key] = item[item_key]
+        table[key_value] = child
+    return table
+
+
+def _object_list_to_toml_array(field: Dict[str, Any], value: Any):
+    item_fields = field.get("item_fields") or []
+    items = value if isinstance(value, list) else []
+    array = tomlkit.aot()
+    for payload in items:
+        if not isinstance(payload, dict):
+            continue
+        item = _coerce_object_item(item_fields, payload)
+        child = tomlkit.table()
+        for item_field in item_fields:
+            item_key = item_field["key"]
+            if item_key not in item:
+                continue
+            child[item_key] = item[item_key]
+        array.append(child)
+    return array
+
+
 def _infer_field_type(value: Any) -> str:
     if isinstance(value, bool):
         return "boolean"
@@ -782,9 +1100,23 @@ def _build_fields_from_value(
         return fields
 
     section_prefix = prefix if root_prefix is None else root_prefix
+    section_key = section_prefix.split(".", 1)[0] if section_prefix else ""
 
     for key, item in value.items():
         path = f"{prefix}.{key}" if prefix else str(key)
+        relative_key = path if not section_prefix else path[len(section_prefix) + 1 :]
+        multi_field = None
+        if depth == 0 and "." not in relative_key:
+            multi_field = _build_multi_account_field(
+                section_key,
+                relative_key,
+                item,
+                description=comments.get(path, ""),
+            )
+        if multi_field is not None:
+            fields.append(multi_field)
+            continue
+
         field_type = _infer_field_type(item)
         if field_type == "object" and depth < max_depth:
             nested = _build_fields_from_value(
@@ -798,13 +1130,16 @@ def _build_fields_from_value(
             fields.extend(nested)
             continue
         if field_type == "object_list":
+            multi_field = _build_multi_account_field(
+                section_key,
+                relative_key,
+                item,
+                description=comments.get(path, ""),
+            )
+            if multi_field is not None:
+                fields.append(multi_field)
             continue
-        secret = any(
-            token in str(key).lower()
-            for token in ("password", "token", "secret", "api-key", "apikey", "admin-key")
-        )
-        # 始终相对顶层 section，避免 nested.host 被收成 host
-        relative_key = path if not section_prefix else path[len(section_prefix) + 1 :]
+        secret = _is_secret_key(str(key))
         fields.append(
             _field(
                 relative_key,
@@ -814,6 +1149,31 @@ def _build_fields_from_value(
                 secret=secret,
             )
         )
+    return fields
+
+
+def _inject_multi_account_templates(
+    section_key: str,
+    fields: List[Dict[str, Any]],
+    section_value: Dict[str, Any],
+    comments: Dict[str, str],
+) -> List[Dict[str, Any]]:
+    existing = {field["key"] for field in fields}
+    for full_key, template in _MULTI_ACCOUNT_TEMPLATES.items():
+        if not full_key.startswith(f"{section_key}."):
+            continue
+        field_key = full_key.split(".", 1)[1]
+        if field_key in existing:
+            continue
+        multi_field = _build_multi_account_field(
+            section_key,
+            field_key,
+            section_value.get(field_key),
+            description=comments.get(f"{section_key}.{field_key}", ""),
+        )
+        if multi_field is not None:
+            fields.append(multi_field)
+            existing.add(field_key)
     return fields
 
 
@@ -830,6 +1190,12 @@ def infer_schema_from_toml(path: Path, title: str = "配置") -> List[Dict[str, 
         if not isinstance(section_value, dict):
             continue
         fields = _build_fields_from_value(str(section_key), section_value, comments)
+        fields = _inject_multi_account_templates(
+            str(section_key),
+            fields,
+            section_value,
+            comments,
+        )
         if not fields:
             continue
         sections.append(
@@ -875,12 +1241,27 @@ def save_generic_config_values(path: Path, payload: Dict[str, Any]) -> Dict[str,
     if not isinstance(payload, dict):
         raise ValueError("配置数据必须是对象")
 
+    schema = infer_schema_from_toml(path)
+    field_map: Dict[str, Dict[str, Dict[str, Any]]] = {
+        section["key"]: {field["key"]: field for field in section.get("fields") or []}
+        for section in schema
+    }
+
     for section_key, section_values in payload.items():
         if not isinstance(section_values, dict):
             continue
         section = _ensure_table(document, section_key)
+        section_fields = field_map.get(section_key, {})
         for key, value in section_values.items():
-            _set_path(section, str(key), value)
+            field = section_fields.get(str(key))
+            if field and field.get("type") == "object_list":
+                _set_path(section, str(key), _object_list_to_toml_array(field, value))
+            elif field and field.get("type") == "object_map":
+                _set_path(section, str(key), _object_map_to_toml_table(field, value))
+            elif field:
+                _set_path(section, str(key), _coerce_value(field, value))
+            else:
+                _set_path(section, str(key), value)
 
     backup_path = _write_toml_document(path, document, backup=True)
     return {

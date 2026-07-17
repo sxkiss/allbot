@@ -77,6 +77,21 @@
                                 <label class="form-check-label" for="notify-error">系统错误</label>
                             </div>
 
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-login-qrcode" v-model="config.triggers.login_qrcode">
+                                <label class="form-check-label" for="notify-login-qrcode">登录二维码</label>
+                            </div>
+
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-adapter-retry" v-model="config.triggers.adapter_retry">
+                                <label class="form-check-label" for="notify-adapter-retry">适配器断线重试</label>
+                            </div>
+
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-adapter-error" v-model="config.triggers.adapter_error">
+                                <label class="form-check-label" for="notify-adapter-error">适配器错误</label>
+                            </div>
+
                             <div class="mb-3 mt-3">
                                 <label for="heartbeat-threshold" class="form-label">心跳失败阈值</label>
                                 <input type="number" class="form-control" id="heartbeat-threshold"
@@ -204,7 +219,10 @@
                         offline: true,
                         reconnect: false,
                         restart: true,
-                        error: true
+                        error: true,
+                        login_qrcode: true,
+                        adapter_retry: true,
+                        adapter_error: true
                     },
                     templates: {
                         offlineTitle: "警告：微信离线通知 - {time}",
@@ -222,6 +240,18 @@
             this.refreshHistory();
         },
         methods: {
+            normalizeTriggers(triggers) {
+                const defaults = {
+                    offline: true,
+                    reconnect: false,
+                    restart: true,
+                    error: true,
+                    login_qrcode: true,
+                    adapter_retry: true,
+                    adapter_error: true
+                };
+                return Object.assign({}, defaults, triggers || {});
+            },
             async loadConfig() {
                 try {
                     this.loading = true;
@@ -230,6 +260,7 @@
                         const data = await response.json();
                         if (data.success) {
                             this.config = data.config;
+                            this.config.triggers = this.normalizeTriggers(this.config.triggers);
                             // 保存原始配置用于重置
                             this.originalConfig = JSON.parse(JSON.stringify(data.config));
                         } else {
@@ -354,6 +385,12 @@
                         return 'bg-primary';
                     case 'error':
                         return 'bg-warning';
+                    case 'login_qrcode':
+                        return 'bg-info';
+                    case 'adapter_retry':
+                        return 'bg-warning';
+                    case 'adapter_error':
+                        return 'bg-danger';
                     case 'test':
                         return 'bg-info';
                     default:
@@ -370,6 +407,12 @@
                         return '重启';
                     case 'error':
                         return '错误';
+                    case 'login_qrcode':
+                        return '登录二维码';
+                    case 'adapter_retry':
+                        return '适配器重试';
+                    case 'adapter_error':
+                        return '适配器错误';
                     case 'test':
                         return '测试';
                     default:

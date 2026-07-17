@@ -20,6 +20,42 @@ from loguru import logger
 from adapter.base import AdapterLogger
 
 
+
+
+def _notify_adapter_retry(adapter: str, reason: str, retry_in=None, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_retry_notification(
+                adapter=adapter,
+                reason=reason,
+                retry_in=retry_in,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
+
+def _notify_adapter_error(adapter: str, error: str, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_error_notification(
+                adapter=adapter,
+                error=error,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
 class WinAdapter:
     """Win (Client7/Cool) 协议适配器。负责桥接 WebSocket 事件与统一消息 Schema。"""
 
@@ -242,7 +278,13 @@ class WinAdapter:
                     await self._handle_websocket(websocket)
             except Exception as exc:
                 self._logger.error(f"WinAdapter WebSocket 异常: {exc}")
+                _notify_adapter_error("win", f"{type(exc).__name__}: {exc}")
             if not self.stop_event.is_set():
+                _notify_adapter_retry(
+                    "win",
+                    "WebSocket 连接断开，准备重连",
+                    retry_in=self.reconnect_interval,
+                )
                 await asyncio.sleep(self.reconnect_interval)
 
     async def _handle_websocket(self, websocket) -> None:

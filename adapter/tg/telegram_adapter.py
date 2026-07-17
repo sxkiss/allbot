@@ -32,6 +32,42 @@ from adapter.base import AdapterLogger
 MediaInput = Union[str, bytes, os.PathLike]
 
 
+
+
+def _notify_adapter_retry(adapter: str, reason: str, retry_in=None, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_retry_notification(
+                adapter=adapter,
+                reason=reason,
+                retry_in=retry_in,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
+
+def _notify_adapter_error(adapter: str, error: str, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_error_notification(
+                adapter=adapter,
+                error=error,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
 class TelegramBotClient:
     """基于 Telegram Bot API 的轻量 HTTP 客户端"""
 
@@ -604,9 +640,18 @@ class TelegramAdapter:
                         continue
             if attempt < self.init_retry:
                 self._logger.info(f"{self.init_retry_interval}s 后重试初始化 Telegram Bot")
+                _notify_adapter_retry(
+                    "tg",
+                    f"初始化失败({attempt}/{self.init_retry})",
+                    retry_in=self.init_retry_interval,
+                )
                 time.sleep(self.init_retry_interval)
         if last_exc:
             self._logger.error(f"Telegram Bot 初始化失败，已重试 {self.init_retry} 次 - {last_exc}")
+            _notify_adapter_error(
+                "tg",
+                f"初始化失败，已重试 {self.init_retry} 次: {last_exc}",
+            )
         return False
 
     def _init_redis(self) -> bool:
@@ -749,6 +794,12 @@ class TelegramAdapter:
                     self._handle_update(update, bs)
             except Exception as exc:
                 self._logger.error(f"轮询异常 (bot={bs.name}) - {exc}")
+                _notify_adapter_retry(
+                    "tg",
+                    f"轮询异常: {exc}",
+                    retry_in=self.retry_interval,
+                    account=getattr(bs, "name", "") or "",
+                )
                 time.sleep(self.retry_interval)
 
     def _get_default_bot(self) -> Optional[_BotState]:

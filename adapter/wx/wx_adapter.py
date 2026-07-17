@@ -33,6 +33,44 @@ import requests
 from adapter.base import AdapterLogger
 
 
+
+
+def _notify_login_qrcode(source: str, account: str = "", qrcode_url: str = "", login_link: str = "", extra: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_login_qrcode_notification(
+                source=source,
+                account=account,
+                qrcode_url=qrcode_url,
+                login_link=login_link,
+                extra=extra,
+            )
+        )
+    except Exception:
+        pass
+
+
+def _notify_adapter_retry(adapter: str, reason: str, retry_in=None, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_retry_notification(
+                adapter=adapter,
+                reason=reason,
+                retry_in=retry_in,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
 class WxFileHelperAdapter:
     """wx-filehelper-api 适配器：入站轮询 getUpdates，出站消费回复队列。"""
 
@@ -263,6 +301,12 @@ class WxFileHelperAdapter:
                 status = detail.get("status") if isinstance(detail, dict) else "unknown"
                 self._logger.warning(f"wx-filehelper 离线，当前状态={status}，准备扫码登录")
                 self._last_offline_log_at = now
+                _notify_adapter_retry(
+                    "wx",
+                    f"离线 status={status}，准备扫码登录",
+                    retry_in=self.login_check_interval,
+                    account=getattr(self, "session_default", "") or "wxfilehelper",
+                )
 
             if now - self._last_qr_fetch_at >= self.qr_refresh_interval:
                 self._last_qr_fetch_at = now
@@ -289,14 +333,30 @@ class WxFileHelperAdapter:
         content_type = (resp.headers.get("Content-Type") or "").lower()
         if "image/png" in content_type and resp.content:
             self.qr_save_path.write_bytes(resp.content)
+            login_link = f"{self.base_url}/webui"
+            qr_url = f"{self.base_url}/qr"
             self._logger.warning(
-                f"检测到离线，请扫码登录，二维码已保存: {self.qr_save_path} (或访问 {self.base_url}/webui)"
+                f"检测到离线，请扫码登录，二维码已保存: {self.qr_save_path} (或访问 {login_link})"
+            )
+            _notify_login_qrcode(
+                source="wx",
+                account=getattr(self, "session_default", "") or "wxfilehelper",
+                qrcode_url=qr_url,
+                login_link=login_link,
+                extra=f"本地二维码: {self.qr_save_path}",
             )
             return
 
         text = (resp.text or "").strip()
         if text:
             self._logger.info(f"二维码接口返回: {text}")
+            _notify_login_qrcode(
+                source="wx",
+                account=getattr(self, "session_default", "") or "wxfilehelper",
+                qrcode_url=text if text.startswith("http") else f"{self.base_url}/webui",
+                login_link=f"{self.base_url}/webui",
+                extra=text if not text.startswith("http") else "",
+            )
 
     def _fetch_updates(self) -> list[Dict[str, Any]]:
         return self._fetch_updates_batch(

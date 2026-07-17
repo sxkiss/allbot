@@ -128,6 +128,31 @@ class NotificationConfig:
     template: str = "html"
     topic: str = ""
     heartbeat_threshold: int = 3
+    triggers: Dict[str, bool] = field(
+        default_factory=lambda: {
+            "offline": True,
+            "reconnect": False,
+            "restart": False,
+            "error": True,
+            "login_qrcode": True,
+            "adapter_retry": True,
+            "adapter_error": True,
+        }
+    )
+    templates: Dict[str, str] = field(default_factory=dict)
+
+    def to_service_dict(self) -> Dict[str, Any]:
+        """转换为通知服务初始化/热更新所需的字典结构。"""
+        return {
+            "enabled": self.enabled,
+            "token": self.token,
+            "channel": self.channel,
+            "template": self.template,
+            "topic": self.topic,
+            "heartbeatThreshold": self.heartbeat_threshold,
+            "triggers": dict(self.triggers or {}),
+            "templates": dict(self.templates or {}),
+        }
 
 
 @dataclass
@@ -524,6 +549,32 @@ class ConfigManager:
         # 通知配置
         if "Notification" in self._raw_config:
             notification_config = self._raw_config["Notification"]
+            default_triggers = {
+                "offline": True,
+                "reconnect": False,
+                "restart": False,
+                "error": True,
+                "login_qrcode": True,
+                "adapter_retry": True,
+                "adapter_error": True,
+            }
+            raw_triggers = notification_config.get("triggers", {}) or {}
+            triggers = {
+                key: bool(raw_triggers.get(key, default))
+                for key, default in default_triggers.items()
+            }
+            # 兼容未知扩展触发器键
+            for key, value in raw_triggers.items():
+                if key not in triggers:
+                    triggers[key] = bool(value)
+
+            raw_templates = notification_config.get("templates", {}) or {}
+            templates = {
+                str(key): str(value)
+                for key, value in raw_templates.items()
+                if value is not None
+            }
+
             config.notification = NotificationConfig(
                 enabled=notification_config.get("enabled", config.notification.enabled),
                 token=notification_config.get("token", config.notification.token),
@@ -533,8 +584,13 @@ class ConfigManager:
                 ),
                 topic=notification_config.get("topic", config.notification.topic),
                 heartbeat_threshold=notification_config.get(
-                    "heartbeatThreshold", config.notification.heartbeat_threshold
+                    "heartbeatThreshold",
+                    notification_config.get(
+                        "heartbeat_threshold", config.notification.heartbeat_threshold
+                    ),
                 ),
+                triggers=triggers,
+                templates=templates,
             )
 
         # 日志配置

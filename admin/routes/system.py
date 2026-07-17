@@ -1,7 +1,8 @@
 """
-系统管理路由模块
-
-职责：处理系统监控、配置管理、日志查看等 API
+@input: FastAPI app、config_service、notification_service、系统状态回调
+@output: 系统监控/配置/日志相关 API 路由
+@position: 管理后台系统设置入口；保存 Notification 时热更新触发条件
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 import os
 import socket
@@ -190,9 +191,50 @@ def register_system_routes(app, get_system_info, get_system_status, handle_syste
             # 兼容旧调用：直接传 section map
             payload = body.get("values") if isinstance(body, dict) and "values" in body else body
             result = save_main_config_values(payload, config_path)
+
+            # 通知配置支持热更新，避免“触发条件已保存但不生效”
+            try:
+                notification_payload = None
+                if isinstance(payload, dict):
+                    notification_payload = payload.get("Notification")
+                if isinstance(notification_payload, dict):
+                    from utils.notification_service import get_notification_service
+
+                    notification_service = get_notification_service()
+                    if notification_service:
+                        service_config = {
+                            "enabled": notification_payload.get("enabled"),
+                            "token": notification_payload.get("token"),
+                            "channel": notification_payload.get("channel"),
+                            "template": notification_payload.get("template"),
+                            "topic": notification_payload.get("topic"),
+                            "heartbeatThreshold": notification_payload.get("heartbeatThreshold"),
+                            "triggers": {},
+                            "templates": {},
+                        }
+                        for key, value in notification_payload.items():
+                            if key.startswith("triggers."):
+                                service_config["triggers"][key.split(".", 1)[1]] = value
+                            elif key.startswith("templates."):
+                                service_config["templates"][key.split(".", 1)[1]] = value
+                            elif key == "triggers" and isinstance(value, dict):
+                                service_config["triggers"].update(value)
+                            elif key == "templates" and isinstance(value, dict):
+                                service_config["templates"].update(value)
+                        # 过滤未提交字段，避免把 None 覆盖现有配置
+                        service_config = {
+                            k: v for k, v in service_config.items()
+                            if v is not None and (not isinstance(v, dict) or v)
+                        }
+                        if service_config:
+                            notification_service.update_config(service_config)
+                            logger.info(f"系统设置保存后已热更新通知触发条件: {notification_service.triggers}")
+            except Exception as hot_reload_error:
+                logger.warning(f"通知配置热更新失败（配置已落盘）: {hot_reload_error}")
+
             return {
                 "success": True,
-                "message": "配置保存成功，重启服务后生效",
+                "message": "配置保存成功",
                 "backup": result.get("backup"),
                 "path": result.get("path"),
                 "data": result.get("values"),

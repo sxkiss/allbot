@@ -183,6 +183,42 @@ class BotConnection:
         self._async_send_lock: Optional[asyncio.Lock] = None
 
 
+
+
+def _notify_adapter_retry(adapter: str, reason: str, retry_in=None, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_retry_notification(
+                adapter=adapter,
+                reason=reason,
+                retry_in=retry_in,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
+
+def _notify_adapter_error(adapter: str, error: str, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_error_notification(
+                adapter=adapter,
+                error=error,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
 class WecomBotAdapter:
     """企业微信智能机器人 aibot 长连接双向适配器。"""
 
@@ -564,10 +600,21 @@ class WecomBotAdapter:
                     f"bot={bot_name} WebSocket 主循环异常: "
                     f"{type(exc).__name__}: {exc!r}\n{traceback.format_exc()}"
                 )
+                _notify_adapter_error(
+                    "wecom_bot",
+                    f"{type(exc).__name__}: {exc}",
+                    account=bot_name,
+                )
             if self.stop_event.is_set():
                 break
             self._logger.warning(
                 f"bot={bot_name} 连接断开，{self.reconnect_delay}s 后重连"
+            )
+            _notify_adapter_retry(
+                "wecom_bot",
+                f"bot={bot_name} 连接断开",
+                retry_in=self.reconnect_delay,
+                account=bot_name,
             )
             self.stop_event.wait(self.reconnect_delay)
 

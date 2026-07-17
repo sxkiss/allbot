@@ -84,6 +84,42 @@ SEND_ENDPOINTS = {
 }
 
 
+
+def _notify_adapter_retry(adapter: str, reason: str, retry_in=None, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_retry_notification(
+                adapter=adapter,
+                reason=reason,
+                retry_in=retry_in,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
+
+def _notify_adapter_error(adapter: str, error: str, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_error_notification(
+                adapter=adapter,
+                error=error,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
+
 class WechatObservatoryAdapter:
     """WeChat Observatory Public API v1 适配器。"""
 
@@ -270,6 +306,11 @@ class WechatObservatoryAdapter:
                     self._set_cursor(max(self._event_cursor(item) for item in messages))
             except Exception as exc:
                 self._logger.error(f"补拉消息失败: {exc}")
+                _notify_adapter_retry(
+                    "wechat_observatory",
+                    f"补拉消息失败: {exc}",
+                    retry_in=self.polling_interval,
+                )
             self.stop_event.wait(self.polling_interval)
 
     def _websocket_thread(self) -> None:
@@ -282,6 +323,11 @@ class WechatObservatoryAdapter:
             except Exception as exc:
                 if not self.stop_event.is_set():
                     self._logger.warning(f"WebSocket 连接中断: {exc}")
+                    _notify_adapter_retry(
+                        "wechat_observatory",
+                        f"WebSocket 连接中断: {exc}",
+                        retry_in=3,
+                    )
                     self.stop_event.wait(3)
 
     async def _websocket_loop(self) -> None:
@@ -305,7 +351,12 @@ class WechatObservatoryAdapter:
                 elif msg_type in {"hello", "ping", "pong"}:
                     continue
                 elif msg_type == "error":
-                    self._logger.warning(f"WebSocket 错误: {data.get('error')}")
+                    err = data.get("error")
+                    self._logger.warning(f"WebSocket 错误: {err}")
+                    _notify_adapter_error(
+                        "wechat_observatory",
+                        f"WebSocket 错误: {err}",
+                    )
 
     def _handle_public_event(self, event: Dict[str, Any]) -> None:
         if not self.include_sent and str(event.get("direction") or "").lower() == "sent":

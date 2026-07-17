@@ -21,6 +21,42 @@ from loguru import logger
 from adapter.base import AdapterLogger
 
 
+
+def _notify_adapter_retry(adapter: str, reason: str, retry_in=None, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_retry_notification(
+                adapter=adapter,
+                reason=reason,
+                retry_in=retry_in,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
+
+def _notify_adapter_error(adapter: str, error: str, account: str = "") -> None:
+    try:
+        from utils.notification_service import get_notification_service
+        service = get_notification_service()
+        if not service:
+            return
+        service.schedule(
+            lambda: service.send_adapter_error_notification(
+                adapter=adapter,
+                error=error,
+                account=account,
+            )
+        )
+    except Exception:
+        pass
+
+
 class QQAdapter:
     """QQ (NTQQ/NapCat) 适配器，实现 WebSocket 入站与 ReplyRouter 出站"""
 
@@ -217,6 +253,7 @@ class QQAdapter:
             self.server_loop.run_until_complete(self._server_main())
         except Exception as exc:
             self._logger.error(f"QQAdapter WebSocket 主循环异常: {exc}")
+            _notify_adapter_error("qq", f"WebSocket 主循环异常: {exc}")
         finally:
             tasks = asyncio.all_tasks(self.server_loop)
             for task in tasks:
@@ -259,6 +296,12 @@ class QQAdapter:
                 await self._process_raw_message(raw)
         except websockets.exceptions.ConnectionClosed as exc:
             self._logger.warning(f"QQ 客户端断开 {client_label}: {exc}")
+            _notify_adapter_retry(
+                "qq",
+                f"客户端断开 {client_label}: {exc}",
+                retry_in=0,
+                account=client_label,
+            )
         finally:
             with self._clients_lock:
                 self.active_clients.discard(websocket)

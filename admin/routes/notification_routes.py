@@ -1,7 +1,7 @@
 """
 通知管理路由模块
 
-职责：处理 PushPlus 通知设置、测试和历史记录
+职责：处理 xxtui 通知设置、测试和历史记录
 """
 from typing import Optional
 from pathlib import Path
@@ -40,7 +40,7 @@ def register_notification_routes(app, templates):
 
     @app.get("/notification", response_class=HTMLResponse)
     async def notification_page(request: Request, username: Optional[str] = Depends(require_auth_page)):
-        """PushPlus 通知设置页面"""
+        """xxtui 通知设置页面"""
         if not username:
             return RedirectResponse(url="/login?next=/notification")
 
