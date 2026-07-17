@@ -1,11 +1,12 @@
 """
-@input: main_config.toml、github.akams.cn 页面 JS 节点源、requests/FastAPI
-@output: GitHub 反代节点查询、检测与写入配置的 API 路由
+@input: main_config.toml、github.akams.cn 页面 JS 节点源（兼容 contribute 列表）、admin/cache 磁盘节点缓存、requests/FastAPI
+@output: GitHub 反代节点查询、检测与写入配置的 API 路由（上游失败时回退磁盘/内存缓存）
 @position: 管理后台 GitHub 反代配置层，为插件/框架下载提供代理节点管理
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
 import shutil
 import time
+import json
 from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
@@ -25,11 +26,126 @@ _check_auth = None
 _CONFIG_PATH = Path(__file__).resolve().parent.parent / "main_config.toml"
 _NODE_SOURCE_URL = "https://github.akams.cn/"
 _DEFAULT_PROXY_NODE = "https://github.akams.cn/"
+_CACHE_DIR = Path(__file__).resolve().parent / "cache"
+_NODES_DISK_CACHE_PATH = _CACHE_DIR / "github_proxy_nodes.json"
 
 _NODES_CACHE_TTL_SECONDS = 600
 _nodes_cache: Dict[str, Any] = {"ts": 0, "nodes": []}
 
 _TEST_GITHUB_URL = "https://raw.githubusercontent.com/microsoft/vscode/refs/heads/main/extensions/markdown-math/icon.png"
+
+
+def _default_nodes() -> List[Dict[str, Any]]:
+    return [
+        {
+            "url": _normalize_proxy_url(_DEFAULT_PROXY_NODE),
+            "latency": None,
+            "speed": None,
+            "tag": "默认",
+        }
+    ]
+
+
+def _sanitize_nodes(nodes: Any) -> List[Dict[str, Any]]:
+    if not isinstance(nodes, list):
+        return []
+
+    cleaned: List[Dict[str, Any]] = []
+    seen = set()
+    for item in nodes:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url") or "").strip()
+        if not url:
+            continue
+        try:
+            proxy_url = _normalize_proxy_url(url)
+        except Exception:
+            continue
+        if proxy_url in seen:
+            continue
+        seen.add(proxy_url)
+        cleaned.append(
+            {
+                "url": proxy_url,
+                "latency": item.get("latency"),
+                "speed": item.get("speed"),
+                "tag": str(item.get("tag") or "贡献"),
+            }
+        )
+    return cleaned
+
+
+def _is_default_only_nodes(nodes: List[Dict[str, Any]]) -> bool:
+    if len(nodes) != 1:
+        return False
+    return nodes[0].get("url") == _normalize_proxy_url(_DEFAULT_PROXY_NODE)
+
+
+def _load_disk_nodes_cache() -> List[Dict[str, Any]]:
+    try:
+        if not _NODES_DISK_CACHE_PATH.exists():
+            return []
+        data = json.loads(_NODES_DISK_CACHE_PATH.read_text(encoding="utf-8"))
+        nodes = _sanitize_nodes(data.get("nodes") if isinstance(data, dict) else data)
+        if nodes and not _is_default_only_nodes(nodes):
+            return nodes
+    except Exception as e:
+        logger.warning(f"读取 GitHub 反代节点磁盘缓存失败: {e}")
+    return []
+
+
+def _save_disk_nodes_cache(nodes: List[Dict[str, Any]]) -> None:
+    cleaned = _sanitize_nodes(nodes)
+    if not cleaned or _is_default_only_nodes(cleaned):
+        return
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": int(time.time()),
+            "source": _NODE_SOURCE_URL,
+            "nodes": cleaned,
+        }
+        _NODES_DISK_CACHE_PATH.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning(f"写入 GitHub 反代节点磁盘缓存失败: {e}")
+
+
+def _set_memory_nodes_cache(nodes: List[Dict[str, Any]], *, touch_ts: bool = True) -> None:
+    cleaned = _sanitize_nodes(nodes)
+    if not cleaned:
+        return
+    if touch_ts:
+        _nodes_cache["ts"] = int(time.time())
+    _nodes_cache["nodes"] = cleaned
+
+
+def _get_memory_nodes_cache(allow_stale: bool = False) -> List[Dict[str, Any]]:
+    nodes = _sanitize_nodes(_nodes_cache.get("nodes"))
+    if not nodes:
+        return []
+    if allow_stale:
+        return nodes
+    cached_ts = int(_nodes_cache.get("ts") or 0)
+    if cached_ts and int(time.time()) - cached_ts < _NODES_CACHE_TTL_SECONDS:
+        return nodes
+    return []
+
+
+def _resolve_fallback_nodes() -> List[Dict[str, Any]]:
+    # 优先内存里的上次成功结果，再读磁盘；默认节点最后兜底
+    for nodes in (
+        _get_memory_nodes_cache(allow_stale=True),
+        _load_disk_nodes_cache(),
+        _default_nodes(),
+    ):
+        cleaned = _sanitize_nodes(nodes)
+        if cleaned:
+            return cleaned
+    return _default_nodes()
 
 
 async def _require_auth(request: Request) -> Optional[str]:
@@ -105,19 +221,109 @@ def _write_github_proxy(value: str) -> None:
     _CONFIG_PATH.write_text(content, encoding="utf-8")
 
 
-def _fetch_nodes_from_upstream() -> List[Dict[str, Any]]:
-    now = int(time.time())
-    cached_ts = int(_nodes_cache.get("ts") or 0)
-    if cached_ts and now - cached_ts < _NODES_CACHE_TTL_SECONDS:
-        nodes = _nodes_cache.get("nodes")
-        if isinstance(nodes, list) and nodes:
-            return nodes
+def _looks_like_proxy_domain(value: str) -> bool:
+    text = (value or "").strip().lower()
+    if not text:
+        return False
+    if text.startswith("http://") or text.startswith("https://"):
+        return True
+    # 节点源目前给的是域名/主机名
+    if " " in text or "/" in text:
+        return False
+    if "." not in text:
+        return False
+    # 过滤明显无关域名
+    blocked = (
+        "google.com",
+        "recaptcha",
+        "github.com",
+        "nextjs.org",
+        "react.dev",
+        "w3.org",
+        "cloudflare.com",
+        "giphy.com",
+        "iconify.design",
+        "jsdelivr.net",
+        "akams.cn",
+    )
+    return not any(item in text for item in blocked)
+
+
+def _extract_nodes_from_js(js_text: str) -> List[Dict[str, Any]]:
+    if not js_text:
+        return []
+
+    tag_map = {
+        "default": "默认",
+        "contribute": "贡献",
+        "survey": "测绘",
+    }
+    nodes: List[Dict[str, Any]] = []
+    seen = set()
+
+    # 兼容旧格式 + 当前 github.akams.cn 的 contribute 节点
+    patterns = (
+        r'\{label:"([^"]+)",value:"([^"]+)"\}',
+        r"\{label:'([^']+)',value:'([^']+)'\}",
+        r'\{value:"([^"]+)",label:"([^"]+)"\}',
+        r"\{value:'([^']+)',label:'([^']+)'\}",
+    )
+    pairs: List[tuple[str, str]] = []
+    for pattern in patterns:
+        for left, right in re.findall(pattern, js_text):
+            # 兼容 value/label 顺序互换
+            if pattern.startswith(r'\{value:'):
+                domain, label = left, right
+            else:
+                label, domain = left, right
+            pairs.append((label, domain))
+
+    for label, domain in pairs:
+        domain = (domain or "").strip()
+        label = (label or "").strip() or "contribute"
+        if not _looks_like_proxy_domain(domain):
+            continue
+        try:
+            if domain.startswith("http://") or domain.startswith("https://"):
+                proxy_url = _normalize_proxy_url(domain)
+            else:
+                proxy_url = _normalize_proxy_url(f"https://{domain}/")
+        except Exception:
+            continue
+        if proxy_url in seen:
+            continue
+        seen.add(proxy_url)
+        nodes.append(
+            {
+                "url": proxy_url,
+                "latency": None,
+                "speed": None,
+                "tag": tag_map.get(label, label),
+            }
+        )
+    return nodes
+
+
+def _fetch_nodes_from_upstream(force_refresh: bool = False) -> List[Dict[str, Any]]:
+    if not force_refresh:
+        cached = _get_memory_nodes_cache(allow_stale=False)
+        if cached:
+            return cached
+
+        # 冷启动时先尝试磁盘缓存，避免上游抖动直接空白
+        disk_cached = _load_disk_nodes_cache()
+        if disk_cached:
+            _set_memory_nodes_cache(disk_cached)
+            return disk_cached
 
     nodes: List[Dict[str, Any]] = []
     try:
         # 从 github.akams.cn 页面的 JS bundle 中提取节点列表
-        page_resp = requests.get(_NODE_SOURCE_URL, timeout=10,
-                                 headers={"User-Agent": "Mozilla/5.0"})
+        page_resp = requests.get(
+            _NODE_SOURCE_URL,
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0"},
+        )
         page_resp.raise_for_status()
         html = page_resp.text
 
@@ -130,48 +336,37 @@ def _fetch_nodes_from_upstream() -> List[Dict[str, Any]]:
         for path in chunk_paths:
             chunk_url = f"https://github.akams.cn{path}"
             try:
-                chunk_resp = requests.get(chunk_url, timeout=8,
-                                          headers={"User-Agent": "Mozilla/5.0"})
-                if chunk_resp.status_code == 200 and '{label:"default",value:"' in chunk_resp.text:
-                    raw_nodes = re.findall(
-                        r'\{label:"(default|contribute|survey)",value:"([^"]+)"\}',
-                        chunk_resp.text,
-                    )
-                    for label, domain in raw_nodes:
-                        try:
-                            proxy_url = _normalize_proxy_url(f"https://{domain}/")
-                            tag_map = {"default": "默认", "contribute": "贡献", "survey": "测绘"}
-                            nodes.append({
-                                "url": proxy_url,
-                                "latency": None,
-                                "speed": None,
-                                "tag": tag_map.get(label, label),
-                            })
-                        except Exception:
-                            continue
+                chunk_resp = requests.get(
+                    chunk_url,
+                    timeout=8,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                )
+                if chunk_resp.status_code != 200:
+                    continue
+                extracted = _extract_nodes_from_js(chunk_resp.text)
+                if extracted:
+                    nodes = extracted
                     break
             except Exception:
                 continue
 
         if nodes:
-            _nodes_cache["ts"] = now
-            _nodes_cache["nodes"] = nodes
+            _set_memory_nodes_cache(nodes)
+            _save_disk_nodes_cache(nodes)
             return nodes
-    except Exception:
-        pass
 
-    # 兜底：使用默认节点
-    nodes = [
-        {
-            "url": _normalize_proxy_url(_DEFAULT_PROXY_NODE),
-            "latency": None,
-            "speed": None,
-            "tag": "默认",
-        }
-    ]
-    _nodes_cache["ts"] = now
-    _nodes_cache["nodes"] = nodes
-    return nodes
+        logger.warning("上游未解析到 GitHub 反代节点，回退缓存")
+    except Exception as e:
+        logger.warning(f"从上游获取 GitHub 反代节点失败: {e}")
+
+    # 兜底：优先上次成功缓存，再默认节点；不把默认节点写成成功缓存
+    fallback = _resolve_fallback_nodes()
+    if not _is_default_only_nodes(fallback):
+        logger.info(f"使用 GitHub 反代节点缓存兜底，共 {len(fallback)} 个")
+        _set_memory_nodes_cache(fallback, touch_ts=False)
+    else:
+        _set_memory_nodes_cache(fallback)
+    return fallback
 
 
 def _probe_proxy(proxy_url: str, max_retries: int = 2) -> Dict[str, Any]:
@@ -347,15 +542,20 @@ async def get_current_proxy(request: Request):
 async def get_nodes(request: Request, refresh: bool = False):
     await _require_auth(request)
 
-    if refresh:
-        _nodes_cache["ts"] = 0
-        _nodes_cache["nodes"] = []
-
     try:
-        nodes = await run_in_threadpool(_fetch_nodes_from_upstream)
+        nodes = await run_in_threadpool(_fetch_nodes_from_upstream, refresh)
         return JSONResponse({"success": True, "data": {"nodes": nodes}})
     except Exception as e:
         logger.error(f"获取 GitHub 反代节点失败: {e}")
+        fallback = _resolve_fallback_nodes()
+        if fallback:
+            return JSONResponse(
+                {
+                    "success": True,
+                    "data": {"nodes": fallback},
+                    "message": "上游获取失败，已返回缓存节点",
+                }
+            )
         return JSONResponse({"success": False, "error": f"获取节点失败: {e}"}, status_code=500)
 
 
