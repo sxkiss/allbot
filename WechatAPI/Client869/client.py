@@ -1951,6 +1951,37 @@ class Client869:
             return await self.reply_router.send_image(wxid, image)
 
         image_base64 = self._coerce_binary_to_base64(image)
+        last_result: Any = None
+        fallback_data: Any = None
+
+        def _wrap_result(data: Any, upload: Any = None) -> Dict[str, Any]:
+            if isinstance(data, dict):
+                result = dict(data)
+                if upload is not None and "upload" not in result:
+                    result["upload"] = upload
+                return result
+            payload = {"Data": data}
+            if upload is not None:
+                payload["upload"] = upload
+            return payload
+
+        def _is_image_send_ok(data: Any) -> bool:
+            # 优先看 isSendSuccess；没有明确失败标记时，再看是否带发送回执。
+            flag = self._extract_send_success_flag(data)
+            if flag is True:
+                return True
+            if flag is False:
+                return False
+            if isinstance(data, dict):
+                success = self._coerce_optional_bool(
+                    data.get("Success") if "Success" in data else data.get("success")
+                )
+                if success is False:
+                    # 869 常见：Success=false 但 isSendSuccess=true / 有 msg id
+                    if self._looks_like_send_ack(data):
+                        return True
+                    return False
+            return self._looks_like_send_ack(data)
 
         try:
             upload_data = await self.call_path(
@@ -1986,12 +2017,20 @@ class Client869:
                         }
                     ]
                 }
-                forward_data = await self.call_path("/message/ForwardImageMessage", body=forward_payload)
-                return (
-                    forward_data
-                    if isinstance(forward_data, dict)
-                    else {"Data": forward_data, "upload": upload_data}
-                )
+                try:
+                    forward_data = await self.call_path("/message/ForwardImageMessage", body=forward_payload)
+                except Exception as exc:
+                    logger.warning("Client869 ForwardImageMessage 调用异常，回退直发: {}", exc)
+                    forward_data = None
+                if forward_data is not None:
+                    wrapped = _wrap_result(forward_data, upload=upload_data)
+                    if _is_image_send_ok(forward_data) or _is_image_send_ok(wrapped):
+                        return wrapped
+                    last_result = wrapped
+                    logger.warning(
+                        "Client869 ForwardImageMessage 未确认成功，回退 SendImageMessage: {}",
+                        self._summarize_image_send_result(forward_data),
+                    )
 
         payload = {
             "MsgItem": [
@@ -2004,10 +2043,46 @@ class Client869:
         }
         try:
             fallback_data = await self.call_path("/message/SendImageMessage", body=payload)
+            wrapped = _wrap_result(fallback_data)
+            if _is_image_send_ok(fallback_data) or _is_image_send_ok(wrapped):
+                return wrapped
+            last_result = wrapped
+            logger.warning(
+                "Client869 SendImageMessage 未确认成功，回退 SendImageNewMessage: {}",
+                self._summarize_image_send_result(fallback_data),
+            )
         except Exception as exc:
             logger.warning("Client869 SendImageMessage 调用异常，回退 SendImageNewMessage: {}", exc)
-            fallback_data = await self.call_path("/message/SendImageNewMessage", body=payload)
-        return fallback_data if isinstance(fallback_data, dict) else {"Data": fallback_data}
+            fallback_data = None
+
+        try:
+            new_data = await self.call_path("/message/SendImageNewMessage", body=payload)
+            return _wrap_result(new_data)
+        except Exception as exc:
+            logger.warning("Client869 SendImageNewMessage 调用异常: {}", exc)
+            if last_result is not None:
+                return last_result if isinstance(last_result, dict) else {"Data": last_result}
+            if fallback_data is not None:
+                return _wrap_result(fallback_data)
+            raise
+
+    @classmethod
+    def _summarize_image_send_result(cls, data: Any) -> str:
+        if data is None:
+            return "None"
+        if not isinstance(data, (dict, list)):
+            return str(data)[:160]
+        flag = cls._extract_send_success_flag(data)
+        client_msg_id, _create_time, new_msg_id = cls._extract_send_tuple(data)
+        if isinstance(data, dict):
+            text = data.get("Text") or data.get("Message") or data.get("message") or data.get("error") or ""
+            success = data.get("Success") if "Success" in data else data.get("success")
+            code = data.get("Code") if "Code" in data else data.get("code")
+            return (
+                f"success={success} isSendSuccess={flag} code={code} "
+                f"client_msg_id={client_msg_id} new_msg_id={new_msg_id} text={str(text)[:80]}"
+            )
+        return f"isSendSuccess={flag} client_msg_id={client_msg_id} new_msg_id={new_msg_id}"
 
     async def send_voice_message(
         self,

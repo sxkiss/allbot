@@ -1,6 +1,15 @@
 # Screenshot
 
-网页截图插件，调用与台风插件相同的 [screenshotsnap](https://screenshotsnap.com/api/screenshot) 接口生成截图并发送图片。
+网页截图插件。当前版本：`1.2.0`
+
+## 双接口策略
+
+并行请求：
+
+1. `screenshotsnap`（与台风插件同接口）
+2. `microlink`
+
+任一接口返回有效图片就立即发图，并取消另一个请求。
 
 ## 用法
 
@@ -9,7 +18,7 @@
 截图 https://example.com
 ```
 
-引用一条包含链接的消息，再发送：
+引用含链接消息后发送：
 
 ```text
 截图
@@ -17,10 +26,16 @@
 
 ## 配置
 
-`config.toml`：
+- `providers`：接口顺序/列表，默认 `["screenshotsnap", "microlink"]`
+- `api_base`：screenshotsnap 地址
+- `microlink_api`：microlink 地址
+- `screenshot_width` / `screenshot_height`：抓取分辨率
+- `max_dimension` / `max_file_size` / `jpeg_quality`：发送前 JPEG 压缩
+- `retry_count` / `timeout`
+- `notify_error`
 
-- `enable`：开关
-- `commands`：触发词，默认 `["截图"]`
-- `api_base`：截图 API，默认 `https://screenshotsnap.com/api/screenshot`
-- `screenshot_width` / `screenshot_height`：分辨率
-- `retry_count` / `timeout`：重试与超时
+## 说明
+
+- 会识别 screenshotsnap 的 SVG 占位图并自动切到另一个接口
+- 发送前转 JPEG，规避 869 缩略图失败
+- 只有确认发送成功才提示“截图完成”
