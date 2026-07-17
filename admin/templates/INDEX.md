@@ -16,3 +16,4 @@
 | plugin_market.html | UI | 独立插件市场页面（分类/搜索/安装，提交插件弹窗） |
 | settings.html | UI | 系统设置页（可视化表单 + 高级原文，读写 `main_config.toml`） |
 | adapters.html | UI | 适配器管理页（可视化配置弹窗） |
+| about.html | UI | 关于页文档中心：侧边栏分组导航 + 多文档 Markdown 渲染 |

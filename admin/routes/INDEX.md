@@ -16,6 +16,7 @@
 | files.py | API | 文件上传/下载/列表 API（限制到白名单目录，插件配置初始化独立成专用端点） |
 | plugins.py | API | 插件管理与插件市场 API（含插件/适配器可视化配置读写；双市场聚合、去重保留高版本、双源提交与失败重试；安装依赖默认关闭） |
 | version_routes.py | Update | 版本检查与框架更新 API（统一委托 `utils/framework_actions.py`，并通过进度管理器推送状态） |
+| about_routes.py | UI | 关于页文档中心：自动收录 README/docs/plugins 文档并分组渲染 |
 | message_routes.py | Compat | 旧前端兼容消息接口：`/api/send_message` 与 `/api/group/announcement` |
 
 | adapter_routes.py | API | 适配器列表与启停 API |
