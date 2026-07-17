@@ -12,6 +12,16 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 
+def _normalize_version(version: str) -> str:
+    return str(version or "").strip().lstrip("vV").strip()
+
+
+def _versions_equal(left: str, right: str) -> bool:
+    a = _normalize_version(left)
+    b = _normalize_version(right)
+    return bool(a) and a == b
+
+
 def register_version_routes(app, get_version_info, current_dir,
                            update_progress_manager=None, has_update_manager=False):
     """
@@ -84,20 +94,20 @@ def register_version_routes(app, get_version_info, current_dir,
 
                 if response.status_code == 200:
                     result = response.json()
-                    latest_version = result.get("latest_version", "")
+                    latest_version = str(result.get("latest_version", "") or "").strip()
                     force_update = bool(result.get("force_update") or result.get("forceUpdate"))
 
-                    # 检查版本是否相同
-                    if latest_version == current_version and not force_update:
+                    # force_update 以市场侧为准
+                    if latest_version and _versions_equal(latest_version, current_version) and not force_update:
                         result["update_available"] = False
-
-                        # 更新本地版本信息文件
                         try:
                             version_file = os.path.join(os.path.dirname(current_dir), "version.json")
                             version_info = get_version_info()
                             version_info["update_available"] = False
                             version_info["force_update"] = False
                             version_info["last_check"] = datetime.now().isoformat()
+                            if latest_version:
+                                version_info["latest_version"] = latest_version
 
                             with open(version_file, "w", encoding="utf-8") as f:
                                 json.dump(version_info, f, ensure_ascii=False, indent=2)
@@ -106,14 +116,14 @@ def register_version_routes(app, get_version_info, current_dir,
                         except Exception as e:
                             logger.error(f"更新版本信息文件失败: {e}")
 
-                    # 如果有更新
                     elif result.get("update_available", False) or force_update:
                         try:
                             version_file = os.path.join(os.path.dirname(current_dir), "version.json")
                             version_info = get_version_info()
                             version_info["update_available"] = True
                             version_info["force_update"] = force_update
-                            version_info["latest_version"] = latest_version
+                            if latest_version:
+                                version_info["latest_version"] = latest_version
                             version_info["update_url"] = result.get("update_url", "")
                             version_info["update_description"] = result.get("update_description", "")
                             version_info["last_check"] = datetime.now().isoformat()
@@ -140,7 +150,7 @@ def register_version_routes(app, get_version_info, current_dir,
             version_info = get_version_info()
             local_force_update = bool(version_info.get("force_update"))
 
-            if version_info.get("latest_version", "") == current_version and not local_force_update:
+            if _versions_equal(version_info.get("latest_version", ""), current_version) and not local_force_update:
                 version_info["update_available"] = False
 
                 try:
@@ -168,7 +178,7 @@ def register_version_routes(app, get_version_info, current_dir,
 
             # 获取版本信息
             version_info = get_version_info()
-            if not version_info.get("update_available", False):
+            if not (version_info.get("update_available", False) or version_info.get("force_update")):
                 return {"success": False, "error": "没有可用的更新"}
 
             # 检查更新进度管理器是否可用
@@ -203,7 +213,8 @@ def register_version_routes(app, get_version_info, current_dir,
 
             force_update = bool(version_info.get("force_update"))
             update_available = bool(version_info.get("update_available"))
-            has_update = (force_update or update_available) and (force_update or (latest and latest != current))
+            # force_update 以市场侧为准，可在同版本时仍允许更新
+            has_update = force_update or (update_available and latest and latest != current)
 
             return {
                 "success": True,

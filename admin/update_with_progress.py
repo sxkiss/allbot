@@ -1,6 +1,6 @@
 """
 @input: os/asyncio/tempfile/shutil/zipfile/io/json/datetime from stdlib; requests; loguru.logger
-@output: update_with_progress(version_info, update_progress_manager, get_github_url, current_dir)
+@output: update_with_progress(version_info, update_progress_manager, get_github_url, current_dir)；更新备份仅保留最新 1 份；更新后正确写入版本号
 @position: 管理后台的版本更新执行器，负责下载/备份/更新文件、校验完整性并在失败时回滚
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -97,6 +97,58 @@ def _restore_from_backup(backup_dir: str, root_dir: str, update_items: list[str]
             shutil.copy2(backup_path, dst_path)
 
 
+def _list_update_backup_dirs(root_dir: str) -> list[str]:
+    backups: list[str] = []
+    try:
+        for name in os.listdir(root_dir):
+            path = os.path.join(root_dir, name)
+            if not os.path.isdir(path):
+                continue
+            if not name.startswith("backup_"):
+                continue
+            stamp = name[len("backup_") :]
+            if len(stamp) == 14 and stamp.isdigit():
+                backups.append(path)
+    except Exception as e:
+        logger.warning(f"枚举更新备份目录失败: {e}")
+    backups.sort(key=lambda p: os.path.basename(p))
+    return backups
+
+
+def _cleanup_old_update_backups(
+    root_dir: str,
+    *,
+    keep: int = 1,
+    keep_path: str | None = None,
+) -> None:
+    """只保留最近 keep 份自动更新备份。"""
+    keep = max(1, int(keep or 1))
+    backups = _list_update_backup_dirs(root_dir)
+    if not backups:
+        return
+
+    keep_set = set()
+    if keep_path:
+        keep_set.add(os.path.abspath(keep_path))
+
+    for path in backups[-keep:]:
+        keep_set.add(os.path.abspath(path))
+
+    removed = 0
+    for path in backups:
+        if os.path.abspath(path) in keep_set:
+            continue
+        try:
+            shutil.rmtree(path)
+            removed += 1
+            logger.info(f"已清理旧更新备份: {os.path.basename(path)}")
+        except Exception as e:
+            logger.warning(f"清理旧更新备份失败 {path}: {e}")
+
+    if removed:
+        logger.info(f"自动更新备份清理完成，删除 {removed} 份，保留最新 {keep} 份")
+
+
 async def update_with_progress(version_info: dict, update_progress_manager, get_github_url, current_dir):
     """
     带进度推送的更新流程
@@ -164,7 +216,7 @@ async def update_with_progress(version_info: dict, update_progress_manager, get_
             "plugins",                    # 插件目录（合并更新，保留本地配置与额外插件）
             "bot_core",                   # 核心调度引擎（已重构为模块化目录）
             "database",                   # 数据持久化层（SQLite/Redis）
-            "version.json",               # 版本信息文件
+            # version.json 由更新流程单独写入，避免被仓库旧文件覆盖
             "main_config.template.toml",  # 配置文件模板
             "main.py"                     # 主程序入口
         ]
@@ -273,7 +325,11 @@ async def update_with_progress(version_info: dict, update_progress_manager, get_
 
         # 阶段8: 更新版本信息 (90%)
         await update_progress_manager.update_progress(90, "更新版本信息", "正在更新版本配置...")
-        version_info["version"] = version_info["latest_version"]
+        latest_version = str(version_info.get("latest_version") or "").strip()
+        if not latest_version:
+            latest_version = str(version_info.get("version") or "").strip() or "v1.0.0"
+        version_info["version"] = latest_version
+        version_info["latest_version"] = latest_version
         version_info["update_available"] = False
         version_info["force_update"] = False
         version_info["last_check"] = datetime.now().isoformat()
@@ -281,6 +337,7 @@ async def update_with_progress(version_info: dict, update_progress_manager, get_
         version_file = os.path.join(root_dir, "version.json")
         with open(version_file, "w", encoding="utf-8") as f:
             json.dump(version_info, f, ensure_ascii=False, indent=2)
+        logger.info(f"更新后版本号已写入: {latest_version}")
         await asyncio.sleep(0.5)
 
         # 阶段9: 清理临时文件 (95%)
@@ -288,6 +345,8 @@ async def update_with_progress(version_info: dict, update_progress_manager, get_
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
             logger.info(f"已清理临时目录: {temp_dir}")
+        # 自动更新只保留最新一份备份
+        _cleanup_old_update_backups(root_dir, keep=1, keep_path=backup_dir)
         await asyncio.sleep(0.5)
 
         # 完成更新

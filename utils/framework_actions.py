@@ -1,6 +1,6 @@
 """
 @input: requests、zipfile/tempfile/shutil/io/os from stdlib；admin.restart_api.restart_system；utils.github_proxy.get_github_url
-@output: restart_framework()、update_framework()，提供统一的框架更新与重启入口
+@output: restart_framework()、update_framework()，提供统一的框架更新与重启入口（自动更新仅保留 1 份 backup_；更新后正确落盘版本号）
 @position: 框架运维动作封装层，供管理后台版本更新与 ManagePlugin 复用同一套更新逻辑
 @auto-doc: 修改本文件时需同步更新 utils/INDEX.md 与相关调用文档
 """
@@ -62,6 +62,24 @@ def _write_version_info(version_info: Dict) -> None:
         )
     except Exception as e:
         logger.error(f"写入 version.json 失败: {e}")
+
+
+def _normalize_version(version: str) -> str:
+    return str(version or "").strip().lstrip("vV").strip()
+
+
+def _versions_equal(left: str, right: str) -> bool:
+    a = _normalize_version(left)
+    b = _normalize_version(right)
+    return bool(a) and a == b
+
+
+def _prefer_version(*candidates: str) -> str:
+    for item in candidates:
+        text = str(item or "").strip()
+        if text:
+            return text
+    return "v1.0.0"
 
 
 def _plugin_market_base_url() -> str:
@@ -144,6 +162,70 @@ def _restore_from_backup(backup_dir: Path, root_dir: Path, update_items: List[st
             shutil.copy2(backup_path, dst_path)
 
 
+def _list_update_backup_dirs(root_dir: Path) -> List[Path]:
+    backups: List[Path] = []
+    try:
+        for item in root_dir.iterdir():
+            name = item.name
+            if not item.is_dir():
+                continue
+            if not name.startswith("backup_"):
+                continue
+            stamp = name[len("backup_") :]
+            if len(stamp) == 14 and stamp.isdigit():
+                backups.append(item)
+    except Exception as e:
+        logger.warning(f"枚举更新备份目录失败: {e}")
+    backups.sort(key=lambda p: p.name)
+    return backups
+
+
+def _cleanup_old_update_backups(
+    root_dir: Path,
+    *,
+    keep: int = 1,
+    keep_path: Optional[Path] = None,
+) -> None:
+    """只保留最近 keep 份自动更新备份，避免 backup_ 目录无限堆积。"""
+    keep = max(1, int(keep or 1))
+    backups = _list_update_backup_dirs(root_dir)
+    if not backups:
+        return
+
+    keep_set = set()
+    if keep_path is not None:
+        try:
+            keep_set.add(keep_path.resolve())
+        except Exception:
+            keep_set.add(keep_path)
+
+    # 默认保留最新 keep 份；若指定 keep_path 不在其中，再额外保留它
+    latest = backups[-keep:]
+    for item in latest:
+        try:
+            keep_set.add(item.resolve())
+        except Exception:
+            keep_set.add(item)
+
+    removed = 0
+    for item in backups:
+        try:
+            resolved = item.resolve()
+        except Exception:
+            resolved = item
+        if resolved in keep_set:
+            continue
+        try:
+            shutil.rmtree(item)
+            removed += 1
+            logger.info(f"已清理旧更新备份: {item.name}")
+        except Exception as e:
+            logger.warning(f"清理旧更新备份失败 {item}: {e}")
+
+    if removed:
+        logger.info(f"自动更新备份清理完成，删除 {removed} 份，保留最新 {keep} 份")
+
+
 async def _emit_progress(
     progress_manager: Optional[Any],
     progress: int,
@@ -204,9 +286,10 @@ def _check_update_via_admin_logic(current_version: str) -> Dict:
         result = {"success": False, "error": f"连接版本检查服务器失败: {e}"}
 
     version_info = _read_version_info()
-    latest_version = result.get("latest_version", "")
+    latest_version = str(result.get("latest_version", "") or "").strip()
     force_update = bool(result.get("force_update") or result.get("forceUpdate"))
 
+    # force_update 以市场侧为准，不在本地强行覆盖
     version_info["last_check"] = datetime.now().isoformat()
     version_info["force_update"] = force_update
     if force_update:
@@ -214,18 +297,25 @@ def _check_update_via_admin_logic(current_version: str) -> Dict:
         version_info["latest_version"] = latest_version or current_version
         version_info["update_url"] = result.get("update_url", "")
         version_info["update_description"] = result.get("update_description", "")
-    elif latest_version and latest_version != current_version:
+    elif latest_version and not _versions_equal(latest_version, current_version):
         version_info["update_available"] = True
         version_info["latest_version"] = latest_version
         version_info["update_url"] = result.get("update_url", "")
         version_info["update_description"] = result.get("update_description", "")
     else:
         version_info["update_available"] = False
+        if latest_version:
+            version_info["latest_version"] = latest_version
 
     _write_version_info(version_info)
 
     merged = {"success": True, **version_info}
     merged.update({k: v for k, v in result.items() if k not in merged})
+    # 保持本地已同步的 force/update 状态
+    merged["force_update"] = version_info["force_update"]
+    merged["update_available"] = version_info["update_available"]
+    if version_info.get("latest_version"):
+        merged["latest_version"] = version_info["latest_version"]
     return merged
 
 
@@ -256,7 +346,8 @@ async def update_framework(
     说明：
     - 为避免覆盖用户配置，默认不更新 `main_config.toml`。
     - `adapter/` 与 `plugins/` 采用合并更新，保留现有 `config.toml/json/yaml/yml`。
-    - 更新完成会在项目根目录生成 `backup_YYYYmmddHHMMSS/` 备份目录。
+    - 更新完成会在项目根目录生成 `backup_YYYYmmddHHMMSS/` 备份目录，并自动清理旧备份，仅保留 1 份。
+    - `version.json` 不从更新包覆盖，更新成功后单独写入最新版本号。
     """
     async with _update_lock:
         root_dir = _project_root()
@@ -266,7 +357,7 @@ async def update_framework(
         current_version = str(version_info.get("version", "") or "").strip() or "1.0.0"
 
         check_result = _check_update_via_admin_logic(current_version)
-        if not check_result.get("update_available", False):
+        if not (check_result.get("update_available", False) or check_result.get("force_update", False)):
             return {"success": "false", "message": "没有可用的更新"}
 
         update_items: List[str] = [
@@ -277,7 +368,7 @@ async def update_framework(
             "plugins",
             "bot_core",
             "database",
-            "version.json",
+            # version.json 由更新流程单独写入，避免被仓库旧文件覆盖后版本号不变
             "main_config.template.toml",
             "main.py",
             "requirements.txt",
@@ -366,17 +457,30 @@ async def update_framework(
             await _emit_progress(progress_manager, 85, "设置权限", "正在设置文件执行权限...")
             _set_executable_permissions(root_dir)
 
-            # 更新版本信息（与后台逻辑一致）
+            # 更新版本信息：以市场 latest 为准落盘，并清理“有更新”标记
             latest_version = str(check_result.get("latest_version", "") or "").strip()
             new_version_info = _read_version_info()
-            if latest_version:
-                new_version_info["version"] = latest_version
+            resolved_version = _prefer_version(
+                latest_version,
+                new_version_info.get("latest_version"),
+                current_version,
+                new_version_info.get("version"),
+            )
+            new_version_info["version"] = resolved_version
+            new_version_info["latest_version"] = resolved_version
             new_version_info["update_available"] = False
             new_version_info["force_update"] = False
             new_version_info["last_check"] = datetime.now().isoformat()
+            if check_result.get("update_url"):
+                new_version_info["update_url"] = check_result.get("update_url")
+            if check_result.get("update_description"):
+                new_version_info["update_description"] = check_result.get("update_description")
             _write_version_info(new_version_info)
+            logger.info(f"更新后版本号已写入: {resolved_version}")
 
             await _emit_progress(progress_manager, 95, "清理临时文件", "正在清理临时文件...")
+            # 自动更新只保留最新一份备份，避免磁盘被 backup_ 堆积
+            _cleanup_old_update_backups(root_dir, keep=1, keep_path=backup_dir)
             logger.success("更新完成")
 
             if progress_manager:

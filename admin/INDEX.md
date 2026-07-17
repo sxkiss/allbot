@@ -16,4 +16,4 @@ FastAPI 管理后台：提供页面模板、系统/联系人/插件等路由、�
 | utils/ | Helper | 认证依赖、路径校验与路由辅助工具 |
 | friend_circle_api.py | API | 朋友圈 API（拉取/解析/同步） |
 | github_proxy_api.py | API | GitHub 反代节点查询、检测与 `github-proxy` 配置写入接口（兼容 akams 新 JS 节点格式；上游失败回退磁盘缓存） |
-| update_with_progress.py | Update | 旧版带进度更新执行器（当前统一更新逻辑已收口到 `utils/framework_actions.py`） |
+| update_with_progress.py | Update | 旧版带进度更新执行器（当前统一更新逻辑已收口到 `utils/framework_actions.py`；备份仅保留最新 1 份；更新后单独写入版本号） |

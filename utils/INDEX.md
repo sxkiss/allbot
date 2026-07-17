@@ -9,7 +9,7 @@
 | File | Role | Function |
 |------|------|----------|
 | config_manager.py | Config Core | TOML/环境变量加载与配置校验（支持 869/admin-key/login-qrcode-proxy，并兼容 `redis-*`/`ws-url`/`rabbitmq-*` 顶层旧写法） |
-| framework_actions.py | Ops | 统一框架更新/重启入口（管理后台与 ManagePlugin 共用；更新时合并 `adapter/`、`plugins/` 并保留现有配置文件） |
+| framework_actions.py | Ops | 统一框架更新/重启入口（管理后台与 ManagePlugin 共用；更新时合并 `adapter/`、`plugins/` 并保留现有配置；自动更新仅保留 1 份 `backup_`；`version.json` 不覆盖并在更新后单独落盘） |
 | protocol_config.py | Protocol Map | 协议版本与 API 前缀映射（新增 869） |
 | xybot/ | Domain | XYBot 业务域模块（联系人/路由/权限等，含 869 兼容联系人查询） |
 | xybot_legacy.py | Legacy | 旧版消息处理实现（core 通过委托保持兼容；含图片/语音/文件下载与落盘到 files/；引用消息补齐 `Ats` 解析用于 AT 判定） |
