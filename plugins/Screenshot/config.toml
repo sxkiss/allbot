@@ -1,0 +1,14 @@
+[Screenshot]
+enable = true
+# 支持：截图https://example.com  或  截图 https://example.com  或  引用链接消息后发“截图”
+commands = ["截图"]
+# 与台风插件相同的截图服务
+api_base = "https://screenshotsnap.com/api/screenshot"
+timeout = 45
+retry_count = 3
+screenshot_width = 1280
+screenshot_height = 960
+format = "png"
+# 失败是否提示
+notify_error = true
+user_agent = "Mozilla/5.0 (allbot-Screenshot)"

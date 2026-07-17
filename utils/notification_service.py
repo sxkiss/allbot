@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 @input: aiohttp、main_config Notification 段（enabled/token/channel/triggers/templates）
-@output: 全局通知服务实例，支持离线/重连/重启/错误/登录二维码/适配器重试通知与热更新
+@output: 全局通知服务实例，支持离线/重连/重启/错误/登录二维码/适配器重试通知与热更新；出站内容自动脱敏 token/URL
 @position: 系统状态通知核心服务（xxtui 纯文本推送）
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -146,12 +146,72 @@ class NotificationService:
         self.history.append(record)
         self._save_history()
 
+    @staticmethod
+    def _mask_secrets(text: Any) -> str:
+        """推送内容脱敏：遮盖 bot token、Bearer、query secret、长 token 串。"""
+        value = str(text or "")
+        if not value:
+            return ""
+
+        # Telegram/Bot API: /bot<token>/... 或 bot<token>
+        value = re.sub(
+            r"(?i)(/bot)([0-9]{6,}:[A-Za-z0-9_\-]{20,})",
+            r"\1***",
+            value,
+        )
+        value = re.sub(
+            r"(?i)\bbot([0-9]{6,}:[A-Za-z0-9_\-]{20,})",
+            "bot***",
+            value,
+        )
+        # Bearer / Authorization
+        value = re.sub(
+            r"(?i)\b(authorization\s*[:=]\s*bearer\s+)([A-Za-z0-9\-._~+/]+=*)",
+            r"\1***",
+            value,
+        )
+        # query 中的密钥参数
+        value = re.sub(
+            r"(?i)([?&](?:access_token|token|api_key|apikey|key|secret|password|passwd|pwd|auth)=)([^&\s\"']+)",
+            r"\1***",
+            value,
+        )
+        # xxtui token 路径
+        value = re.sub(
+            r"(?i)(/xxtui/)([A-Za-z0-9_\-]{8,})",
+            r"\1***",
+            value,
+        )
+        # 独立长 token 片段
+        def _mask_token(match: re.Match) -> str:
+            token = match.group(1)
+            if len(token) < 28:
+                return token
+            return f"{token[:4]}***{token[-2:]}"
+
+        value = re.sub(
+            r"(?<![A-Za-z0-9_\-])([A-Za-z0-9_\-]{28,})(?![A-Za-z0-9_\-])",
+            _mask_token,
+            value,
+        )
+        # URL path 中残留密钥段
+        def _mask_url(match: re.Match) -> str:
+            url = match.group(0)
+            return re.sub(
+                r"(?i)(/(?:bot|token|key|secret)/)[^/\s\"']+",
+                r"\1***",
+                url,
+            )
+
+        value = re.sub(r"https?://[^\s\"'<>]+", _mask_url, value)
+        return value
+
     def _format_template(self, template: str, **kwargs) -> str:
-        """格式化模板，替换变量"""
+        """格式化模板，替换变量（变量值先脱敏）"""
         result = template
         for key, value in kwargs.items():
             placeholder = "{" + key + "}"
-            result = result.replace(placeholder, str(value))
+            result = result.replace(placeholder, self._mask_secrets(value))
         return result
 
     def _clip(self, text: Any, max_len: int) -> str:
@@ -222,7 +282,7 @@ class NotificationService:
         if details:
             detail_lines = []
             for key, value in details.items():
-                val = str(value or "").strip()
+                val = self._mask_secrets(str(value or "").strip())
                 if not val:
                     continue
                 detail_lines.append(f"{key}：{val}")
@@ -299,8 +359,11 @@ class NotificationService:
         xxtui_channel = channel_map.get(self.channel, self.channel or "WX_MP")
 
         # xxtui 要求 content 为有效正文；title 过长会被截断/部分渠道只显示标题
-        api_title = self._short_title(title)
-        plain_content = self._strip_html(content)
+        # 统一脱敏，避免 bot token / 完整敏感链接进入推送与历史
+        safe_title = self._mask_secrets(title)
+        safe_content = self._mask_secrets(content)
+        api_title = self._short_title(safe_title)
+        plain_content = self._strip_html(safe_content)
         if not plain_content:
             plain_content = api_title or "系统通知"
         plain_content = self._clip(plain_content, XXTUI_CONTENT_MAX)
@@ -328,12 +391,15 @@ class NotificationService:
                     self._add_history(
                         type_name,
                         False,
-                        f"{history_text} - 失败: {result.get('msg', '未知错误')}",
+                        self._mask_secrets(
+                            f"{history_text} - 失败: {result.get('msg', '未知错误')}"
+                        ),
                     )
                     return False
         except Exception as e:
-            logger.error(f"发送{type_name}通知出错: {str(e)}")
-            self._add_history(type_name, False, f"{history_text} - 错误: {str(e)}")
+            safe_exc = self._mask_secrets(str(e))
+            logger.error(f"发送{type_name}通知出错: {safe_exc}")
+            self._add_history(type_name, False, f"{history_text} - 错误: {safe_exc}")
             return False
 
     async def send_offline_notification(self, wxid: str) -> bool:
@@ -422,7 +488,8 @@ class NotificationService:
         if not self.triggers.get("error", True):
             logger.info("系统错误通知触发条件未启用，跳过发送")
             return False
-        if self._should_skip_by_cooldown(f"error:{wxid}:{error}"[:180]):
+        safe_error = self._mask_secrets(error)
+        if self._should_skip_by_cooldown(f"error:{wxid}:{safe_error}"[:180]):
             return False
 
         now = datetime.now()
@@ -431,18 +498,18 @@ class NotificationService:
             self.templates.get("errorTitle", DEFAULT_TEMPLATES["errorTitle"]),
             time=time_text,
             wxid=wxid,
-            error=error,
+            error=safe_error,
         )
         content = self._format_template(
             self.templates.get("errorContent", DEFAULT_TEMPLATES["errorContent"]),
             time=time_text,
             wxid=wxid,
-            error=error,
+            error=safe_error,
         )
         plain = self._build_plain_message(
             headline=title,
             body=content,
-            details={"账号": wxid, "时间": time_text, "错误": error},
+            details={"账号": wxid, "时间": time_text, "错误": safe_error},
         )
         return await self.send_notification("error", title, plain)
 
@@ -461,9 +528,10 @@ class NotificationService:
 
         source_name = str(source or "unknown").strip() or "unknown"
         account_name = str(account or "default").strip() or "default"
-        qr_url = str(qrcode_url or "").strip()
-        link = str(login_link or "").strip() or qr_url
-        cooldown_key = f"login_qrcode:{source_name}:{account_name}:{link or qr_url or extra}"
+        qr_url = self._mask_secrets(str(qrcode_url or "").strip())
+        link = self._mask_secrets(str(login_link or "").strip() or qr_url)
+        extra_text = self._mask_secrets(extra)
+        cooldown_key = f"login_qrcode:{source_name}:{account_name}:{link or qr_url or extra_text}"
         if self._should_skip_by_cooldown(cooldown_key, 180):
             return False
 
@@ -494,8 +562,8 @@ class NotificationService:
             details["登录链接"] = link
         if qr_url and qr_url != link:
             details["二维码地址"] = qr_url
-        if extra:
-            details["备注"] = extra
+        if extra_text:
+            details["备注"] = extra_text
         plain = self._build_plain_message(
             headline=title,
             body=f"{content}\n请尽快扫码登录，避免消息中断。",
@@ -517,7 +585,7 @@ class NotificationService:
 
         adapter_name = str(adapter or "adapter").strip() or "adapter"
         account_name = str(account or "").strip()
-        reason_text = str(reason or "连接异常").strip() or "连接异常"
+        reason_text = self._mask_secrets(str(reason or "连接异常").strip() or "连接异常")
         cooldown_key = f"adapter_retry:{adapter_name}:{account_name}:{reason_text}"[:200]
         if self._should_skip_by_cooldown(cooldown_key, 120):
             return False
@@ -575,12 +643,12 @@ class NotificationService:
         ):
             return await self.send_error_notification(
                 f"adapter:{adapter}",
-                f"适配器 {adapter} 异常: {error}",
+                f"适配器 {adapter} 异常: {self._mask_secrets(error)}",
             )
 
         adapter_name = str(adapter or "adapter").strip() or "adapter"
         account_name = str(account or "").strip()
-        error_text = str(error or "未知错误").strip() or "未知错误"
+        error_text = self._mask_secrets(str(error or "未知错误").strip() or "未知错误")
         cooldown_key = f"adapter_error:{adapter_name}:{account_name}:{error_text}"[:200]
         if self._should_skip_by_cooldown(cooldown_key, 180):
             return False

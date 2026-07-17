@@ -72,3 +72,4 @@ plugins/*/
 !plugins/ClawPlugin
 !plugins/VideoDemand
 !plugins/RandomPhoto
+!plugins/Screenshot
