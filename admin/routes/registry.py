@@ -37,6 +37,7 @@ REGISTERED_ROUTE_FILES = [
     "admin/routes/about_routes.py",
     "admin/routes/adapter_routes.py",
     "admin/routes/message_routes.py",
+    "admin/routes/feedback_routes.py",
     "admin/reminder_api.py",
     "admin/friend_circle_api.py",
     "admin/switch_account_api.py",
@@ -213,6 +214,14 @@ def register_all(app) -> None:
         logger.info("✓ message_routes 已注册")
     except Exception as e:
         logger.error(f"✗ message_routes 注册失败: {e}")
+
+    # 8.1) 意见反馈（右侧悬浮入口）
+    try:
+        from admin.routes.feedback_routes import register_feedback_routes
+        register_feedback_routes(app)
+        logger.info("✓ feedback_routes 已注册")
+    except Exception as e:
+        logger.error(f"✗ feedback_routes 注册失败: {e}")
 
     # 9) 外部 API 模块（原先 register_external_apis）
     _register_external_apis(app)

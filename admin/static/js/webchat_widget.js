@@ -42,27 +42,79 @@
     }
 
     function isOpen() {
-        return !win.classList.contains("webchat-widget-hidden");
+        if (win.classList.contains("webchat-widget-hidden")) {
+            return false;
+        }
+        const style = window.getComputedStyle(win);
+        return style.display !== "none" && style.visibility !== "hidden";
+    }
+
+    function resetWindowPosition() {
+        win.style.left = "";
+        win.style.top = "";
+        win.style.right = "";
+        win.style.bottom = "";
+        win.style.transform = "";
+        win.style.width = "";
+        win.style.height = "";
+        delete win.dataset.userMoved;
     }
 
     function openWindow() {
-        fab.classList.add("webchat-widget-hidden");
-        win.classList.remove("webchat-widget-hidden");
-        win.setAttribute("aria-hidden", "false");
-        input.focus();
-        const forceFull = renderedMessageCount === 0;
-        if (forceFull) {
-            renderLoading("加载中...");
+        try {
+            fab.classList.add("webchat-widget-hidden");
+            fab.style.display = "none";
+            win.classList.remove("webchat-widget-hidden");
+            win.style.display = "flex";
+            win.style.visibility = "visible";
+            win.style.opacity = "1";
+            win.style.pointerEvents = "auto";
+            win.setAttribute("aria-hidden", "false");
+            if (!win.dataset.userMoved) {
+                resetWindowPosition();
+            }
+            input.focus();
+            const forceFull = renderedMessageCount === 0;
+            if (forceFull) {
+                renderLoading("加载中...");
+            }
+            refreshMessages({ forceFull });
+            startPolling();
+        } catch (err) {
+            console.error("webchat open failed", err);
         }
-        refreshMessages({ forceFull });
-        startPolling();
     }
 
-    function minimizeWindow() {
-        stopPolling();
+    function minimizeWindow(event) {
+        if (event) {
+            try {
+                event.preventDefault();
+                event.stopPropagation();
+            } catch (_) {}
+        }
+        try {
+            stopPolling();
+        } catch (_) {}
+        dragging = false;
+        try {
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
+            document.removeEventListener("pointermove", onMouseMove);
+            document.removeEventListener("pointerup", onMouseUp);
+        } catch (_) {}
+
+        // 强制关闭：class + 内联样式双保险
         win.classList.add("webchat-widget-hidden");
         win.setAttribute("aria-hidden", "true");
+        win.style.display = "none";
+        win.style.visibility = "hidden";
+        win.style.pointerEvents = "none";
+        resetWindowPosition();
+
         fab.classList.remove("webchat-widget-hidden");
+        fab.style.display = "";
+        fab.style.visibility = "visible";
+        fab.style.pointerEvents = "auto";
     }
 
     function scrollToBottom() {
@@ -338,16 +390,25 @@
         if (!isOpen()) {
             return;
         }
+        // 点到按钮/输入时不进入拖拽，避免最小化点不了
+        const target = event.target;
+        if (target && target.closest && target.closest("button, a, input, textarea, select, label")) {
+            return;
+        }
         dragging = true;
         const rect = win.getBoundingClientRect();
         dragOffsetX = event.clientX - rect.left;
         dragOffsetY = event.clientY - rect.top;
+        // 用 left/top 绝对定位，并去掉 CSS transform，避免拖不动/关不掉
+        win.style.transform = "none";
         win.style.left = rect.left + "px";
         win.style.top = rect.top + "px";
         win.style.right = "auto";
         win.style.bottom = "auto";
+        win.dataset.userMoved = "1";
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
+        event.preventDefault();
     }
 
     function onMouseMove(event) {
@@ -368,13 +429,31 @@
         document.removeEventListener("mouseup", onMouseUp);
     }
 
-    openBtn.addEventListener("click", () => {
+    function bindCloseControl(el) {
+        if (!el) return;
+        const handler = (event) => minimizeWindow(event);
+        // capture 阶段，避免被 header 拖拽逻辑吞掉
+        ["click", "pointerup", "mouseup"].forEach((type) => {
+            el.addEventListener(type, handler, true);
+        });
+        el.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        }, true);
+        el.addEventListener("pointerdown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        }, true);
+    }
+
+    openBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         openWindow();
     });
 
-    minimizeBtn.addEventListener("click", () => {
-        minimizeWindow();
-    });
+    bindCloseControl(minimizeBtn);
+    bindCloseControl(document.getElementById("webchat-widget-close"));
 
     sendBtn.addEventListener("click", () => {
         sendText();
@@ -399,8 +478,17 @@
         }
     });
 
-    header.addEventListener("mousedown", onMouseDown);
+    // 只允许在标题文字区域拖拽，按钮区不绑定拖拽
+    const dragHandle = document.getElementById("webchat-widget-title") || header;
+    dragHandle.addEventListener("mousedown", onMouseDown);
+    dragHandle.addEventListener("pointerdown", onMouseDown);
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && isOpen()) {
+            minimizeWindow(event);
+        }
+    });
 
     // 默认不自动打开，避免所有页面加载都请求 API
-    renderLoading("点击右下角图标开始对话");
+    renderLoading("点击右侧按钮开始对话");
 })();

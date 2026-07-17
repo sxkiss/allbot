@@ -299,18 +299,26 @@
         .webchat-widget-fab {
             position: fixed;
             right: 24px;
-            bottom: 24px;
+            top: 50%;
+            bottom: auto;
+            transform: translateY(28px);
             z-index: 2147483000;
         }
 
         .webchat-widget-fab button {
-            width: 56px;
-            height: 56px;
+            min-width: 56px;
+            height: 40px;
+            padding: 0 14px;
             border-radius: 999px;
             border: none;
             background: #0d6efd;
             color: #fff;
             box-shadow: 0 10px 24px rgba(13, 110, 253, 0.35);
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .webchat-widget-fab button:hover {
@@ -320,9 +328,11 @@
         .webchat-widget-window {
             position: fixed;
             right: 24px;
-            bottom: 24px;
+            top: 50%;
+            bottom: auto;
+            transform: translateY(-50%);
             width: 420px;
-            height: 620px;
+            height: min(620px, calc(100vh - 48px));
             background: #fff;
             border: 1px solid rgba(0, 0, 0, 0.08);
             border-radius: 12px;
@@ -337,7 +347,7 @@
         }
 
         .webchat-widget-hidden {
-            display: none;
+            display: none !important;
         }
 
         .webchat-widget-header {
@@ -346,12 +356,27 @@
             justify-content: space-between;
             padding: 10px 12px;
             background: linear-gradient(135deg, rgba(13, 110, 253, 0.12), rgba(13, 110, 253, 0.03));
-            cursor: move;
             user-select: none;
+            gap: 8px;
         }
 
         .webchat-widget-title {
             font-weight: 600;
+            cursor: move;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .webchat-widget-actions {
+            flex: 0 0 auto;
+            position: relative;
+            z-index: 5;
+            pointer-events: auto;
+        }
+
+        .webchat-widget-actions .btn {
+            pointer-events: auto;
+            cursor: pointer;
         }
 
         .webchat-widget-body {
@@ -403,6 +428,91 @@
 
         .webchat-widget-input {
             flex: 1;
+        }
+
+        /* 意见反馈悬浮按钮（在 Web 对话上方） */
+        .feedback-widget-fab {
+            position: fixed;
+            right: 24px;
+            top: 50%;
+            bottom: auto;
+            transform: translateY(-28px);
+            z-index: 2147483000;
+        }
+
+        .feedback-widget-fab button {
+            min-width: 56px;
+            height: 40px;
+            padding: 0 14px;
+            border-radius: 999px;
+            border: none;
+            background: #198754;
+            color: #fff;
+            box-shadow: 0 10px 24px rgba(25, 135, 84, 0.35);
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .feedback-widget-fab button:hover {
+            filter: brightness(0.95);
+        }
+
+        .feedback-widget-panel {
+            position: fixed;
+            right: 24px;
+            top: 50%;
+            bottom: auto;
+            transform: translateY(-50%);
+            width: min(360px, calc(100vw - 32px));
+            background: #fff;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+            z-index: 2147483002;
+            overflow: hidden;
+        }
+
+        .feedback-widget-panel.feedback-widget-hidden {
+            display: none !important;
+        }
+
+        .feedback-widget-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: linear-gradient(135deg, rgba(25, 135, 84, 0.14), rgba(25, 135, 84, 0.03));
+            font-weight: 600;
+        }
+
+        .feedback-widget-body {
+            padding: 12px;
+        }
+
+        .feedback-widget-body .form-label {
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+
+        .feedback-widget-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 0 12px 12px;
+        }
+
+        @media (max-width: 576px) {
+            .feedback-widget-fab,
+            .webchat-widget-fab {
+                right: 16px;
+            }
+            .feedback-widget-panel,
+            .webchat-widget-window {
+                right: 16px;
+            }
         }
     </style>
 
@@ -546,7 +656,7 @@
         </div>
 
         <div class="sidebar-footer">
-            <span>© 2025 老夏的金库</span>
+            <span>© 2025 老夏的金库 & sxkiss 二次开发</span>
         </div>
     </nav>
 
@@ -604,7 +714,7 @@
                         <i class="bi bi-exclamation-triangle-fill me-1"></i> 免责声明：本项目仅供学习交流使用，严禁用于商业用途！
                     </p>
                 </div>
-                <span class="text-muted">allbot © 2025 - 技术支持 <a href="https://github.com/sxkiss/allbot/" class="text-decoration-none" target="_blank">sxkissTeam</a></span>
+                <span class="text-muted">© 2025 老夏的金库 & sxkiss 二次开发 - 技术支持 <a href="https://github.com/sxkiss/allbot/" class="text-decoration-none" target="_blank">sxkissTeam</a></span>
                 <div class="mt-2">
                     <a href="https://github.com/sxkiss/allbot/" class="btn btn-sm btn-outline-secondary me-1" title="GitHub">
                         <i class="bi bi-github"></i> GitHub
@@ -639,22 +749,59 @@
 
     {% set _hide_webchat_widget = request.path.startswith('/plugin-market') %}
 
+    <!-- 意见反馈悬浮入口 -->
+    <div class="feedback-widget-fab" id="feedback-widget-fab">
+        <button type="button" id="feedback-widget-open" aria-label="意见反馈" title="意见反馈">
+            <i class="bi bi-chat-left-text"></i>
+            <span>意见反馈</span>
+        </button>
+    </div>
+    <div class="feedback-widget-panel feedback-widget-hidden" id="feedback-widget-panel" aria-hidden="true">
+        <div class="feedback-widget-header">
+            <div><i class="bi bi-chat-left-text me-1"></i>意见反馈</div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="feedback-widget-close" title="关闭">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="feedback-widget-body">
+            <div class="mb-2">
+                <label class="form-label" for="feedback-content">内容反馈</label>
+                <textarea class="form-control" id="feedback-content" rows="4" maxlength="2000" placeholder="请描述问题、建议或使用场景"></textarea>
+            </div>
+            <div class="mb-1">
+                <label class="form-label" for="feedback-contact">联系方式</label>
+                <input type="text" class="form-control" id="feedback-contact" maxlength="200" placeholder="微信 / QQ / 手机 / 邮箱（选填）" />
+            </div>
+            <div class="form-text" id="feedback-status"></div>
+        </div>
+        <div class="feedback-widget-footer">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="feedback-widget-cancel">取消</button>
+            <button type="button" class="btn btn-success btn-sm" id="feedback-widget-submit">
+                <i class="bi bi-send me-1"></i>提交
+            </button>
+        </div>
+    </div>
+
     <!-- Web 对话悬浮入口与窗口（单会话） -->
     {% if not _hide_webchat_widget %}
     <div class="webchat-widget-fab" id="webchat-widget-fab">
-        <button type="button" id="webchat-widget-open" aria-label="打开 Web 对话" title="Web 对话">
+        <button type="button" id="webchat-widget-open" aria-label="打开 web调试对话" title="web调试对话">
             <i class="bi bi-chat-dots"></i>
+            <span>web调试对话</span>
         </button>
     </div>
 
     <div class="webchat-widget-window webchat-widget-hidden" id="webchat-widget-window" aria-hidden="true">
         <div class="webchat-widget-header" id="webchat-widget-header">
-            <div class="webchat-widget-title">
-                <i class="bi bi-chat-dots me-1"></i>Web 对话
+            <div class="webchat-widget-title" id="webchat-widget-title" title="按住拖动">
+                <i class="bi bi-chat-dots me-1"></i>web调试对话
             </div>
-            <div class="d-flex gap-2">
+            <div class="webchat-widget-actions d-flex gap-2">
                 <button type="button" class="btn btn-sm btn-outline-secondary" id="webchat-widget-minimize" title="最小化">
                     <i class="bi bi-dash-lg"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="webchat-widget-close" title="关闭">
+                    <i class="bi bi-x-lg"></i>
                 </button>
             </div>
         </div>
@@ -880,8 +1027,10 @@
 
     <!-- Web 对话悬浮窗口 -->
     {% if not _hide_webchat_widget %}
-    <script src="/static/js/webchat_widget.js?v={{ version }}"></script>
+    <script src="/static/js/webchat_widget.js?v={{ version }}-wc3"></script>
     {% endif %}
+    <script src="/static/js/feedback_widget.js?v={{ version }}-fb2"></script>
+
 
     <!-- 版本检查脚本 -->
     <script>

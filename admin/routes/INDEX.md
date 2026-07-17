@@ -18,5 +18,6 @@
 | version_routes.py | Update | 版本检查与框架更新 API（统一委托 `utils/framework_actions.py`，并通过进度管理器推送状态） |
 | about_routes.py | UI | 关于页文档中心：自动收录 README/docs/plugins 文档并分组渲染 |
 | message_routes.py | Compat | 旧前端兼容消息接口：`/api/send_message` 与 `/api/group/announcement` |
+| feedback_routes.py | API | 意见反馈提交：固定 xxtui key 推送标题 allbot反馈（内容+联系方式） |
 
 | adapter_routes.py | API | 适配器列表与启停 API |

@@ -2,7 +2,7 @@
 
 # admin
 
-FastAPI 管理后台：提供页面模板、系统/联系人/插件等路由、二维码登录与运行态状态展示。核心状态来源通过 `app.state.get_bot_status` 统一桥接到前端，并对 869 登录辅助接口、文件访问与插件安装链路追加安全边界；869 能力入口保留在插件直调，不再提供独立调试页或后台 HTTP 调试口。
+FastAPI 管理后台：提供页面模板、系统/联系人/插件等路由、二维码登录、意见反馈与运行态状态展示。核心状态来源通过 `app.state.get_bot_status` 统一桥接到前端，并对 869 登录辅助接口、文件访问与插件安装链路追加安全边界；869 能力入口保留在插件直调，不再提供独立调试页或后台 HTTP 调试口。
 
 ## Files
 
@@ -11,7 +11,7 @@ FastAPI 管理后台：提供页面模板、系统/联系人/插件等路由、�
 | core/ | Core | 应用初始化与依赖注入（含 Bot 状态读取函数注入） |
 | routes/ | API | 管理后台业务路由注册与模块化接口（含 `/media/files/{filename}` 公网媒体访问路由；system 保存 Notification 时热更新触发条件） |
 | services/ | Service | 高风险后台能力服务（受控插件安装器、配置可视化读写） |
-| templates/ | UI | 前端页面模板（index/qrcode/system/settings/adapters 等；settings/插件/适配器支持可视化配置） |
+| templates/ | UI | 前端页面模板（index/qrcode/system/settings/adapters 等；settings/插件/适配器支持可视化配置；全局意见反馈悬浮入口） |
 | static/ | Frontend | 管理后台静态资源（js/css/img/旧插件市场脚本） |
 | utils/ | Helper | 认证依赖、路径校验与路由辅助工具 |
 | friend_circle_api.py | API | 朋友圈 API（拉取/解析/同步） |

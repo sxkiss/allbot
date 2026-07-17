@@ -12,6 +12,7 @@
 | plugin_market.js | Market UI | 插件市场列表渲染、分页（每页10条）、搜索过滤、安装与提交 |
 | plugins.js | Plugin UI | 插件管理页面逻辑（启停、可视化配置、市场联动） |
 | webchat_widget.js | Widget | 全局 Web 对话悬浮组件 |
+| feedback_widget.js | Widget | 全局意见反馈悬浮面板（提交到 /api/feedback） |
 | adapters.js | Adapter UI | 适配器管理页面逻辑（可视化配置弹窗） |
 | file-manager.js | File UI | 文件管理页面逻辑 |
 | admin.js | Shared UI | 通用后台前端逻辑 |

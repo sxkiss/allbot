@@ -12,6 +12,7 @@ Wechat protocol access is encapsulated in `WechatAPI/`, including a dedicated 86
 869 login recovery now uses a shared state machine across startup and QR helper APIs: token/poll restore -> cached auth probe -> wakeup -> same-auth QR -> last-resort new auth.
 Config loading accepts both section-scoped and legacy top-level transport keys for WechatAPI connectivity.
 Admin security now enforces non-default credentials, challenge-protected 869 login helpers, authenticated WebSocket access, and file access whitelists.
+Admin UI includes a right-side feedback widget that posts to a fixed xxtui channel (title: allbot反馈).
 869 operational methods are exposed to plugins through the runtime client rather than admin HTTP debug endpoints.
 Plugin installation is routed through a guarded service that validates GitHub URLs, blocks ZIP Slip/symlink payloads, and disables dependency installation by default.
 Static contract checks live in `tools/route_audit.py`, which now correctly parses multiple `/api/*` references on the same line.
