@@ -41,6 +41,7 @@ def _field(
     unit: str = "",
     default: Any = None,
     item_label: str = "项",
+    item_default: Any = None,
     item_fields: Optional[List[Dict[str, Any]]] = None,
     key_field: str = "",
     key_label: str = "",
@@ -66,6 +67,8 @@ def _field(
         data["max"] = max_value
     if default is not None:
         data["default"] = default
+    if item_default is not None:
+        data["item_default"] = item_default
     if item_fields is not None:
         data["item_fields"] = item_fields
     if key_field:
@@ -549,6 +552,18 @@ def _default_for_field(field: Dict[str, Any]) -> Any:
     return ""
 
 
+def _item_default_for_field(field: Dict[str, Any]) -> Dict[str, Any]:
+    """多账号卡片新增项的默认值；与字段本身的 empty default 区分开。"""
+    item_default = field.get("item_default")
+    if isinstance(item_default, dict):
+        return deepcopy(item_default)
+    default = field.get("default")
+    # 兼容旧 schema：曾把 item_defaults 误放到 field.default
+    if isinstance(default, dict) and field.get("type") in {"object_list", "object_map"}:
+        return deepcopy(default)
+    return {}
+
+
 def _normalize_list_items(items: Sequence[Any]) -> List[str]:
     result: List[str] = []
     for item in items:
@@ -929,7 +944,8 @@ def _build_multi_account_field(
             item_label=str((template or {}).get("item_label") or "项"),
             add_label=str((template or {}).get("add_label") or ""),
             item_fields=item_fields,
-            default=deepcopy((template or {}).get("item_defaults") or {}),
+            default=[],
+            item_default=deepcopy((template or {}).get("item_defaults") or {}),
         )
 
     if preferred_type == "object_map":
@@ -960,7 +976,8 @@ def _build_multi_account_field(
             key_field=str((template or {}).get("key_field") or "name"),
             key_label=str((template or {}).get("key_label") or "标识"),
             item_fields=item_fields,
-            default=deepcopy((template or {}).get("item_defaults") or {}),
+            default={},
+            item_default=deepcopy((template or {}).get("item_defaults") or {}),
         )
     return None
 

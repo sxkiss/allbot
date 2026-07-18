@@ -19,4 +19,4 @@
 | DependencyManager/ | Plugin | 依赖/插件安装管理（pip 安装/卸载/查询；GitHub 插件安装；插件市场查询/提交与缓存） |
 | DisasterWarning/ | Plugin | 灾害预警聚合（地震/海啸/气象多源解析、过滤、推送与去重） |
 | Typhoon/ | Plugin | 台风实时信息（官方台风列表/详情查询，返回摘要并发送卫星云图） |
-| Screenshot/ | Plugin | 网页截图（screenshotsnap，与 Typhoon 同接口；`截图`+URL；支持引用提取链接） |
+| Screenshot/ | Plugin | 网页截图（microlink + screenshotsnap 双接口；`截图`+URL；支持引用提取链接） |

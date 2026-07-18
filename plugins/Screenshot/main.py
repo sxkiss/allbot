@@ -1,6 +1,6 @@
 """
 @input: aiohttp, PIL; WechatAPIClient; on_text_message/on_quote_message; PluginBase
-@output: Screenshot 插件 — 唤醒词“截图”+URL（支持引用提取链接）；screenshotsnap + microlink 双接口，成功即发图
+@output: Screenshot 插件 — 唤醒词“截图”+URL（支持引用提取链接）；microlink + screenshotsnap 双接口兜底，成功即发图
 @position: plugins/Screenshot 网页截图能力
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -38,7 +38,7 @@ STUCK_URL_RE = re.compile(
 class Screenshot(PluginBase):
     description = "网页截图：截图+URL，双接口兜底，成功即发图"
     author = "Codex"
-    version = "1.2.0"
+    version = "1.2.1"
 
     SNAP_URL = (
         "{api_base}?url={url}&format={fmt}&width={width}&height={height}"
@@ -69,12 +69,12 @@ class Screenshot(PluginBase):
         self.microlink_api = str(
             config.get("microlink_api") or "https://api.microlink.io/"
         ).rstrip("?")
-        providers = config.get("providers") or ["screenshotsnap", "microlink"]
+        providers = config.get("providers") or ["microlink", "screenshotsnap"]
         if isinstance(providers, str):
             providers = [p.strip() for p in providers.split(",") if p.strip()]
         self.providers = [str(p).strip().lower() for p in providers if str(p).strip()]
         if not self.providers:
-            self.providers = ["screenshotsnap", "microlink"]
+            self.providers = ["microlink", "screenshotsnap"]
 
         self.timeout = max(5, int(config.get("timeout", 45) or 45))
         self.retry_count = max(1, int(config.get("retry_count", 2) or 2))
@@ -522,10 +522,43 @@ class Screenshot(PluginBase):
                 parts.append(f"{key}={result.get(key)}")
         return ", ".join(parts) if parts else str(result)[:200]
 
+    @staticmethod
+    def _format_error(exc: BaseException) -> str:
+        """把超时/取消等空消息异常格式化成可读文本。"""
+        if isinstance(exc, asyncio.TimeoutError) or type(exc).__name__ in {
+            "TimeoutError",
+            "SocketTimeoutError",
+        }:
+            return "请求超时"
+        if isinstance(exc, asyncio.CancelledError):
+            return "任务取消"
+        if isinstance(exc, aiohttp.ClientError):
+            msg = str(exc).strip() or type(exc).__name__
+            return f"网络错误: {msg}"
+        msg = str(exc).strip()
+        if msg:
+            return msg
+        return type(exc).__name__ or "未知错误"
+
+    async def _run_provider(self, name: str, coro) -> Tuple[bytes, str]:
+        """包装 provider，保证异常信息带上来源名。"""
+        try:
+            return await coro
+        except Exception as exc:
+            msg = self._format_error(exc)
+            if not msg.startswith(name):
+                msg = f"{name} {msg}"
+            raise RuntimeError(msg) from exc
+
     async def _fetch_screenshot(self, url: str) -> Tuple[bytes, str]:
-        """双接口并行/顺序获取：任一成功就返回。"""
+        """双接口并行获取：任一成功就返回；失败时保留各接口可读错误。"""
         headers = {"User-Agent": self.user_agent}
-        timeout = aiohttp.ClientTimeout(total=self.timeout)
+        timeout = aiohttp.ClientTimeout(
+            total=self.timeout,
+            connect=min(15, self.timeout),
+            sock_connect=min(15, self.timeout),
+            sock_read=self.timeout,
+        )
         last_error: Optional[Exception] = None
         errors: List[str] = []
 
@@ -536,9 +569,19 @@ class Screenshot(PluginBase):
                 tasks = []
                 for provider in self.providers:
                     if provider in {"screenshotsnap", "snap", "typhoon"}:
-                        tasks.append(self._fetch_from_screenshotsnap(session, bust_url))
+                        tasks.append(
+                            self._run_provider(
+                                "screenshotsnap",
+                                self._fetch_from_screenshotsnap(session, bust_url),
+                            )
+                        )
                     elif provider in {"microlink", "micro"}:
-                        tasks.append(self._fetch_from_microlink(session, bust_url))
+                        tasks.append(
+                            self._run_provider(
+                                "microlink",
+                                self._fetch_from_microlink(session, bust_url),
+                            )
+                        )
                     else:
                         logger.warning("Screenshot 未知 provider 已忽略: {}", provider)
 
@@ -555,16 +598,23 @@ class Screenshot(PluginBase):
                         )
                         pending = list(pending_set)
                         for task in finished:
-                            try:
-                                image_bytes, source = task.result()
-                            except Exception as exc:
-                                done_errors.append(str(exc))
+                            if task.cancelled():
+                                done_errors.append("任务取消")
                                 continue
-                            # 成功：取消其他
+                            exc = task.exception()
+                            if exc is not None:
+                                err = self._format_error(exc)
+                                done_errors.append(err)
+                                logger.warning("Screenshot provider 失败: {}", err)
+                                continue
+
+                            image_bytes, source = task.result()
+                            # 成功：取消其余未完成接口
                             for other in pending:
                                 other.cancel()
                             if pending:
                                 await asyncio.gather(*pending, return_exceptions=True)
+                            pending = []
                             logger.info(
                                 "Screenshot 获取成功 source={} size={}B attempt={}",
                                 source,
@@ -579,7 +629,8 @@ class Screenshot(PluginBase):
                     if pending:
                         await asyncio.gather(*pending, return_exceptions=True)
 
-                err_text = " | ".join(done_errors) if done_errors else "全部接口失败"
+                compact_errors = [e for e in done_errors if e and str(e).strip()]
+                err_text = " | ".join(compact_errors) if compact_errors else "全部接口失败"
                 last_error = RuntimeError(err_text)
                 errors.append(f"第{attempt}轮: {err_text}")
                 logger.warning(

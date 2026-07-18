@@ -8,7 +8,7 @@
 
 | File | Role | Function |
 |------|------|----------|
-| config_form.js | Shared UI | 通用可视化配置表单（schema 渲染、列表编辑、高级项、visual/raw 切换） |
+| config_form.js | Shared UI | 通用可视化配置表单（schema 渲染、列表/多机器人卡片、object_list/object_map、visual/raw 切换） |
 | plugin_market.js | Market UI | 插件市场列表渲染、分页（每页10条）、搜索过滤、安装与提交 |
 | plugins.js | Plugin UI | 插件管理页面逻辑（启停、可视化配置、市场联动） |
 | webchat_widget.js | Widget | 全局 Web 对话悬浮组件 |

@@ -905,7 +905,10 @@ class TelegramAdapter:
             "MsgSeq": 0,
         }
 
-        if session_id.endswith("@chatroom") and not (is_quote and msg_type == 49):
+        # 群聊统一使用 "sender_id:\ncontent" 前缀。
+        # 引用消息(XML)也必须带前缀，否则框架 process_xml_message 会用 split(":", 1)
+        # 误切 XML 内部的 https: / 文本冒号，导致引用解析失败。
+        if session_id.endswith("@chatroom"):
             payload["Content"] = {"string": f"{sender_id}:\n{msg_text}"}
         else:
             payload["Content"] = {"string": msg_text}

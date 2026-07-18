@@ -1,13 +1,13 @@
 # Screenshot
 
-网页截图插件。当前版本：`1.2.0`
+网页截图插件。当前版本：`1.2.1`
 
 ## 双接口策略
 
 并行请求：
 
-1. `screenshotsnap`（与台风插件同接口）
-2. `microlink`
+1. `microlink`
+2. `screenshotsnap`（与台风插件同接口）
 
 任一接口返回有效图片就立即发图，并取消另一个请求。
 
@@ -26,7 +26,7 @@
 
 ## 配置
 
-- `providers`：接口顺序/列表，默认 `["screenshotsnap", "microlink"]`
+- `providers`：接口顺序/列表，默认 `["microlink", "screenshotsnap"]`
 - `api_base`：screenshotsnap 地址
 - `microlink_api`：microlink 地址
 - `screenshot_width` / `screenshot_height`：抓取分辨率
@@ -37,5 +37,6 @@
 ## 说明
 
 - 会识别 screenshotsnap 的 SVG 占位图并自动切到另一个接口
+- provider 失败日志带接口名；超时不再显示空错误
 - 发送前转 JPEG，规避 869 缩略图失败
 - 只有确认发送成功才提示“截图完成”

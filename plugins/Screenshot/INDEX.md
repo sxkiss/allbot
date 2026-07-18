@@ -8,7 +8,7 @@
 
 | File | Role | Function |
 |------|------|----------|
-| main.py | Plugin | screenshotsnap + microlink 并行获取；成功即发图；JPEG 压缩与失败缩小重试 |
+| main.py | Plugin | screenshotsnap + microlink 并行获取；失败错误带 provider 名；成功即发图；JPEG 压缩与失败缩小重试 |
 | config.toml | Config | 开关、命令词、双接口、分辨率、压缩与超时 |
 | __init__.py | Export | 导出 Screenshot |
 | README.md | Doc | 使用说明 |

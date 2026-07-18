@@ -74,12 +74,24 @@
         `;
     }
 
+    function resolveItemDefault(field) {
+        if (field && field.item_default && typeof field.item_default === 'object' && !Array.isArray(field.item_default)) {
+            return field.item_default;
+        }
+        // 兼容旧 schema：曾把 item 默认值放在 field.default
+        if (field && field.default && typeof field.default === 'object' && !Array.isArray(field.default)) {
+            return field.default;
+        }
+        return {};
+    }
+
     function defaultObjectItem(field) {
         const item = {};
         const itemFields = field.item_fields || [];
+        const itemDefault = resolveItemDefault(field);
         itemFields.forEach((sub) => {
-            if (Object.prototype.hasOwnProperty.call(field.default || {}, sub.key)) {
-                item[sub.key] = field.default[sub.key];
+            if (Object.prototype.hasOwnProperty.call(itemDefault, sub.key)) {
+                item[sub.key] = itemDefault[sub.key];
                 return;
             }
             if (sub.type === 'boolean') item[sub.key] = false;
@@ -222,7 +234,7 @@
                      data-type="${escapeHtml(field.type)}"
                      data-key-field="${escapeHtml(keyField)}"
                      data-item-fields="${escapeHtml(JSON.stringify(field.item_fields || []))}"
-                     data-item-default="${escapeHtml(JSON.stringify(field.default || {}))}">
+                     data-item-default="${escapeHtml(JSON.stringify(resolveItemDefault(field)))}">
                     ${emptyHint}
                     ${cards}
                 </div>
@@ -469,6 +481,7 @@
                     type,
                     key_field: keyField,
                     item_fields: itemFields,
+                    item_default: itemDefault,
                     default: itemDefault,
                     item_label: '项',
                 };

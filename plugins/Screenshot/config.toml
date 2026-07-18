@@ -3,7 +3,7 @@ enable = true
 # 支持：截图https://example.com  或  截图 https://example.com  或  引用链接消息后发“截图”
 commands = ["截图"]
 # 双接口：screenshotsnap + microlink，并行请求，谁先成功用谁
-providers = ["screenshotsnap", "microlink"]
+providers = ["microlink", "screenshotsnap"]
 api_base = "https://screenshotsnap.com/api/screenshot"
 microlink_api = "https://api.microlink.io/"
 timeout = 45
