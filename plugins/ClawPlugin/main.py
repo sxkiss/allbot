@@ -236,10 +236,19 @@ class ClawPlugin(PluginBase):
         if task is not None:
             task.cancel()
             try:
-                await task
+                # watchdog 可能创建在不同事件循环上（admin 热重载时），不能跨 loop await
+                task_loop = getattr(task, "get_loop", lambda: None)()
+                current_loop = asyncio.get_running_loop()
+                if task_loop is current_loop and not task.done():
+                    await task
             except asyncio.CancelledError:
                 pass
-        await self.gateway.stop()
+            except Exception as exc:
+                logger.warning("[Claw] 停止 pending-run-watchdog 时忽略异常: {}", exc)
+        try:
+            await self.gateway.stop()
+        except Exception as exc:
+            logger.warning("[Claw] 停止 gateway 时忽略异常: {}", exc)
         await super().on_disable()
 
     async def async_init(self):
@@ -551,6 +560,9 @@ class ClawPlugin(PluginBase):
     async def _reply(self, bot: WechatAPIClient, message: dict, content: str):
         route = self.th._build_route(message)
         if not route:
+            return
+        content = self.rw.humanize_user_facing_reply(content)
+        if not _safe_text(content).strip():
             return
         chunks = self.rw.split_reply_chunks(content)
         if not chunks:

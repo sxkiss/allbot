@@ -1,6 +1,6 @@
 """
 @input: OpenClawGatewayClient, ClawPlugin 配置
-@output: EventHandler 类 — 网关事件分发、pending run 终态收敛、媒体回传、事件转发
+@output: EventHandler 类 — 网关事件分发、pending run 终态收敛、模型回退友好提示、媒体回传、事件转发
 @position: 事件处理层，负责所有从 OpenClaw 推送的事件的内部处理与转发
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -23,6 +23,7 @@ class EventHandler:
     职责：
     - 事件分发（agent/chat/health/shutdown/node.pair/device.pair/cron 等）
     - Pending run 终态收敛
+    - 模型回退/恢复 lifecycle 与文本通知的中文友好提示
     - 模型错误自动重试
     - 事件转发到固定 to-wxids
     - 入站媒体回传到微信
@@ -194,7 +195,57 @@ class EventHandler:
             if pending:
                 self.plugin._update_pending_run_meta(run_id, lastProgressAt=time.time(), watchdogTriggered=False)
             if isinstance(payload, dict):
+                # 模型回退/恢复 lifecycle 事件：立即发友好提示，不并入最终回复正文
+                if event_name == "agent" and pending:
+                    route, _ = pending
+                    fallback_notice = self.plugin.rw.format_lifecycle_fallback_notice(payload)
+                    if fallback_notice:
+                        meta_fb = self.plugin._pending_run_meta.get(run_id) or {}
+                        last_fb = _safe_text(meta_fb.get("lastFallbackNotice")).strip()
+                        if fallback_notice != last_fb:
+                            logger.info(
+                                "[Claw] 发送模型回退友好提示 run_id={} phase={} text={}",
+                                run_id,
+                                _safe_text((payload.get("data") or {}).get("phase") if isinstance(payload.get("data"), dict) else "").strip() or "-",
+                                fallback_notice,
+                            )
+                            await self.plugin._send_to_route(route, fallback_notice)
+                            self.plugin._update_pending_run_meta(run_id, lastFallbackNotice=fallback_notice)
                 update_mode, stream_text = self.plugin._extract_stream_text_update(event_name, payload)
+                if stream_text:
+                    # 纯模型回退通知：立即友好提示，不并入最终回复正文
+                    stream_text = self.plugin.rw.humanize_user_facing_reply(stream_text)
+                    if stream_text and self.plugin.rw.is_fallback_notice_text(stream_text):
+                        if pending:
+                            route, _ = pending
+                            meta_fb = self.plugin._pending_run_meta.get(run_id) or {}
+                            last_fb = _safe_text(meta_fb.get("lastFallbackNotice")).strip()
+                            if stream_text != last_fb:
+                                logger.info(
+                                    "[Claw] 发送模型回退友好提示(stream) run_id={} event={} text={}",
+                                    run_id, event_name or "-", stream_text,
+                                )
+                                await self.plugin._send_to_route(route, stream_text)
+                                self.plugin._update_pending_run_meta(run_id, lastFallbackNotice=stream_text)
+                        stream_text = ""
+                        update_mode = ""
+                    # 混合正文：去掉回退通知行，只保留真实回复
+                    elif stream_text:
+                        stripped = self.plugin.rw.strip_fallback_notice_lines(stream_text)
+                        if stripped != stream_text:
+                            notice_only = self.plugin.rw.extract_fallback_notice_lines(stream_text)
+                            if notice_only and pending:
+                                route, _ = pending
+                                meta_fb = self.plugin._pending_run_meta.get(run_id) or {}
+                                last_fb = _safe_text(meta_fb.get("lastFallbackNotice")).strip()
+                                for notice in notice_only:
+                                    if notice and notice != last_fb:
+                                        await self.plugin._send_to_route(route, notice)
+                                        last_fb = notice
+                                        self.plugin._update_pending_run_meta(run_id, lastFallbackNotice=notice)
+                            stream_text = stripped
+                            if not stream_text:
+                                update_mode = ""
                 if event_name == "agent" and not stream_text:
                     data = payload.get("data") if isinstance(payload, dict) else None
                     data_phase = _safe_text(data.get("phase") if isinstance(data, dict) else "").strip()
