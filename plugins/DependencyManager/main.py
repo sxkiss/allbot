@@ -1,13 +1,13 @@
 """
 @input: WechatAPIClient 消息回调、插件配置、插件市场 API
-@output: 依赖/插件安装与插件市场查询/提交响应；插件市场缓存落盘
+@output: 依赖/插件安装与插件市场查询/提交响应；GitHub 插件目录名规范化为合法 Python 包名
 @position: 插件管理辅助能力（依赖安装、插件安装、插件市场查询/提交）
 @auto-doc: Update header and folder INDEX.md when this file changes
 
 依赖包管理插件 - 允许管理员通过微信命令安装Python依赖包和Github插件
 
 作者: 老夏的金库
-版本: 1.0.0
+版本: 1.1.0
 """
 import asyncio
 import json
@@ -37,7 +37,7 @@ class DependencyManager(PluginBase):
     
     description = "依赖包管理插件"
     author = "老夏的金库"
-    version = "1.0.0"
+    version = "1.1.0"
     
     def __init__(self):
         super().__init__()
@@ -448,25 +448,40 @@ class DependencyManager(PluginBase):
     def _build_github_url(self, github_url: str) -> str:
         """
         构建带反代的 GitHub URL
-        
+
         Args:
             github_url: 原始 GitHub URL (例如: https://github.com/user/repo)
-        
+
         Returns:
             带反代的 URL 或原始 URL
         """
-        if not self.github_proxy:
-            # 没有配置反代，直接返回原始 URL
-            return github_url
-        
-        # 如果 URL 已经包含反代，直接返回
-        if self.github_proxy in github_url:
-            return github_url
-        
-        # 构建带反代的 URL
-        # 格式: {proxy}{original_url}
-        proxied_url = f"{self.github_proxy}{github_url}"
-        logger.debug(f"[DependencyManager] 构建反代URL: {github_url} -> {proxied_url}")
+        url = (github_url or "").strip()
+        if not url:
+            return url
+
+        proxy = (getattr(self, "github_proxy", "") or "").strip()
+        if not proxy:
+            return url
+
+        # 统一补全协议，避免拼出 "/https://..." 这种非法 URL
+        if proxy.startswith("//"):
+            proxy = "https:" + proxy
+        elif not re.match(r"^https?://", proxy, flags=re.I):
+            proxy = "https://" + proxy.lstrip("/")
+
+        if not proxy.endswith("/"):
+            proxy += "/"
+
+        # 已带反代前缀则不重复拼接
+        if url.startswith(proxy) or proxy.rstrip("/") in url:
+            return url
+
+        # 只代理 github.com 链接
+        if "github.com" not in url:
+            return url
+
+        proxied_url = f"{proxy}{url}"
+        logger.debug(f"[DependencyManager] 构建反代URL: {url} -> {proxied_url}")
         return proxied_url
     
     @on_text_message(priority=80)
@@ -758,109 +773,137 @@ class DependencyManager(PluginBase):
             return
         
         user_name = repo_match.group(1)
-        repo_name = repo_match.group(2)
-        plugin_name = repo_name
-        
-        # 使用相对路径，直接在plugins_dir下创建插件目录
-        plugin_target_dir = os.path.join(self.plugins_dir, plugin_name)
+        repo_name = repo_match.group(2).rstrip("/")
+        # 仓库名可能含连字符，不能直接当 plugins 子目录名（importlib 要求合法标识符）
+        provisional_name = self._sanitize_plugin_package_name(repo_name)
+        existing_dir = self._find_existing_plugin_dir(repo_name, provisional_name)
+        plugin_name = os.path.basename(existing_dir) if existing_dir else provisional_name
+        plugin_target_dir = existing_dir or os.path.join(self.plugins_dir, plugin_name)
+
         logger.critical(f"[DependencyManager] 提取到用户名: {user_name}, 仓库名: {repo_name}")
-        logger.critical(f"[DependencyManager] 目标目录: {plugin_target_dir}")
-        
-        # 检查插件目录是否已存在
+        logger.critical(
+            f"[DependencyManager] 目标目录: {plugin_target_dir} (repo={repo_name} → package={plugin_name})"
+        )
+        if plugin_name != repo_name:
+            await bot.send_text_message(
+                chat_id,
+                f"📦 仓库名 `{repo_name}` 含非法包字符，将安装为合法目录 `{plugin_name}`",
+            )
+
+        # 检查插件目录是否已存在（含历史连字符目录）
         if os.path.exists(plugin_target_dir):
-            logger.info(f"[DependencyManager] 插件目录已存在，尝试更新")
+            logger.info(f"[DependencyManager] 插件目录已存在，尝试更新: {plugin_target_dir}")
             await bot.send_text_message(chat_id, f"⚠️ 插件 {plugin_name} 目录已存在，尝试更新...")
             try:
-                # 尝试使用git更新现有插件
                 git_installed = self._check_git_installed()
-                if git_installed:
-                    os.chdir(plugin_target_dir)
-                    logger.info(f"[DependencyManager] 执行git pull操作于: {plugin_target_dir}")
+                if git_installed and os.path.isdir(os.path.join(plugin_target_dir, ".git")):
                     process = subprocess.Popen(
                         ["git", "pull", "origin", "main"],
+                        cwd=plugin_target_dir,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        text=True
+                        text=True,
                     )
                     stdout, stderr = process.communicate()
                     logger.info(f"[DependencyManager] Git pull结果：退出码 {process.returncode}")
-                    logger.info(f"[DependencyManager] Stdout: {stdout}")
-                    logger.info(f"[DependencyManager] Stderr: {stderr}")
-                    
                     if process.returncode == 0:
                         await bot.send_text_message(chat_id, f"✅ 成功更新插件 {plugin_name}!\n\n{stdout}")
-                        await self._install_plugin_requirements(bot, chat_id, plugin_target_dir)
                     else:
-                        logger.error(f"[DependencyManager] 更新插件失败: {stderr}")
-                        await bot.send_text_message(chat_id, f"❌ 更新插件失败: {stderr}")
+                        # main 分支失败时再试 master
+                        process = subprocess.Popen(
+                            ["git", "pull", "origin", "master"],
+                            cwd=plugin_target_dir,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                        )
+                        stdout, stderr = process.communicate()
+                        if process.returncode == 0:
+                            await bot.send_text_message(chat_id, f"✅ 成功更新插件 {plugin_name}!\n\n{stdout}")
+                        else:
+                            logger.error(f"[DependencyManager] 更新插件失败: {stderr}")
+                            await bot.send_text_message(chat_id, f"❌ 更新插件失败: {stderr}")
+                            return
                 else:
-                    # 使用ZIP方式更新
-                    await bot.send_text_message(chat_id, f"⚠️ Git未安装，尝试通过下载ZIP方式更新...")
-                    success = await self._download_github_zip(bot, chat_id, user_name, repo_name, plugin_target_dir, is_update=True)
-                    if success:
-                        await self._install_plugin_requirements(bot, chat_id, plugin_target_dir)
+                    await bot.send_text_message(chat_id, "⚠️ 未检测到可用 git 仓库，尝试通过下载 ZIP 方式更新...")
+                    success = await self._download_github_zip(
+                        bot, chat_id, user_name, repo_name, plugin_target_dir, is_update=True
+                    )
+                    if not success:
+                        return
+
+                # 更新后可能需要把旧连字符目录迁移到合法包名
+                plugin_target_dir, plugin_name = self._finalize_plugin_install_dir(
+                    plugin_target_dir, repo_name
+                )
+                self._ensure_plugin_config(plugin_target_dir)
+                await self._install_plugin_requirements(bot, chat_id, plugin_target_dir)
+                await self._try_load_installed_plugin(bot, chat_id, plugin_target_dir, plugin_name)
             except Exception as e:
                 logger.exception(f"[DependencyManager] 更新插件时出错")
                 await bot.send_text_message(chat_id, f"❌ 更新插件时出错: {str(e)}")
             return
-        
+
         # 创建临时目录
         with tempfile.TemporaryDirectory() as temp_dir:
             try:
                 logger.info(f"[DependencyManager] 创建临时目录: {temp_dir}")
-                await bot.send_text_message(chat_id, f"🔄 正在从GitHub下载插件 {plugin_name}...")
-                
-                # 检查git是否安装，决定使用哪种下载方式
+                await bot.send_text_message(chat_id, f"🔄 正在从GitHub下载插件 {repo_name}...")
+
                 git_installed = self._check_git_installed()
                 logger.info(f"[DependencyManager] Git命令安装状态: {git_installed}")
-                
+
                 if git_installed:
-                    # 使用git克隆仓库
                     clone_url = self._build_github_url(f"{github_url}.git")
                     logger.info(f"[DependencyManager] 使用git克隆: {clone_url} 到 {temp_dir}")
                     process = subprocess.Popen(
-                        ["git", "clone", clone_url, temp_dir],
+                        ["git", "clone", "--depth", "1", clone_url, temp_dir],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        text=True
+                        text=True,
                     )
                     stdout, stderr = process.communicate()
                     logger.info(f"[DependencyManager] Git clone结果：退出码 {process.returncode}")
-                    logger.info(f"[DependencyManager] Stdout: {stdout}")
-                    logger.info(f"[DependencyManager] Stderr: {stderr}")
-                    
                     if process.returncode != 0:
-                        logger.error(f"[DependencyManager] Git克隆失败，尝试使用ZIP方式下载")
+                        logger.error(f"[DependencyManager] Git克隆失败，尝试使用ZIP方式下载: {stderr}")
                         success = await self._download_github_zip(bot, chat_id, user_name, repo_name, temp_dir)
                         if not success:
                             return
                 else:
-                    # 使用ZIP方式下载
                     logger.info(f"[DependencyManager] Git未安装，使用ZIP方式下载")
                     success = await self._download_github_zip(bot, chat_id, user_name, repo_name, temp_dir)
                     if not success:
                         return
-                
-                # 克隆或下载成功，复制到插件目录
-                logger.info(f"[DependencyManager] 创建插件目录: {plugin_target_dir}")
-                os.makedirs(plugin_target_dir, exist_ok=True)
-                
-                # 复制所有文件
-                logger.info(f"[DependencyManager] 开始从临时目录复制文件到插件目录")
-                for item in os.listdir(temp_dir):
-                    s = os.path.join(temp_dir, item)
-                    d = os.path.join(plugin_target_dir, item)
-                    logger.info(f"[DependencyManager] 复制: {s} 到 {d}")
-                    if os.path.isdir(s):
-                        shutil.copytree(s, d, dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(s, d)
-                
+
+                # 根据源码中的插件类名决定最终目录名（优先于仓库名）
+                plugin_name = self._resolve_plugin_package_name(repo_name, temp_dir)
+                plugin_target_dir = os.path.join(self.plugins_dir, plugin_name)
+                if plugin_name != repo_name:
+                    logger.info(
+                        f"[DependencyManager] 目录规范化: repo={repo_name} → package={plugin_name}"
+                    )
+                    await bot.send_text_message(
+                        chat_id,
+                        f"📦 安装目录规范化为 `{plugin_name}`（兼容 AllBot 插件加载）",
+                    )
+
+                # 若规范化后目标已存在，改为更新覆盖（保留 config.toml）
+                if os.path.exists(plugin_target_dir):
+                    await bot.send_text_message(
+                        chat_id, f"⚠️ 目标目录 `{plugin_name}` 已存在，将覆盖代码并保留 config.toml"
+                    )
+                    self._copy_plugin_tree(temp_dir, plugin_target_dir, preserve_config=True)
+                else:
+                    logger.info(f"[DependencyManager] 创建插件目录: {plugin_target_dir}")
+                    os.makedirs(plugin_target_dir, exist_ok=True)
+                    self._copy_plugin_tree(temp_dir, plugin_target_dir, preserve_config=False)
+
+                self._ensure_plugin_config(plugin_target_dir)
                 logger.info(f"[DependencyManager] 文件复制完成")
                 await bot.send_text_message(chat_id, f"✅ 成功下载插件 {plugin_name}!")
-                
-                # 安装依赖
+
                 await self._install_plugin_requirements(bot, chat_id, plugin_target_dir)
+                await self._try_load_installed_plugin(bot, chat_id, plugin_target_dir, plugin_name)
             except Exception as e:
                 logger.exception(f"[DependencyManager] 安装插件时出错")
                 await bot.send_text_message(chat_id, f"❌ 安装插件时出错: {str(e)}")
@@ -878,7 +921,226 @@ class DependencyManager(PluginBase):
             return process.returncode == 0
         except Exception:
             return False
-            
+
+    # ── Plugin package name helpers ─────────────────────────
+    # AllBot 通过 importlib.import_module(f"plugins.{dirname}.main") 加载插件，
+    # 目录名必须是合法 Python 标识符。GitHub 仓库名常含连字符（如 allbot-xxx），
+    # 直接作为目录名会导致加载失败。
+
+    _PLUGIN_DIR_PREFIXES = (
+        "allbot-", "allbot_", "xybot-", "xybot_",
+        "plugin-", "plugin_", "plugins-", "plugins_",
+    )
+
+    @staticmethod
+    def _is_valid_plugin_package_name(name: str) -> bool:
+        """目录名是否可作为 plugins.<name>.main 导入。"""
+        if not name or not isinstance(name, str):
+            return False
+        if name in {"__pycache__", "tests", "test", "docs", "assets"}:
+            return False
+        if not name.isidentifier():
+            return False
+        if name.startswith("_"):
+            return False
+        return True
+
+    @classmethod
+    def _kebab_to_pascal(cls, name: str) -> str:
+        """allbot-group-social-graph → GroupSocialGraph"""
+        text = (name or "").strip()
+        for prefix in cls._PLUGIN_DIR_PREFIXES:
+            if text.lower().startswith(prefix):
+                text = text[len(prefix):]
+                break
+        parts = [p for p in re.split(r"[-_\s]+", text) if p]
+        if not parts:
+            return ""
+        return "".join(p[:1].upper() + p[1:] for p in parts)
+
+    @classmethod
+    def _sanitize_plugin_package_name(cls, repo_name: str) -> str:
+        """把 GitHub 仓库名规范成合法插件目录名。"""
+        raw = (repo_name or "").strip().rstrip("/")
+        if not raw:
+            return "InstalledPlugin"
+        if cls._is_valid_plugin_package_name(raw):
+            return raw
+        pascal = cls._kebab_to_pascal(raw)
+        if cls._is_valid_plugin_package_name(pascal):
+            return pascal
+        # 最后兜底：仅保留字母数字下划线
+        cleaned = re.sub(r"[^0-9A-Za-z_]", "_", raw)
+        cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+        if cleaned and cleaned[0].isdigit():
+            cleaned = f"Plugin_{cleaned}"
+        if not cleaned:
+            cleaned = "InstalledPlugin"
+        if not cleaned.isidentifier():
+            cleaned = "InstalledPlugin"
+        return cleaned
+
+    @staticmethod
+    def _detect_plugin_class_name(plugin_dir: str) -> str:
+        """从 main.py 中探测 PluginBase 子类名（不 import，避免依赖未装齐）。"""
+        main_py = os.path.join(plugin_dir, "main.py")
+        if not os.path.isfile(main_py):
+            return ""
+        try:
+            source = Path(main_py).read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return ""
+        # class Foo(PluginBase) / class Foo(xxx.PluginBase)
+        matches = re.findall(
+            r"class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*((?:[A-Za-z0-9_.;\s]*?)PluginBase)\s*\)",
+            source,
+        )
+        for class_name, _base in matches:
+            if class_name not in {"PluginBase"}:
+                return class_name
+        # 宽松兜底：任意 class XxxPlugin
+        loose = re.findall(r"class\s+([A-Za-z_][A-Za-z0-9_]*Plugin)\s*\(", source)
+        for class_name in loose:
+            if class_name != "PluginBase":
+                return class_name
+        return ""
+
+    def _resolve_plugin_package_name(self, repo_name: str, source_dir: str = "") -> str:
+        """综合仓库名 + 源码类名，决定最终安装目录名。"""
+        preferred = self._sanitize_plugin_package_name(repo_name)
+        class_name = ""
+        if source_dir and os.path.isdir(source_dir):
+            class_name = self._detect_plugin_class_name(source_dir)
+        # 类名本身合法时优先用类名（与 load_plugin 的 plugin_name=类名一致）
+        if class_name and self._is_valid_plugin_package_name(class_name):
+            return class_name
+        return preferred
+
+    def _find_existing_plugin_dir(self, repo_name: str, preferred_name: str) -> str:
+        """查找已安装目录：优先合法包名，再兼容历史连字符仓库名。"""
+        candidates = []
+        for name in (preferred_name, repo_name, self._kebab_to_pascal(repo_name)):
+            if name and name not in candidates:
+                candidates.append(name)
+        for name in candidates:
+            path = os.path.join(self.plugins_dir, name)
+            if os.path.isdir(path) and os.path.isfile(os.path.join(path, "main.py")):
+                return path
+        return ""
+
+    def _finalize_plugin_install_dir(self, current_dir: str, repo_name: str) -> tuple:
+        """更新后若目录名非法，迁移到合法包名（保留 config.toml）。"""
+        current_name = os.path.basename(current_dir.rstrip(os.sep))
+        if self._is_valid_plugin_package_name(current_name):
+            # 若类名与目录不同且类名更合适，不强制迁移，避免破坏用户路径
+            return current_dir, current_name
+
+        target_name = self._resolve_plugin_package_name(repo_name, current_dir)
+        target_dir = os.path.join(self.plugins_dir, target_name)
+        if os.path.abspath(current_dir) == os.path.abspath(target_dir):
+            return current_dir, current_name
+
+        logger.warning(
+            f"[DependencyManager] 迁移非法插件目录: {current_name} → {target_name}"
+        )
+        if os.path.exists(target_dir):
+            # 目标已存在：把当前代码合并过去，保留目标 config
+            self._copy_plugin_tree(current_dir, target_dir, preserve_config=True)
+            # 不删除旧目录，避免误删用户数据；仅提示
+            return target_dir, target_name
+
+        os.makedirs(target_dir, exist_ok=True)
+        self._copy_plugin_tree(current_dir, target_dir, preserve_config=False)
+        # 迁移成功后尝试删除旧非法目录（失败忽略）
+        try:
+            shutil.rmtree(current_dir)
+        except OSError as exc:
+            logger.warning(f"[DependencyManager] 删除旧目录失败 {current_dir}: {exc}")
+        return target_dir, target_name
+
+    def _copy_plugin_tree(self, src_dir: str, dst_dir: str, *, preserve_config: bool = False) -> None:
+        """复制插件文件树；preserve_config 时保留目标 config.toml。"""
+        preserved: bytes | None = None
+        config_path = os.path.join(dst_dir, "config.toml")
+        if preserve_config and os.path.isfile(config_path):
+            with open(config_path, "rb") as f:
+                preserved = f.read()
+
+        os.makedirs(dst_dir, exist_ok=True)
+        for item in os.listdir(src_dir):
+            if item in {".git", "__pycache__", ".github"}:
+                continue
+            s = os.path.join(src_dir, item)
+            d = os.path.join(dst_dir, item)
+            if os.path.isdir(s):
+                shutil.copytree(s, d, dirs_exist_ok=True)
+            else:
+                shutil.copy2(s, d)
+
+        if preserved is not None:
+            with open(config_path, "wb") as f:
+                f.write(preserved)
+
+    def _ensure_plugin_config(self, plugin_dir: str) -> None:
+        """若无 config.toml，从 config.example.toml 复制。"""
+        config_path = os.path.join(plugin_dir, "config.toml")
+        if os.path.isfile(config_path):
+            return
+        for name in ("config.example.toml", "config.sample.toml", "config.toml.example"):
+            example = os.path.join(plugin_dir, name)
+            if os.path.isfile(example):
+                shutil.copy2(example, config_path)
+                logger.info(f"[DependencyManager] 已从 {name} 生成 config.toml")
+                return
+        # 最小可用配置，避免插件 __init__ 直接炸
+        Path(config_path).write_text(
+            "# 自动生成的最小配置，请按插件 README 修改\n"
+            "[basic]\n"
+            "enable = true\n",
+            encoding="utf-8",
+        )
+        logger.info(f"[DependencyManager] 已生成最小 config.toml: {config_path}")
+
+    async def _try_load_installed_plugin(
+        self, bot: WechatAPIClient, chat_id: str, plugin_dir: str, package_name: str
+    ) -> None:
+        """安装/更新后尝试热加载；失败时提示重启。"""
+        if not self._is_valid_plugin_package_name(package_name):
+            await bot.send_text_message(
+                chat_id,
+                f"⚠️ 插件目录 `{package_name}` 不是合法 Python 包名，无法自动加载，请手动改名后重启。",
+            )
+            return
+        class_name = self._detect_plugin_class_name(plugin_dir) or package_name
+        try:
+            from utils.plugin_manager import plugin_manager
+        except Exception as exc:
+            logger.warning(f"[DependencyManager] 无法导入 plugin_manager: {exc}")
+            await bot.send_text_message(chat_id, "🔄 插件文件已就绪，请重启机器人以加载新插件。")
+            return
+
+        try:
+            # 优先按类名加载（与 plugin_manager API 一致）
+            ok = await plugin_manager.load_plugin_from_directory(bot, class_name)
+            if not ok and class_name != package_name:
+                ok = await plugin_manager.load_plugin_from_directory(bot, package_name)
+            if ok:
+                await bot.send_text_message(
+                    chat_id,
+                    f"🚀 插件 `{class_name}` 已尝试热加载成功（目录: {package_name}）。",
+                )
+            else:
+                await bot.send_text_message(
+                    chat_id,
+                    f"🔄 插件已安装到 `{package_name}`，热加载未成功，请重启机器人或在管理后台启用。",
+                )
+        except Exception as exc:
+            logger.exception(f"[DependencyManager] 热加载插件失败: {exc}")
+            await bot.send_text_message(
+                chat_id,
+                f"🔄 插件已安装到 `{package_name}`，热加载出错: {exc}。请重启机器人。",
+            )
+
     async def _download_github_zip(self, bot, chat_id, user_name, repo_name, target_dir, is_update=False):
         """使用requests下载GitHub仓库的ZIP文件"""
         try:
