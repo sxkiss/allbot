@@ -73,3 +73,4 @@ plugins/*/
 !plugins/VideoDemand
 !plugins/RandomPhoto
 !plugins/Screenshot
+!plugins/HermesPlugin
