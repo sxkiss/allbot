@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import os
+import xml.etree.ElementTree as ET
 from asyncio import Future
 from asyncio import Queue, sleep
 from io import BytesIO
@@ -564,7 +565,38 @@ class MessageMixin(WechatAPIClientBase):
             BanProtection: 登录新设备后4小时内操作
             根据error_handler处理错误
         """
+        if getattr(self, "reply_router", None) and type == 5:
+            parsed = self._parse_appmsg_link(xml)
+            if parsed:
+                title, url, description, thumb_url = parsed
+                if url:
+                    client_msg_id, create_time, new_msg_id = await self.reply_router.send_link(
+                        wxid, url, title, description, thumb_url
+                    )
+                    return client_msg_id, create_time, new_msg_id
         return await self._queue_message(self._send_app_message, wxid, xml, type)
+
+    @staticmethod
+    def _parse_appmsg_link(xml: str) -> tuple[str, str, str, str] | None:
+        """从 appmsg XML 中提取链接卡片字段 (type=5)。
+
+        Returns:
+            (title, url, description, thumb_url) 或 None
+        """
+        try:
+            root = ET.fromstring(xml)
+            appmsg = root.find("appmsg")
+            if appmsg is None:
+                return None
+            title = (appmsg.findtext("title") or "").strip()
+            url = (appmsg.findtext("url") or "").strip()
+            if not url:
+                return None
+            description = (appmsg.findtext("des") or "").strip()
+            thumb_url = (appmsg.findtext("thumburl") or "").strip()
+            return title, url, description, thumb_url
+        except Exception:
+            return None
 
     async def _send_app_message(self, wxid: str, xml: str, type: int) -> tuple[int, int, int]:
         if not self.wxid:
