@@ -27,6 +27,8 @@ startupSyncMaxPages = 20
 includeSent = false
 statePath = "admin/static/temp/wechat_observatory/state.json"
 mediaCacheDir = "admin/static/temp/wechat_observatory/media"
+# Bot wxid from observatory (owner_wxid of the monitored device), used for @ detection
+botWxid = ""
 
 [wechat_observatory.redis]
 queue = "allbot"

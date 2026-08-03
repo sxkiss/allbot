@@ -25,6 +25,10 @@ import requests
 
 from adapter.base import AdapterLogger
 
+
+# Pattern to extract @mentions from text (Chinese comma/space separators)
+AT_PATTERN = re.compile(r'@([^\s 　,，]+)')
+
 try:  # pragma: no cover - 依赖缺失时启用阶段给出明确错误
     import redis
 except Exception:  # pragma: no cover
@@ -171,6 +175,12 @@ class WechatObservatoryAdapter:
             self.obs_cfg.get("mediaCacheDir") or "admin/static/temp/wechat_observatory/media"
         )
         self.media_dir.mkdir(parents=True, exist_ok=True)
+
+        # Bot identity from observatory owner_wxid (for @ detection)
+        self.bot_wxid = str(self.obs_cfg.get("botWxid") or "").strip()
+        if not self.bot_wxid:
+            # Fallback to owner_wxid from first message, will be set lazily
+            self.bot_wxid = ""
 
         adapter_reply_queue = adapter_cfg.get("replyQueue")
         self.reply_queue = adapter_reply_queue or "allbot_reply:wechat_observatory"
@@ -398,6 +408,24 @@ class WechatObservatoryAdapter:
         content = self._group_content(content_text, sender_wxid, is_group, msg_type)
         msg_id = self._numeric_message_id(event)
 
+        # Extract @mentions from text
+        at_users = []
+        if content_text:
+            # Match @name patterns (name until space, special space, comma)
+            at_matches = AT_PATTERN.findall(content_text)
+            at_users = [m.strip() for m in at_matches if m.strip()]
+
+        # Lazy-set bot_wxid from owner_wxid if not configured
+        if not self.bot_wxid:
+            self.bot_wxid = str(event.get("owner_wxid") or "").strip()
+
+        # Build MsgSource with atuserlist for framework @ detection
+        if at_users:
+            atuserlist = ",".join(at_users)
+            msg_source = f"<msgsource><atuserlist>{atuserlist}</atuserlist></msgsource>"
+        else:
+            msg_source = "<msgsource></msgsource>"
+
         payload: Dict[str, Any] = {
             "Platform": self.platform,
             "ChannelId": channel_id,
@@ -407,7 +435,7 @@ class WechatObservatoryAdapter:
             "Timestamp": timestamp,
             "CreateTime": timestamp,
             "Content": {"string": content},
-            "MsgSource": "<msgsource></msgsource>",
+            "MsgSource": msg_source,
             "IsGroup": is_group,
             "FromWxid": channel_id,
             "ToWxid": to_wxid,
@@ -417,6 +445,7 @@ class WechatObservatoryAdapter:
             "Status": 3,
             "ImgStatus": 1,
             "NewMsgId": msg_id,
+            "Ats": at_users,  # Direct Ats field for plugins that check it
             "Extra": {
                 "wechat_observatory": {
                     "raw": event,
