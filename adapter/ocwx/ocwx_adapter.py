@@ -69,8 +69,10 @@ XBOT_MSG_XML = 49
 _VOICE_REGISTRY: Dict[str, str] = {}
 _VIDEO_REGISTRY: Dict[str, str] = {}
 _FILE_REGISTRY: Dict[str, str] = {}
+_IMAGE_REGISTRY: Dict[str, str] = {}   # keyed by md5
 _REGISTRY_LOCK = threading.Lock()
 _PATCHED_DOWNLOADERS = False
+_LARGE_FILE_THRESHOLD = 1 * 1024 * 1024  # 1MB，超过此阈值视为大文件，收到时不缓存到内存
 
 
 def _now_ts() -> float:
@@ -504,6 +506,11 @@ def _register_file_payload(attach_id: str, payload: str) -> None:
         _FILE_REGISTRY[attach_id] = payload
 
 
+def _register_image_payload(md5: str, payload: str) -> None:
+    with _REGISTRY_LOCK:
+        _IMAGE_REGISTRY[md5] = payload
+
+
 def _patch_framework_downloaders() -> None:
     global _PATCHED_DOWNLOADERS
     if _PATCHED_DOWNLOADERS:
@@ -518,6 +525,7 @@ def _patch_framework_downloaders() -> None:
     original_869_download_voice = Client869.download_voice
     original_869_download_video = Client869.download_video
     original_869_download_attach = Client869.download_attach
+    original_869_download_image = Client869.download_image
 
     async def _tool_download_voice(self, msg_id: str, voiceurl: str, length: int) -> str:
         with _REGISTRY_LOCK:
@@ -561,12 +569,34 @@ def _patch_framework_downloaders() -> None:
             return cached
         return await original_869_download_attach(self, attach_id)
 
+    async def _869_download_image(self, aeskey: str, cdnmidimgurl: str) -> str:
+        """869 download_image 带缓存。从 ImageRegistry 命中 md5 键；未命中时走框架下载并缓存。"""
+        try:
+            aes_key_hex = str(aeskey).strip()
+            cdn_url = str(cdnmidimgurl).strip()
+            if not aes_key_hex or not cdn_url:
+                return ""
+            # 先用 CDN 下载（含 FileType 自动回退），得到 base64 payload
+            base64_payload = await Client869._send_cdn_download(self, aes_key_hex, cdn_url, 2)
+            if not base64_payload:
+                base64_payload = await Client869._send_cdn_download(self, aes_key_hex, cdn_url, 3)
+            if base64_payload:
+                raw_bytes = base64.b64decode(base64_payload)
+                image_md5 = _md5_bytes(raw_bytes)
+                _register_image_payload(image_md5, base64_payload)
+                return base64_payload
+        except Exception:
+            pass
+        # 回退到框架原始实现
+        return await original_869_download_image(self, aeskey, cdnmidimgurl)
+
     ToolMixin.download_voice = _tool_download_voice
     ToolMixin.download_video = _tool_download_video
     ToolMixin.download_attach = _tool_download_attach
     Client869.download_voice = _869_download_voice
     Client869.download_video = _869_download_video
     Client869.download_attach = _869_download_attach
+    Client869.download_image = _869_download_image
     _PATCHED_DOWNLOADERS = True
 
 
@@ -1342,16 +1372,20 @@ class OpenClawWeixinAdapter:
         if not encrypted_query or not aes_key:
             return None
         raw = self._download_and_decrypt_media(runtime, encrypted_query, aes_key)
+        image_md5 = _md5_bytes(raw)
         extension = _guess_extension(content_type="image/jpeg", fallback=".jpg")
-        target = runtime.media_dir / f"{_md5_bytes(raw)}{extension}"
+        target = runtime.media_dir / f"{image_md5}{extension}"
         target.write_bytes(raw)
+        # 小图片立即缓存到内存（引用时可快速命中）；大图片走磁盘
+        if len(raw) <= _LARGE_FILE_THRESHOLD:
+            _register_image_payload(image_md5, base64.b64encode(raw).decode("utf-8"))
         message = dict(base_message)
         message["MsgType"] = XBOT_MSG_IMAGE
         message["Content"] = {"string": f"{sender_wxid}:<msg></msg>" if is_group else "<msg></msg>"}
         message["SenderWxid"] = sender_wxid
         message["ResourcePath"] = str(target)
         message["ImagePath"] = str(target)
-        message["ImageMD5"] = _md5_bytes(raw)
+        message["ImageMD5"] = image_md5
         message["ImageBase64"] = base64.b64encode(raw).decode("utf-8")
         return message
 
@@ -1375,7 +1409,9 @@ class OpenClawWeixinAdapter:
             return None
         raw = self._download_and_decrypt_media(runtime, encrypted_query, aes_key)
         silk_b64 = base64.b64encode(raw).decode("utf-8")
-        _register_voice_payload(message_id, silk_b64)
+        # 小语音立即缓存；大语音只有引用时才缓存（与视频/文件保持一致）
+        if len(raw) <= _LARGE_FILE_THRESHOLD:
+            _register_voice_payload(message_id, silk_b64)
         target = runtime.media_dir / f"voice_{message_id}.silk"
         target.write_bytes(raw)
         length = len(raw)
@@ -1408,7 +1444,9 @@ class OpenClawWeixinAdapter:
         raw = self._download_and_decrypt_media(runtime, encrypted_query, aes_key)
         target = runtime.media_dir / f"video_{message_id}.mp4"
         target.write_bytes(raw)
-        _register_video_payload(message_id, base64.b64encode(raw).decode("utf-8"))
+        # 小视频收到时立即缓存；大视频只有引用时才缓存
+        if len(raw) <= _LARGE_FILE_THRESHOLD:
+            _register_video_payload(message_id, base64.b64encode(raw).decode("utf-8"))
         xml = "<msg><videomsg /></msg>"
         if is_group:
             xml = f"{sender_wxid}:{xml}"
@@ -1440,7 +1478,9 @@ class OpenClawWeixinAdapter:
         target = runtime.media_dir / safe_name
         target.write_bytes(raw)
         attach_id = f"ocwx-attach-{runtime.config.slot}-{message_id}"
-        _register_file_payload(attach_id, base64.b64encode(raw).decode("utf-8"))
+        # 小文件收到时立即缓存；大文件只有引用（download_attach）时才缓存
+        if len(raw) <= _LARGE_FILE_THRESHOLD:
+            _register_file_payload(attach_id, base64.b64encode(raw).decode("utf-8"))
         file_ext = Path(safe_name).suffix.lstrip(".")
         xml = (
             "<msg><appmsg appid=\"\" sdkver=\"0\">"

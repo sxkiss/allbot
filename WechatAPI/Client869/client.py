@@ -2652,13 +2652,27 @@ class Client869:
         file_type:
           - 2: 图片高清
           - 3: 图片缩略
-          - 5: 文件/附件
+          - 5: 文件/附件（小文件）
+          - 7: 文件/附件（大文件）
+
+        当 FileType=5 返回 RetCode=0xFFB22257(4289864279) 时，自动回退到 FileType=7。
         """
         if not aes_key or not file_url:
             return ""
         payload = {"AesKey": aes_key, "FileURL": file_url, "FileType": int(file_type)}
         data = await self.call_path("/message/SendCdnDownload", body=payload)
-        return self._extract_base64_from_payload(data)
+        base64_result = self._extract_base64_from_payload(data)
+        # 大文件用 FileType=5 会返回 0xFFB22257，自动回退到 FileType=7
+        if (
+            not base64_result
+            and int(file_type) == 5
+            and isinstance(data, dict)
+            and str(data.get("RetCode", "")) == "4289864279"
+        ):
+            payload["FileType"] = 7
+            data = await self.call_path("/message/SendCdnDownload", body=payload)
+            base64_result = self._extract_base64_from_payload(data)
+        return base64_result or ""
 
     async def get_msg_image(self, aeskey: str, cdnmidimgurl: str) -> bytes:
         try:
@@ -2774,6 +2788,13 @@ class Client869:
         if aes_key and file_url:
             try:
                 base64_payload = await self._send_cdn_download(aes_key, file_url, 5)
+                if base64_payload:
+                    return base64_payload
+            except Exception:
+                pass
+            # 大文件：直接显式尝试 FileType=7（作为兜底）
+            try:
+                base64_payload = await self._send_cdn_download(aes_key, file_url, 7)
                 if base64_payload:
                     return base64_payload
             except Exception:
