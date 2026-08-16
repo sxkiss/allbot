@@ -51,7 +51,7 @@ tests/
 # Spec workflow 临时文件
 .spec-workflow/
 plugin-market-api/
-
+docs/reports
 # 插件目录整体保留，只屏蔽插件列表
 plugins/*/
 !plugins/
