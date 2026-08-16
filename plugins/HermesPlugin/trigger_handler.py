@@ -195,6 +195,13 @@ class TriggerHandler:
     # -- User Text Extraction --
 
     def _extract_user_text(self, message: dict, *, strip_at_prefix: bool) -> str:
+        # 引用消息：外层 Content 是用户输入的正文，直接提取
+        if message.get("Quote"):
+            text = _safe_text(message.get("Content")).replace("\u2005", " ").strip()
+            if strip_at_prefix:
+                text = self._strip_leading_mentions(text)
+            return text.strip()
+
         msg_type = int(message.get("MsgType") or 0)
         if msg_type == 3:
             return "[图片]"
@@ -325,6 +332,9 @@ class TriggerHandler:
         return None
 
     def _strip_trigger_prompt(self, user_text: str, match_word: str) -> str:
+        """剥离触发词，返回真正的用户提问文本。"""
+        if not match_word:
+            return user_text.strip()
         if not self.trigger_strip_word or not match_word:
             return user_text.strip()
         text = user_text.strip()

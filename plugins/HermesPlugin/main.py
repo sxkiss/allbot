@@ -478,18 +478,27 @@ class HermesPlugin(PluginBase):
         if self.quote_include_enable and isinstance(quote, dict):
             quoted_content = _safe_text(quote.get("Content")).strip()
             quoted_sender = _safe_text(quote.get("Nickname") or quote.get("sourcedisplayname")).strip()
-            if quoted_content:
-                quote_block = f"[Quoted message from {quoted_sender or 'unknown'}]\n{quoted_content}"
-                prompt = f"{quote_block}\n\n{prompt}" if prompt else quote_block
             # 引用媒体 URL（图片/语音/视频/文件）
+            quote_media_urls: list[str] = []
             try:
                 quote_attachments = await self.mp._build_quote_gateway_attachments(quote)
                 quote_media_urls = [a.get("url", "") for a in quote_attachments if a.get("url")]
-                if quote_media_urls:
-                    url_block = "\n".join(quote_media_urls)
-                    prompt = f"{url_block}\n\n{prompt}" if prompt else url_block
             except Exception as e:
                 logger.warning("[Hermes] 引用媒体 URL 提取失败: {}", e)
+
+            if quoted_content:
+                # 如果 Content 是 XML，只提取干净标签，不含原始 XML
+                if quoted_content.lstrip().startswith("<"):
+                    import re as _re
+                    media_label = "[图片]" if "img" in quoted_content else "[媒体]"
+                    url_text = "\n".join(quote_media_urls) if quote_media_urls else ""
+                    quote_block = f"[Quoted message from {quoted_sender or 'unknown'}] {media_label}"
+                    if url_text:
+                        quote_block += f"\n{url_text}"
+                else:
+                    quote_block = f"[Quoted message from {quoted_sender or 'unknown'}]\n{quoted_content}"
+                    if quote_media_urls:
+                        quote_block += "\n" + "\n".join(quote_media_urls)
 
         # 群聊：注入最近 N 条文本消息，供模型理解上下文
         history_block = ""
@@ -500,7 +509,7 @@ class HermesPlugin(PluginBase):
                 limit=self.group_history_count,
             )
 
-        parts = [part for part in (identity_header, history_block, prompt) if part]
+        parts = [part for part in (identity_header, history_block, prompt, quote_block if quoted_content else "") if part]
         return "\n\n".join(parts).strip() if parts else prompt
 
     async def _build_group_history_context(

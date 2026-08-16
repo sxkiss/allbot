@@ -228,15 +228,15 @@ class MediaPipeline:
         
         # 语音消息
         if quoted_type == 34:
-            return self._build_quote_binary_attachment(quote, media_type="audio")
+            return await self._build_quote_binary_attachment(quote, media_type="audio")
         
         # 视频消息
         if quoted_type == 43:
-            return self._build_quote_binary_attachment(quote, media_type="video")
+            return await self._build_quote_binary_attachment(quote, media_type="video")
         
         # 文件消息
         if quoted_type == 49:
-            return self._build_quote_binary_attachment(quote, media_type="file")
+            return await self._build_quote_binary_attachment(quote, media_type="file")
         
         return []
 
@@ -316,7 +316,7 @@ class MediaPipeline:
         except Exception:
             return ""
 
-    def _download_quote_media_from_cdn(self, quote: dict, media_type: str, quote_xml: str) -> Tuple[str, str]:
+    async def _download_quote_media_from_cdn(self, quote: dict, media_type: str, quote_xml: str) -> Tuple[str, str]:
         """从 CDN 下载引用媒体（语音/视频/文件）并保存，返回 (local_path, md5_value)。"""
         if not self.bot:
             return "", ""
@@ -438,7 +438,7 @@ class MediaPipeline:
         except Exception:
             return "", ""
 
-    def _build_quote_binary_attachment(self, quote: dict, *, media_type: str) -> List[Dict[str, Any]]:
+    async def _build_quote_binary_attachment(self, quote: dict, *, media_type: str) -> List[Dict[str, Any]]:
         """构建引用消息二进制附件（语音/视频/文件，URL 格式）。"""
         quote_xml = _safe_text(quote.get("Content"))
 
@@ -454,7 +454,7 @@ class MediaPipeline:
 
         # 本地文件不存在时，从 CDN 下载兜底
         if not local_path or not os.path.isfile(local_path):
-            local_path, md5_value = self._download_quote_media_from_cdn(quote, media_type, quote_xml)
+            local_path, md5_value = await self._download_quote_media_from_cdn(quote, media_type, quote_xml)
 
         if not local_path or not os.path.isfile(local_path):
             return []

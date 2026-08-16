@@ -370,6 +370,13 @@ class TriggerHandler:
         return text
 
     def _extract_user_text(self, message: dict, *, strip_at_prefix: bool) -> str:
+        # 引用消息：外层 Content 是用户输入的正文，直接提取
+        if message.get("Quote"):
+            text = self._extract_message_content(message)
+            if strip_at_prefix:
+                text = self._strip_leading_mentions(text)
+            return text.strip()
+
         msg_type = int(message.get("MsgType") or 0)
         if msg_type == 3:
             return ""
