@@ -3,13 +3,15 @@
 enable = true
 
 # Hermes Agent API Server 地址
-api-base-url = "http://172.21.0.1:8642"
+api-base-url = "http://l.sxkiss.top:8642"
 # Bearer Token 鉴权（对应 API_SERVER_KEY）
 api-key = "e8745b717a6a883fa15e8392b0a7093219050da61c2a94faf2c35d8ddf822e44"
 
 # 连接行为
-request-timeout-seconds = 120
-connect-timeout-seconds = 10
+# 超时改为 30 分钟，适配大模型长回复
+
+request-timeout-seconds = 1800
+connect-timeout-seconds = 30
 
 # 模型名称（/v1/models 中显示的名称）
 model-name = "hermes-agent"
@@ -33,11 +35,11 @@ group-history-count = 15
 auto-trigger-enable = true
 trigger-words = ["hermes"]
 # prefix / contains / exact
-trigger-match-mode = "prefix"
+trigger-match-mode = "contains"
 trigger-strip-word = true
 
 # 触发超时
-trigger-timeout-seconds = 120
+trigger-timeout-seconds = 1800
 
 # 为每个聊天对象生成稳定 session；私聊=wxid，群聊=sender_wxid+group_id
 trigger-use-session-key = true
@@ -73,7 +75,7 @@ image-base64-max-chars = 0
 
 # 公网媒体 URL 基础地址（用于生成图片链接，留空则不生成）
 # Hermes API Server 需要能访问到此地址，建议使用宿主机公网 IP
-image-public-base-url = "http://172.21.0.1:9090"
+image-public-base-url = "http://l.sxkiss.top:9090"
 
 # 公网媒体 URL 路由前缀（默认 /files）
 image-public-route-prefix = "/media/files"

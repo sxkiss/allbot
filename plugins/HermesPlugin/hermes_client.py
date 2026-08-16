@@ -70,7 +70,7 @@ class HermesAPIClient:
         base_url: str,
         api_key: str,
         model_name: str = "hermes-agent",
-        request_timeout: int = 120,
+        request_timeout: int = 1800,
         connect_timeout: int = 10,
         stream_enable: bool = True,
         system_prompt: str = "",
