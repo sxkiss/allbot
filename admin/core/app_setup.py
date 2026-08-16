@@ -60,7 +60,6 @@ tags_metadata = [
     {"name": "朋友圈", "description": "朋友圈列表、点赞、评论等操作"},
     {"name": "提醒", "description": "定时提醒的增删改查"},
     {"name": "适配器", "description": "多平台适配器管理（QQ/Telegram/Web/Windows）"},
-    {"name": "AI平台", "description": "AI 模型平台配置与密钥管理"},
 ]
 
 # 全局变量

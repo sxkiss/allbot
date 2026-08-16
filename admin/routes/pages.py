@@ -131,24 +131,6 @@ def register_page_routes(app, templates, bot_instance, get_version_info, get_sys
         return templates.TemplateResponse("index.html", context)
 
 
-    # AI 平台管理页面
-    @app.get("/ai-platforms", response_class=HTMLResponse, tags=["页面"])
-    async def ai_platforms_page(request: Request, username: Optional[str] = Depends(require_auth_page)):
-        """AI 平台管理页面"""
-        if not username:
-            return RedirectResponse(url="/login?next=/ai-platforms", status_code=302)
-
-        # 获取 AI 平台插件列表
-        ai_plugins = []
-        try:
-            from utils.plugin_manager import plugin_manager
-            ai_plugins = plugin_manager.get_ai_platform_plugins()
-        except Exception as e:
-            logger.error(f"获取 AI 插件列表失败: {e}")
-
-        version_info = get_version_info()
-        context = build_page_context(request, "ai_platforms", version_info, ai_plugins=ai_plugins)
-        return templates.TemplateResponse("ai_platforms.html", context)
 
 
     # 定时提醒页面
