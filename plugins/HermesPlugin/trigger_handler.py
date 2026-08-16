@@ -415,7 +415,7 @@ class TriggerHandler:
         self.plugin.sm.remember_session_route(session_id, route)
 
         # 构建附件（Hermes 兼容模式）
-        attachments, attachment_meta = self.plugin.mp.build_outbound_attachments(message)
+        attachments, attachment_meta = await self.plugin.mp.build_outbound_attachments(message)
 
         try:
             reply_text = await asyncio.wait_for(

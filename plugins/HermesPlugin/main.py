@@ -1,6 +1,6 @@
 """
 @input: hermes_client, trigger_handler, reply_writer, session_manager; PluginBase, decorators, WechatAPIClient; database.messsagDB.MessageDB
-@output: HermesPlugin class - plugin entry point; group session per-sender; injects [Recent group messages] from message.db
+@output: HermesPlugin class - plugin entry point; group session per-sender; injects [Recent group messages] from message.db; prompt 注入引用媒体公网URL（图片/语音/视频/文件）
 @position: plugins/HermesPlugin orchestrator, config loading, submodule instantiation, event handler routing
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -364,12 +364,12 @@ class HermesPlugin(PluginBase):
         prompt = await self._build_hermes_prompt(message, route=route, user_text=media_context)
 
         # 构建附件（Claw 兼容模式）
-        attachments, attachment_meta = self.mp.build_outbound_attachments(message)
+        attachments, attachment_meta = await self.mp.build_outbound_attachments(message)
 
         # 如果附件为空，尝试确保本地文件存在后再次构建
         if not attachments:
             await self.mp.ensure_media_local_path(bot, message)
-            attachments, attachment_meta = self.mp.build_outbound_attachments(message)
+            attachments, attachment_meta = await self.mp.build_outbound_attachments(message)
 
         # 转发到 Hermes
         msg_id = _safe_text(message.get("MsgId")).strip() or __import__("uuid").uuid4().hex[:8]
@@ -481,6 +481,15 @@ class HermesPlugin(PluginBase):
             if quoted_content:
                 quote_block = f"[Quoted message from {quoted_sender or 'unknown'}]\n{quoted_content}"
                 prompt = f"{quote_block}\n\n{prompt}" if prompt else quote_block
+            # 引用媒体 URL（图片/语音/视频/文件）
+            try:
+                quote_attachments = await self.mp._build_quote_gateway_attachments(quote)
+                quote_media_urls = [a.get("url", "") for a in quote_attachments if a.get("url")]
+                if quote_media_urls:
+                    url_block = "\n".join(quote_media_urls)
+                    prompt = f"{url_block}\n\n{prompt}" if prompt else url_block
+            except Exception as e:
+                logger.warning("[Hermes] 引用媒体 URL 提取失败: {}", e)
 
         # 群聊：注入最近 N 条文本消息，供模型理解上下文
         history_block = ""

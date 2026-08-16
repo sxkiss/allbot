@@ -1393,6 +1393,16 @@ class XYBot:
                 else:
                     logger.debug("cdnthumbaeskey not found.")
                     quote_message["cdnthumbaeskey"] = ""
+                # 提取完整 aeskey 和 CDN 地址，用于下载高清图片
+                match_aes = re.search(r'aeskey="([^"]+)"', unescaped_inner_xml)
+                match_url = re.search(r'cdnmidimgurl="([^"]+)"', unescaped_inner_xml) or re.search(r'cdnbigimgurl="([^"]+)"', unescaped_inner_xml)
+                match_md5 = re.search(r'md5="([^"]+)"', unescaped_inner_xml)
+                if match_url:
+                    quote_message["cdnmidimgurl"] = match_url.group(1)
+                if match_aes:
+                    quote_message["aeskey"] = match_aes.group(1)
+                if match_md5:
+                    quote_message["ImageMD5"] = match_md5.group(1)
 
             elif quote_message["MsgType"] in (43, 34):  # 视频/语音引用
                 quote_message["NewMsgId"] = refermsg.find("svrid").text

@@ -1,6 +1,6 @@
 """
 @input: WechatAPIClient, os, base64, mimetypes, hashlib, glob, xml.etree.ElementTree, urllib.parse
-@output: MediaPipeline class - inbound media extraction, persistence, outbound attachments (Hermes-compatible with URL support)
+@output: MediaPipeline class - inbound media extraction, persistence, outbound attachments; 引用媒体CDN下载兜底（语音/视频/文件 FileType=5→7 大文件回退）；多子目录缓存查找
 @position: Media processing layer for HermesPlugin, supports image/voice/video/file messages and quoted media (all types)
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -112,7 +112,7 @@ class MediaPipeline:
 
     # ── Outbound Attachments (Claw-compatible) ───────────────
 
-    def build_outbound_attachments(self, message: dict) -> Tuple[List[Dict[str, Any]], Dict[str, bool]]:
+    async def build_outbound_attachments(self, message: dict) -> Tuple[List[Dict[str, Any]], Dict[str, bool]]:
         """构建附件列表（Claw 兼容格式）。
 
         Returns:
@@ -135,7 +135,7 @@ class MediaPipeline:
         # 引用消息中的图片
         quote = message.get("Quote")
         if self.quote_include_enable and isinstance(quote, dict):
-            quote_attachments = self._build_quote_gateway_attachments(quote)
+            quote_attachments = await self._build_quote_gateway_attachments(quote)
             if quote_attachments:
                 attachments.extend(quote_attachments)
                 meta["quoted_image"] = True
@@ -214,7 +214,7 @@ class MediaPipeline:
 
     # ── Quote Attachments ────────────────────────────────────
 
-    def _build_quote_gateway_attachments(self, quote: dict) -> List[Dict[str, Any]]:
+    async def _build_quote_gateway_attachments(self, quote: dict) -> List[Dict[str, Any]]:
         """构建引用消息附件（支持图片、语音、视频、文件）。"""
         quoted_type = quote.get("MsgType")
         try:
@@ -224,7 +224,7 @@ class MediaPipeline:
         
         # 图片消息
         if quoted_type == 3:
-            return self._build_quote_image_attachment(quote)
+            return await self._build_quote_image_attachment(quote)
         
         # 语音消息
         if quoted_type == 34:
@@ -240,7 +240,7 @@ class MediaPipeline:
         
         return []
 
-    def _build_quote_image_attachment(self, quote: dict) -> List[Dict[str, Any]]:
+    async def _build_quote_image_attachment(self, quote: dict) -> List[Dict[str, Any]]:
         """构建引用消息图片附件（URL 格式）。"""
         quote_xml = _safe_text(quote.get("Content"))
         md5_value = self._extract_md5_from_img_xml(quote_xml)
@@ -248,11 +248,36 @@ class MediaPipeline:
         local_path = resource_path if (resource_path and os.path.isfile(resource_path)) else ""
         if not local_path and md5_value:
             local_path = self._find_existing_file_path(md5_value=md5_value)
+
+        # 本地文件不存在时，尝试从 CDN 下载
+        if not local_path or not os.path.isfile(local_path):
+            cdn_url = _safe_text(quote.get("cdnmidimgurl")).strip() or _safe_text(quote.get("cdnbigimgurl")).strip()
+            aeskey = _safe_text(quote.get("aeskey")).strip() or _safe_text(quote.get("cdnthumbaeskey")).strip()
+            if cdn_url and aeskey and self.bot:
+                image_data = b""
+                for attempt in range(3):
+                    try:
+                        image_data = await self.bot.get_msg_image(aeskey, cdn_url)
+                        if image_data:
+                            break
+                    except Exception:
+                        pass
+                    if attempt < 2:
+                        await asyncio.sleep(1 * (attempt + 1))
+                if image_data:
+                    file_name = self._build_inbound_media_file_name_from_quote(
+                        md5_value or _safe_text(quote.get("md5")) or "quote-img", image_data
+                    )
+                    file_path = self._save_quote_image_to_files(file_name, image_data)
+                    if file_path:
+                        local_path = file_path
+                        md5_value = md5_value or self._calculate_md5_from_path(file_path)
+
         if not local_path or not os.path.isfile(local_path):
             return []
 
         # 构建公网 URL
-        public_url = self._build_public_media_url(local_path, md5_value=md5_value, file_name=os.path.basename(local_path))
+        public_url = self._build_public_media_url(local_path, md5_value=md5_value or "", file_name=os.path.basename(local_path))
         if not public_url:
             return []
 
@@ -260,20 +285,177 @@ class MediaPipeline:
             type_name="image", mime_type="image/jpeg", file_name=os.path.basename(local_path), payload="", url=public_url,
         )]
 
+    def _build_inbound_media_file_name_from_quote(self, md5_value: str, payload: bytes) -> str:
+        """为引用图片构建文件名。"""
+        if md5_value:
+            return f"{md5_value}.jpg"
+        return "quote-img.jpg"
+
+    def _save_quote_image_to_files(self, file_name: str, image_data: bytes) -> str:
+        """将引用图片保存到 files 目录。"""
+        root = "/app" if os.path.isdir("/app") else os.getcwd()
+        target_dir = os.path.join(root, "files")
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+        except Exception:
+            return ""
+        file_path = os.path.join(target_dir, file_name)
+        try:
+            with open(file_path, "wb") as f:
+                f.write(image_data)
+            return file_path
+        except Exception:
+            return ""
+
+    def _calculate_md5_from_path(self, path: str) -> str:
+        """从已保存文件计算 MD5。"""
+        import hashlib
+        try:
+            with open(path, "rb") as f:
+                return hashlib.md5(f.read()).hexdigest()
+        except Exception:
+            return ""
+
+    def _download_quote_media_from_cdn(self, quote: dict, media_type: str, quote_xml: str) -> Tuple[str, str]:
+        """从 CDN 下载引用媒体（语音/视频/文件）并保存，返回 (local_path, md5_value)。"""
+        if not self.bot:
+            return "", ""
+
+        # 1. 优先从 quote dict 取（xybot_legacy 已提取的字段）
+        cdn_url = _safe_text(quote.get("cdnurl") or quote.get("cdnmidimgurl")).strip()
+        aeskey = _safe_text(quote.get("aeskey") or quote.get("cdnthumbaeskey")).strip()
+        attach_id = _safe_text(quote.get("attachid") or quote.get("appattach", {}).get("attachid") or "").strip()
+        md5_value = _safe_text(quote.get("md5") or quote.get("ImageMD5")).strip()
+
+        # 2. 从 XML 二次提取（兜底）
+        if not cdn_url or not aeskey:
+            unescaped = html.unescape(quote_xml)
+            try:
+                root = ET.fromstring(unescaped)
+                for tag in ("audio", "video", "file", "appmsg"):
+                    elem = root.find(tag)
+                    if elem is not None:
+                        if not cdn_url:
+                            cdn_url = (_safe_text(elem.get("cdnurl")) or "").strip() or (_safe_text(elem.get("url")) or "").strip()
+                        if not aeskey:
+                            aeskey = (_safe_text(elem.get("aeskey")) or "").strip()
+                        if not attach_id:
+                            appattach = elem.find("appattach") if elem.tag == "appmsg" else None
+                            if appattach is not None:
+                                attach_id = (_safe_text(appattach.findtext("attachid")) or "").strip()
+                        if not md5_value:
+                            md5_value = (_safe_text(elem.get("md5")) or "").strip()
+            except Exception:
+                pass
+            # 正则兜底
+            if not cdn_url:
+                m = re.search(r'cdnurl="([^"]+)"', unescaped)
+                if m:
+                    cdn_url = m.group(1).strip()
+            if not aeskey:
+                m = re.search(r'aeskey="([^"]+)"', unescaped)
+                if m:
+                    aeskey = m.group(1).strip()
+            if not attach_id:
+                m = re.search(r'attachid="([^"]+)"', unescaped)
+                if m:
+                    attach_id = m.group(1).strip()
+            if not md5_value:
+                m = re.search(r'md5="([^"]+)"', unescaped)
+                if m:
+                    md5_value = m.group(1).strip()
+
+        # 3. 按媒体类型下载
+        ext_map = {"audio": ".silk", "video": ".mp4", "file": ".bin"}
+        ext = ext_map.get(media_type, ".bin")
+        stem = md5_value or "quote-{media_type}"
+
+        if media_type == "audio" and cdn_url and aeskey:
+            try:
+                payload_b64 = await self.bot.download_voice(stem, cdn_url, 0)
+                if payload_b64:
+                    payload = self._coerce_media_payload_bytes(payload_b64)
+                    if payload:
+                        return self._save_quote_binary_to_files(payload, f"{md5_value or stem}.silk")
+            except Exception as e:
+                logger.warning("[Hermes] 引用语音 CDN 下载失败: {}", e)
+
+        elif media_type == "video" and cdn_url and aeskey:
+            try:
+                payload_b64 = await self.bot.download_video(stem)
+                if payload_b64:
+                    payload = self._coerce_media_payload_bytes(payload_b64)
+                    if payload:
+                        return self._save_quote_binary_to_files(payload, f"{md5_value or stem}.mp4")
+            except Exception as e:
+                logger.warning("[Hermes] 引用视频 CDN 下载失败: {}", e)
+
+        elif media_type == "file" and (attach_id or (cdn_url and aeskey)):
+            try:
+                payload_b64 = await self.bot.download_attach(attach_id) if attach_id else ""
+                if not payload_b64 and cdn_url and aeskey:
+                    payload_b64 = await self._cdn_download_with_fallback(aeskey, cdn_url)
+                if payload_b64:
+                    payload = self._coerce_media_payload_bytes(payload_b64)
+                    if payload:
+                        return self._save_quote_binary_to_files(payload, f"{md5_value or stem}{ext}")
+            except Exception as e:
+                logger.warning("[Hermes] 引用文件 CDN 下载失败: {}", e)
+
+        return "", ""
+
+    async def _cdn_download_with_fallback(self, aes_key: str, file_url: str) -> str:
+        """CDN 下载并自动 FileType=5→7 大文件回退。"""
+        try:
+            payload = await self.bot._send_cdn_download(aes_key, file_url, 5)
+            if payload:
+                return payload
+        except Exception:
+            pass
+        try:
+            payload = await self.bot._send_cdn_download(aes_key, file_url, 7)
+            if payload:
+                return payload
+        except Exception:
+            pass
+        return ""
+
+    def _save_quote_binary_to_files(self, payload: bytes, file_name: str) -> Tuple[str, str]:
+        """保存引用二进制媒体到 files 目录。"""
+        root = "/app" if os.path.isdir("/app") else os.getcwd()
+        target_dir = os.path.join(root, "files")
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+        except Exception:
+            return "", ""
+        file_path = os.path.join(target_dir, file_name)
+        try:
+            if not os.path.isfile(file_path):
+                with open(file_path, "wb") as f:
+                    f.write(payload)
+            md5 = hashlib.md5(payload).hexdigest()
+            return file_path, md5
+        except Exception:
+            return "", ""
+
     def _build_quote_binary_attachment(self, quote: dict, *, media_type: str) -> List[Dict[str, Any]]:
         """构建引用消息二进制附件（语音/视频/文件，URL 格式）。"""
         quote_xml = _safe_text(quote.get("Content"))
-        
+
         # 尝试从 XML 提取资源路径
         resource_path = self._extract_resource_path_from_media_xml(quote_xml)
         local_path = resource_path if (resource_path and os.path.isfile(resource_path)) else ""
-        
+
         # 尝试从 MD5 查找文件
         if not local_path:
             md5_value = self._extract_md5_from_media_xml(quote_xml)
             if md5_value:
                 local_path = self._find_existing_file_path(md5_value=md5_value)
-        
+
+        # 本地文件不存在时，从 CDN 下载兜底
+        if not local_path or not os.path.isfile(local_path):
+            local_path, md5_value = self._download_quote_media_from_cdn(quote, media_type, quote_xml)
+
         if not local_path or not os.path.isfile(local_path):
             return []
 
@@ -632,11 +814,13 @@ class MediaPipeline:
 
         for root in roots:
             if safe_name:
-                candidate = os.path.join(root, "files", safe_name)
-                if os.path.isfile(candidate):
-                    return candidate
-                nested_pattern = os.path.join(root, "files", "**", safe_name)
-                candidates.extend(glob.glob(nested_pattern, recursive=True))
+                # 查找多个子目录
+                for subdir in ["", "hermes-media", "ocwx", "files"]:
+                    candidate = os.path.join(root, "files", subdir, safe_name)
+                    if os.path.isfile(candidate):
+                        return candidate
+                    nested_pattern = os.path.join(root, "files", subdir, "**", safe_name)
+                    candidates.extend(glob.glob(nested_pattern, recursive=True))
 
         md5_value = _safe_text(md5_value).strip()
         if not md5_value:
