@@ -1,6 +1,6 @@
 """
 @input: HermesPlugin instance, WatchRoute/TriggerMatch, WechatAPIClient
-@output: TriggerHandler class - message trigger, route building, dedup, admin detection, media attachment handling
+@output: TriggerHandler class - message trigger, route building, dedup, admin detection, media attachment handling; pseudo-stream forwarding support
 @position: Message entry layer, decides whether to forward messages to Hermes, extracts media attachments from quotes
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -440,7 +440,10 @@ class TriggerHandler:
             await self._send_to_route(route, f"Hermes call failed: {exc}")
             return
 
-        if reply_text:
+        # Pseudo-stream delivery if enabled
+        if reply_text and getattr(self.plugin, "pseudo_stream_enable", False):
+            await self.plugin.rw.send_stream(route, reply_text)
+        elif reply_text:
             await self.plugin.rw.send_to_route(route, reply_text)
 
     async def _send_to_route(self, route: WatchRoute, content: str) -> None:

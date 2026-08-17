@@ -2,86 +2,38 @@
 # 插件总开关
 enable = true
 
-# Hermes Agent API Server 地址
+# === Gateway API (8642 端口) - OpenAI 兼容接口 ===
 api-base-url = "http://l.sxkiss.top:8642"
-# Bearer Token 鉴权（对应 API_SERVER_KEY）
 api-key = "e8745b717a6a883fa15e8392b0a7093219050da61c2a94faf2c35d8ddf822e44"
-
-# 连接行为
-# 超时改为 30 分钟，适配大模型长回复
 
 request-timeout-seconds = 1800
 connect-timeout-seconds = 30
-
-# 模型名称（/v1/models 中显示的名称）
-model-name = "hermes-agent"
-
-# 是否使用流式响应
+model-name = "auto"
 stream-enable = true
-
-# 回复分片上限
 max-reply-chars = 1800
-
-# 固定默认 session 前缀
-# 私聊: {prefix}:{wxid}
-# 群聊: {prefix}:{sender_wxid}:{group_id}（同群不同人独立会话）
 session-prefix = "allbot-hermes"
-
-# 群聊触发时从 message.db 取最近 N 条文本消息注入 [Recent group messages]
-# 设为 0 可关闭
 group-history-count = 15
 
-# 自动转发
 auto-trigger-enable = true
 trigger-words = ["hermes"]
-# prefix / contains / exact
 trigger-match-mode = "contains"
 trigger-strip-word = true
-
-# 触发超时
 trigger-timeout-seconds = 1800
-
-# 为每个聊天对象生成稳定 session；私聊=wxid，群聊=sender_wxid+group_id
 trigger-use-session-key = true
-
-# 私聊消息无需触发词，直接转发
 private-auto-forward-enable = false
-
-# 管理员 slash 直通
 slash-command-forward-enable = true
-
 propagate-to-other-plugins = true
-
-# 短窗去重（按 MsgId）
 dedup-enable = true
 dedup-window-seconds = 3
-
-# 唤醒词帮助关键词
 method-help-keywords = ["帮助", "命令", "命令列表", "常用命令"]
-
-# 群聊 @机器人 时无需触发词
 at-auto-forward-enable = true
-
-# 图片能力开关
 image-auto-forward-enable = true
-# summary / base64 / url
 image-forward-mode = "url"
-
-# 引用消息附带被引用内容上下文
 quote-include-enable = true
-
-# 图片附件 base64 最大字符数（0=不限制，建议设为 0 以支持完整图片）
 image-base64-max-chars = 0
-
-# 公网媒体 URL 基础地址（用于生成图片链接，留空则不生成）
-# Hermes API Server 需要能访问到此地址，建议使用宿主机公网 IP
 image-public-base-url = "http://l.sxkiss.top:9090"
-
-# 公网媒体 URL 路由前缀（默认 /files）
 image-public-route-prefix = "/media/files"
-
-# 系统提示词（可选，会叠加到 Hermes 自身 system prompt 之上）
 system-prompt = ""
-
-# 会话重置策略：发送 /new 或 /reset 时清除本地 session 映射
 session-reset-commands = ["/new", "/reset"]
+pseudo-stream-enable = true
+pseudo-stream-chunk-size = 80

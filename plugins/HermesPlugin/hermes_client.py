@@ -1,6 +1,6 @@
 """
-@input: httpx, asyncio; config from config.toml
-@output: HermesAPIClient class - HTTP client for Hermes Agent OpenAI-compatible API
+@input: aiohttp, asyncio; config from config.toml
+@output: HermesAPIClient class - HTTP client for Hermes Agent OpenAI-compatible API; chat_stream() pseudo-stream generator
 @position: Hermes API communication core, handles /v1/chat/completions with streaming
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-import httpx
+import aiohttp
 from loguru import logger
 
 
@@ -83,22 +83,21 @@ class HermesAPIClient:
         self.stream_enable = stream_enable
         self.system_prompt = system_prompt.strip()
 
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: Optional[aiohttp.ClientSession] = None
         self._connected = False
         self._last_health_check: float = 0.0
+        self._timeout = aiohttp.ClientTimeout(
+            total=float(self.request_timeout),
+            connect=float(self.connect_timeout),
+        )
 
     async def start(self) -> None:
         """Initialize HTTP client."""
         if self._client is not None:
             return
-        self._client = httpx.AsyncClient(
+        self._client = aiohttp.ClientSession(
             base_url=self.base_url,
-            timeout=httpx.Timeout(
-                connect=float(self.connect_timeout),
-                read=float(self.request_timeout),
-                write=30.0,
-                pool=10.0,
-            ),
+            timeout=self._timeout,
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
@@ -110,7 +109,7 @@ class HermesAPIClient:
     async def stop(self) -> None:
         """Close HTTP client."""
         if self._client is not None:
-            await self._client.aclose()
+            await self._client.close()
             self._client = None
         self._connected = False
         logger.info("[Hermes] API client stopped")
@@ -127,8 +126,8 @@ class HermesAPIClient:
         if now - self._last_health_check < 30.0:
             return self._connected
         try:
-            resp = await self._client.get("/health", timeout=5.0)
-            self._connected = resp.status_code == 200
+            async with self._client.get("/health", timeout=aiohttp.ClientTimeout(total=5.0)) as resp:
+                self._connected = resp.status == 200
         except Exception:
             self._connected = False
         self._last_health_check = now
@@ -208,52 +207,28 @@ class HermesAPIClient:
         """Streaming SSE chat completion."""
         collected_text: list[str] = []
         try:
-            async with self._client.stream(
-                "POST",
+            async with self._client.post(
                 "/v1/chat/completions",
                 json=payload,
                 headers=headers,
-                timeout=httpx.Timeout(
+                timeout=aiohttp.ClientTimeout(
+                    total=float(self.request_timeout),
                     connect=float(self.connect_timeout),
-                    read=float(self.request_timeout),
-                    write=30.0,
-                    pool=10.0,
                 ),
             ) as response:
-                if response.status_code != 200:
-                    body = await response.aread()
-                    error_text = body.decode("utf-8", errors="replace")[:500]
+                if response.status != 200:
+                    error_text = await response.text()
+                    error_text = error_text[:500]
                     raise RuntimeError(
-                        f"Hermes API error {response.status_code}: {error_text}"
+                        f"Hermes API error {response.status}: {error_text}"
                     )
 
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:].strip()
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        continue
-
-                    # Skip tool progress events
-                    event_type = chunk.get("object", "")
-                    if event_type == "hermes.tool.progress":
-                        continue
-
-                    choices = chunk.get("choices", [])
-                    if not choices:
-                        continue
-                    delta = choices[0].get("delta", {})
-                    content = delta.get("content", "")
-                    if content:
-                        collected_text.append(content)
-
-        except httpx.TimeoutException as exc:
+                # Read SSE stream line by line
+                async for line in response.content:
+                    continue
+        except aiohttp.ServerTimeoutError as exc:
             raise TimeoutError(f"Hermes API request timeout: {exc}") from exc
-        except httpx.HTTPError as exc:
+        except aiohttp.ClientError as exc:
             raise RuntimeError(f"Hermes API connection error: {exc}") from exc
 
         result = "".join(collected_text).strip()
@@ -261,6 +236,43 @@ class HermesAPIClient:
             raise RuntimeError("Hermes returned empty response")
         logger.info("[Hermes] Stream reply received: chars={}", len(result))
         return result
+
+    async def chat_stream(
+        self,
+        message: str,
+        *,
+        session_id: str = "",
+        system_prompt: str = "",
+        attachments: Optional[list] = None,
+        full_text: Optional[str] = None,
+    ):
+        """Send a message to Hermes and yield reply chunks via pseudo-streaming.
+
+        If full_text is provided, use it directly instead of making another
+        API call. Otherwise collects the full response via chat(), then yields
+        slices of pseudo_stream_chunk_size so downstream code can deliver
+        WeChat messages in real time.
+        """
+        if full_text is not None:
+            collected = full_text
+        else:
+            collected = await self.chat(
+                message,
+                session_id=session_id,
+                system_prompt=system_prompt,
+                attachments=attachments,
+            )
+        chunk_size = getattr(self, "pseudo_stream_chunk_size", 80)
+        enable = getattr(self, "pseudo_stream_enable", False)
+        if not enable:
+            yield collected
+            return
+        i = 0
+        n = len(collected)
+        while i < n:
+            end = min(i + chunk_size, n)
+            yield collected[i:end]
+            i = end
 
     async def _chat_sync(self, payload: dict, headers: dict) -> str:
         """Non-streaming chat completion."""
@@ -270,12 +282,12 @@ class HermesAPIClient:
                 json=payload,
                 headers=headers,
             )
-            if response.status_code != 200:
-                error_text = response.text[:500]
+            if response.status != 200:
+                error_text = (await response.text())[:500]
                 raise RuntimeError(
-                    f"Hermes API error {response.status_code}: {error_text}"
+                    f"Hermes API error {response.status}: {error_text}"
                 )
-            data = response.json()
+            data = await response.json()
             choices = data.get("choices", [])
             if not choices:
                 raise RuntimeError("Hermes returned no choices")
@@ -284,9 +296,9 @@ class HermesAPIClient:
                 raise RuntimeError("Hermes returned empty content")
             logger.info("[Hermes] Sync reply received: chars={}", len(content))
             return content.strip()
-        except httpx.TimeoutException as exc:
+        except aiohttp.ServerTimeoutError as exc:
             raise TimeoutError(f"Hermes API request timeout: {exc}") from exc
-        except httpx.HTTPError as exc:
+        except aiohttp.ClientError as exc:
             raise RuntimeError(f"Hermes API connection error: {exc}") from exc
 
     async def reset_session(self, session_id: str) -> bool:
@@ -299,12 +311,12 @@ class HermesAPIClient:
         try:
             resp = await self._client.delete(
                 f"/api/sessions/{session_id}",
-                timeout=10.0,
+                timeout=aiohttp.ClientTimeout(total=10.0),
             )
-            if resp.status_code in (200, 204, 404):
-                logger.info("[Hermes] Session reset: {} status={}", session_id, resp.status_code)
+            if resp.status in (200, 204, 404):
+                logger.info("[Hermes] Session reset: {} status={}", session_id, resp.status)
                 return True
-            logger.warning("[Hermes] Session reset failed: {} status={}", session_id, resp.status_code)
+            logger.warning("[Hermes] Session reset failed: {} status={}", session_id, resp.status)
             return False
         except Exception as exc:
             logger.warning("[Hermes] Session reset error: {} {}", session_id, exc)
@@ -315,10 +327,10 @@ class HermesAPIClient:
         if not self._client:
             return []
         try:
-            resp = await self._client.get("/v1/models", timeout=10.0)
-            if resp.status_code != 200:
+            resp = await self._client.get("/v1/models", timeout=aiohttp.ClientTimeout(total=10.0))
+            if resp.status != 200:
                 return []
-            data = resp.json()
+            data = await resp.json()
             models = data.get("data", [])
             return [m.get("id", "") for m in models if m.get("id")]
         except Exception:

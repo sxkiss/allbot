@@ -1,6 +1,6 @@
 """
 @input: hermes_client, trigger_handler, reply_writer, session_manager; PluginBase, decorators, WechatAPIClient; database.messsagDB.MessageDB
-@output: HermesPlugin class - plugin entry point; group session per-sender; injects [Recent group messages] from message.db; prompt 注入引用媒体公网URL（图片/语音/视频/文件）
+@output: HermesPlugin class - plugin entry point; group session per-sender; pseudo-stream config; injects [Recent group messages] from message.db; prompt 注入引用媒体公网URL（图片/语音/视频/文件）
 @position: plugins/HermesPlugin orchestrator, config loading, submodule instantiation, event handler routing
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -62,6 +62,8 @@ class HermesPlugin(PluginBase):
 
         self.enable = bool(plugin_config.get("enable", False))
         self.max_reply_chars = int(plugin_config.get("max-reply-chars", 1800))
+        self.pseudo_stream_enable = bool(plugin_config.get("pseudo-stream-enable", False))
+        self.pseudo_stream_chunk_size = max(80, int(plugin_config.get("pseudo-stream-chunk-size", 80)))
         self.session_prefix = _safe_text(plugin_config.get("session-prefix")).strip() or "allbot-hermes"
         # 群聊注入最近文本消息条数；0 关闭
         self.group_history_count = max(0, int(plugin_config.get("group-history-count", 15) or 0))
@@ -153,6 +155,8 @@ class HermesPlugin(PluginBase):
         )
         self.th = TriggerHandler(self)
         self.rw = ReplyWriter(self)
+        self.rw.pseudo_stream_enable = self.pseudo_stream_enable
+        self.rw.pseudo_stream_chunk_size = self.pseudo_stream_chunk_size
         self.sm = SessionManager(self)
         self.mp = MediaPipeline(self)
 
@@ -452,7 +456,10 @@ class HermesPlugin(PluginBase):
             await self.rw.send_to_route(route, f"Hermes call failed: {exc}")
             return
 
-        if reply_text:
+        # Pseudo-stream delivery if enabled
+        if reply_text and getattr(self, "pseudo_stream_enable", False):
+            await self.rw.send_stream(route, reply_text)
+        elif reply_text:
             await self.rw.send_to_route(route, reply_text)
 
     async def _send_hermes_reply(self, route: WatchRoute, reply_text: str) -> None:
@@ -475,6 +482,8 @@ class HermesPlugin(PluginBase):
 
         # Quote context
         quote = message.get("Quote")
+        quoted_content = ""
+        quote_block = ""
         if self.quote_include_enable and isinstance(quote, dict):
             quoted_content = _safe_text(quote.get("Content")).strip()
             quoted_sender = _safe_text(quote.get("Nickname") or quote.get("sourcedisplayname")).strip()
