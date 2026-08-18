@@ -78,6 +78,17 @@ class HermesPlugin(PluginBase):
         self.trigger_timeout_seconds = int(plugin_config.get("trigger-timeout-seconds", 120))
         self.trigger_use_session_key = bool(plugin_config.get("trigger-use-session-key", True))
 
+        # Task feedback config (long-task ack / timeout notify)
+        self.task_start_ack_enable = bool(plugin_config.get("task-start-ack-enable", False))
+        self.task_start_ack_text = _safe_text(plugin_config.get("task-start-ack-text")).strip() or "已收到，Hermes 正在处理中，请稍候…"
+        task_timeout_notify_enable = bool(plugin_config.get("task-timeout-notify-enable", True))
+        task_timeout_notify_text = _safe_text(plugin_config.get("task-timeout-notify-text")).strip()
+        if task_timeout_notify_text:
+            task_timeout_notify_text = task_timeout_notify_text.replace(
+                "{timeout}", str(self.trigger_timeout_seconds)
+            )
+        self._task_timeout_notify: Optional[str] = task_timeout_notify_text if task_timeout_notify_enable else None
+
         # Forward config
         self.private_auto_forward_enable = bool(plugin_config.get("private-auto-forward-enable", False))
         self.at_auto_forward_enable = bool(plugin_config.get("at-auto-forward-enable", True))
@@ -166,6 +177,7 @@ class HermesPlugin(PluginBase):
         await super().on_enable(bot)
         self.bot = bot
         self.rw.bot = bot
+        self.mp.bot = bot
         if self.enable:
             await self.client.start()
 
@@ -398,6 +410,67 @@ class HermesPlugin(PluginBase):
 
     # -- Forward to Hermes --
 
+    def _send_task_start_ack(self, route: WatchRoute) -> None:
+        """Optionally notify the user that a long task has started."""
+        if not getattr(self, "task_start_ack_enable", False):
+            return
+        ack_text = getattr(self, "task_start_ack_text", "") or ""
+        if not ack_text:
+            return
+        try:
+            asyncio.create_task(self.rw.send_to_route(route, ack_text))
+        except Exception as exc:
+            logger.warning("[Hermes] ack send failed: {}", exc)
+
+    async def _send_task_timeout_b(self, route: WatchRoute) -> None:
+        notify = getattr(self, "_task_timeout_notify", None)
+        if not notify:
+            return
+        try:
+            await self.rw.send_to_route(route, notify)
+        except Exception as exc:
+            logger.warning("[Hermes] timeout notify send failed: {}", exc)
+
+    async def _chat_with_guard(self, prompt: str, route: WatchRoute, *, attachments: Optional[list] = None) -> str:
+        """Chat with Hermes, notifying the user on start (ack) and on timeout.
+
+        Prefers the /v1/runs async channel (long-lived SSE with reconnect)
+        for long tasks; falls back to the sync SSE chat channel when
+        attachments are present (runs API input is text-only) or on
+        connection errors.
+        """
+        session_id = self.sm.resolve_session_id(route)
+        self.sm.remember_session_route(session_id, route)
+        self._send_task_start_ack(route)
+        timeout = max(10, int(self.trigger_timeout_seconds))
+
+        if not attachments:
+            try:
+                return await asyncio.wait_for(
+                    self.client.chat_via_run(
+                        prompt,
+                        session_id=session_id,
+                        system_prompt=self.system_prompt,
+                    ),
+                    timeout=timeout,
+                )
+            except (TimeoutError, asyncio.TimeoutError):
+                logger.warning("[Hermes] run request timeout route_id={}", route.route_id)
+                await self._send_task_timeout_b(route)
+                raise
+            except Exception as exc:
+                logger.warning("[Hermes] run channel failed(route={}), fallback to sync chat: {}",
+                               route.route_id, exc)
+        try:
+            return await asyncio.wait_for(
+                self.client.chat(prompt, session_id=session_id, attachments=attachments),
+                timeout=timeout,
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            logger.warning("[Hermes] request timeout route_id={}", route.route_id)
+            await self._send_task_timeout_b(route)
+            raise
+
     async def _forward_to_hermes(self, prompt: str, route: WatchRoute, *, attachments: Optional[list] = None) -> str:
         """Send prompt to Hermes API and return reply text."""
         session_id = self.sm.resolve_session_id(route)
@@ -407,14 +480,7 @@ class HermesPlugin(PluginBase):
                      session_id or "-", len(prompt), len(attachments) if attachments else 0)
 
         try:
-            reply_text = await asyncio.wait_for(
-                self.client.chat(
-                    prompt,
-                    session_id=session_id,
-                    attachments=attachments,
-                ),
-                timeout=max(10, int(self.trigger_timeout_seconds)),
-            )
+            reply_text = await self._chat_with_guard(prompt, route, attachments=attachments)
         except asyncio.TimeoutError:
             logger.warning("[Hermes] API request timeout: session={}", session_id or "-")
             raise
@@ -440,14 +506,7 @@ class HermesPlugin(PluginBase):
                      session_id or "-", len(prompt), len(attachments) if attachments else 0)
 
         try:
-            reply_text = await asyncio.wait_for(
-                self.client.chat(
-                    prompt,
-                    session_id=session_id,
-                    attachments=attachments,
-                ),
-                timeout=max(10, int(self.trigger_timeout_seconds)),
-            )
+            reply_text = await self._chat_with_guard(prompt, route, attachments=attachments)
         except asyncio.TimeoutError:
             logger.warning("[Hermes] request timeout route_id={} to_wxid={}", route.route_id, route.to_wxid)
             return

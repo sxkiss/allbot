@@ -10,7 +10,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, AsyncGenerator, Optional
 
 import aiohttp
 from loguru import logger
@@ -224,8 +224,19 @@ class HermesAPIClient:
                     )
 
                 # Read SSE stream line by line
-                async for line in response.content:
-                    continue
+                async for raw_line in response.content:
+                    line = raw_line.decode("utf-8", errors="ignore").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    if line == "data: [DONE]":
+                        break
+                    try:
+                        chunk = json.loads(line[5:])
+                        delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if delta:
+                            collected_text.append(delta)
+                    except json.JSONDecodeError:
+                        pass
         except aiohttp.ServerTimeoutError as exc:
             raise TimeoutError(f"Hermes API request timeout: {exc}") from exc
         except aiohttp.ClientError as exc:
@@ -300,6 +311,215 @@ class HermesAPIClient:
             raise TimeoutError(f"Hermes API request timeout: {exc}") from exc
         except aiohttp.ClientError as exc:
             raise RuntimeError(f"Hermes API connection error: {exc}") from exc
+
+    async def start_run(
+        self,
+        prompt: str,
+        *,
+        session_id: str = "",
+        instructions: Optional[str] = None,
+    ) -> str:
+        """POST /v1/runs — create an async agent run, return run_id immediately.
+
+        The run executes on the Hermes gateway in the background; results
+        arrive via stream_run_events() (long-lived SSE).
+        """
+        if not self._client:
+            raise RuntimeError("Hermes API client not initialized")
+
+        payload: dict[str, Any] = {"input": prompt, "model": self.model_name}
+        if session_id:
+            payload["session_id"] = session_id
+        if instructions:
+            payload["instructions"] = instructions
+
+        headers: dict[str, str] = {}
+        if session_id:
+            headers["X-Hermes-Session-Key"] = session_id
+
+        try:
+            response = await self._client.post(
+                "/v1/runs",
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=float(self.connect_timeout)),
+            )
+            if response.status != 202 and response.status != 200:
+                error_text = (await response.text())[:500]
+                raise RuntimeError(
+                    f"Hermes run create error {response.status}: {error_text}"
+                )
+            data = await response.json()
+            run_id = data.get("run_id")
+            if not run_id:
+                raise RuntimeError("Hermes run create: missing run_id")
+            logger.info("[Hermes] Run started: run_id={} session={}", run_id, session_id or "-")
+            return run_id
+        except aiohttp.ServerTimeoutError as exc:
+            raise TimeoutError(f"Hermes run create timeout: {exc}") from exc
+        except aiohttp.ClientError as exc:
+            raise RuntimeError(f"Hermes run create connection error: {exc}") from exc
+
+    async def get_run_status(self, run_id: str) -> Optional[dict]:
+        """GET /v1/runs/{run_id} — poll run status."""
+        if not self._client:
+            return None
+        try:
+            response = await self._client.get(
+                f"/v1/runs/{run_id}",
+                timeout=aiohttp.ClientTimeout(total=float(self.connect_timeout)),
+            )
+            if response.status != 200:
+                logger.debug("[Hermes] get run status {} -> {}", run_id, response.status)
+                return None
+            return await response.json()
+        except Exception as exc:
+            logger.debug("[Hermes] get run status error: {}", exc)
+            return None
+
+    async def stream_run_events(
+        self,
+        run_id: str,
+        *,
+        reconnect: bool = True,
+        max_reconnect: int = 5,
+    ) -> AsyncGenerator[dict, None]:
+        """GET /v1/runs/{run_id}/events — long-lived SSE stream of run events.
+
+        Yields event dicts like:
+          {"event": "message.delta", "delta": "..."}
+          {"event": "reasoning.available", "text": "..."}
+          {"event": "run.completed", "output": "...", "usage": {...}}
+          {"event": "run.failed", "error": "..."}
+          {"event": "run.cancelled", ...}
+
+        Auto-reconnects on network errors unless the run has already
+        reached a terminal state (completed/failed/cancelled).
+        """
+        if not self._client:
+            raise RuntimeError("Hermes API client not initialized")
+
+        reconnect_attempts = 0
+        while True:
+            try:
+                async with self._client.get(
+                    f"/v1/runs/{run_id}/events",
+                    timeout=self._timeout,
+                ) as response:
+                    if response.status != 200:
+                        raise RuntimeError(
+                            f"Hermes run events error {response.status}"
+                        )
+                    async for raw_line in response.content:
+                        line = raw_line.decode("utf-8", errors="ignore").strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        try:
+                            event = json.loads(line[5:])
+                        except json.JSONDecodeError:
+                            continue
+                        if not isinstance(event, dict):
+                            continue
+                        yield event
+                        event_type = event.get("event", "")
+                        if event_type in ("run.completed", "run.failed", "run.cancelled"):
+                            return
+                # Stream closed without terminal event: reconnect if allowed
+                if not reconnect or reconnect_attempts >= max_reconnect:
+                    return
+                reconnect_attempts += 1
+                logger.info("[Hermes] run event stream closed, reconnect {}/{}", reconnect_attempts, max_reconnect)
+                await asyncio.sleep(1.0)
+            except aiohttp.ClientError as exc:
+                if not reconnect or reconnect_attempts >= max_reconnect:
+                    raise RuntimeError(
+                        f"Hermes run event stream failed after {reconnect_attempts} reconnects: {exc}"
+                    ) from exc
+                reconnect_attempts += 1
+                logger.info("[Hermes] run event stream error, reconnect {}/{}: {}", reconnect_attempts, max_reconnect, exc)
+                await asyncio.sleep(1.0)
+            except asyncio.CancelledError:
+                raise
+
+    async def stop_run(self, run_id: str) -> bool:
+        """POST /v1/runs/{run_id}/stop — interrupt a running agent."""
+        if not self._client:
+            return False
+        try:
+            response = await self._client.post(
+                f"/v1/runs/{run_id}/stop",
+                timeout=aiohttp.ClientTimeout(total=float(self.connect_timeout)),
+            )
+            ok = response.status in (200, 202, 204)
+            logger.info("[Hermes] Run stop requested: {} -> {}", run_id, response.status)
+            return ok
+        except Exception as exc:
+            logger.warning("[Hermes] Run stop error: {}", exc)
+            return False
+
+    async def chat_via_run(
+        self,
+        message: str,
+        *,
+        session_id: str = "",
+        system_prompt: str = "",
+        timeout: Optional[float] = None,
+    ) -> str:
+        """Send via /v1/runs and collect the final output over long-lived SSE.
+
+        Designed for long tasks: the run keeps executing on the gateway even
+        if the SSE connection drops (auto-reconnect handles transient loss).
+        """
+        instructions = (system_prompt.strip() or self.system_prompt) or None
+        run_id = await self.start_run(
+            message,
+            session_id=session_id or None,
+            instructions=instructions,
+        )
+        collected: list[str] = []
+        result: Optional[str] = None
+
+        async def _consume():
+            nonlocal result
+            lost = False
+            async for event in self.stream_run_events(run_id):
+                event_type = event.get("event", "")
+                if event_type == "message.delta":
+                    delta = event.get("delta", "")
+                    if delta:
+                        collected.append(delta)
+                elif event_type == "run.completed":
+                    output = event.get("output", "")
+                    if output:
+                        result = output.strip()
+                    return
+                elif event_type == "run.failed":
+                    raise RuntimeError(
+                        f"Hermes run failed: {event.get('error', 'unknown error')}"
+                    )
+                elif event_type == "run.cancelled":
+                    raise RuntimeError("Hermes run was cancelled")
+                elif event_type == "approval.request":
+                    tool = event.get("tool", "")
+                    raise RuntimeError(
+                        f"Hermes run waiting for approval (tool={tool}); no approval channel"
+                    )
+
+        try:
+            if timeout is not None:
+                await asyncio.wait_for(_consume(), timeout=timeout)
+            else:
+                await _consume()
+        except asyncio.TimeoutError:
+            logger.warning("[Hermes] run wait timeout run_id={}", run_id)
+            raise
+
+        if result is None:
+            result = "".join(collected).strip()
+        if not result:
+            raise RuntimeError("Hermes returned empty response")
+        logger.info("[Hermes] Run reply received: chars={}", len(result))
+        return result
 
     async def reset_session(self, session_id: str) -> bool:
         """Attempt to reset a Hermes session via the sessions API.

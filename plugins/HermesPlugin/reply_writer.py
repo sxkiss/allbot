@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import re
 from typing import Optional
 
 from loguru import logger
@@ -13,6 +14,19 @@ from loguru import logger
 from WechatAPI import WechatAPIClient
 
 from .hermes_client import WatchRoute, _safe_text
+
+
+def clean_markdown_breaks(text: str) -> str:
+    """Clean up markdown line breaks for WeChat display.
+
+    - Markdown hard break (`  \\n`) becomes single newline
+    - 3+ consecutive newlines collapse to 2 (keep paragraph separation)
+    - Line starts with whitespace (code block residue) are stripped
+    """
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"^[ \t]+", "", text, flags=re.MULTILINE)
+    return text
 
 
 class ReplyWriter:
@@ -33,7 +47,7 @@ class ReplyWriter:
 
     def split_reply_chunks(self, text: str) -> list[str]:
         """Split text into chunks respecting max_reply_chars."""
-        text = _safe_text(text).strip()
+        text = clean_markdown_breaks(_safe_text(text)).strip()
         if not text:
             return []
         limit = max(int(self.max_reply_chars or 1800), 200)
@@ -102,7 +116,7 @@ class ReplyWriter:
         if not bot:
             logger.warning("[Hermes] bot not available, cannot stream reply")
             return
-        text = _safe_text(full_text).strip()
+        text = clean_markdown_breaks(_safe_text(full_text)).strip()
         if not text:
             return
         chunk_size = max(80, int(self.pseudo_stream_chunk_size or 80))

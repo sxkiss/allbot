@@ -1,6 +1,6 @@
 """
 @input: aiohttp/http 接口, pysilk 语音解码; bot_core 与插件层的调用契约
-@output: Client869 全接口动态调用能力、显式 auth 探测/唤醒/拉码 helper、30000 类型 AuthKey 生成与 bot_core 兼容方法
+@output: Client869 全接口动态调用能力、显式 auth 探测/唤醒/拉码 helper、30000 类型 AuthKey 生成与 bot_core 兼容方法；媒体下载器统一缓存（引用/重复下载先命中本地磁盘+内存缓存，避免重复走网关）
 @position: 869 协议专用客户端，隔离新协议实现，并向启动链路/二维码辅助接口提供共享登录判定能力
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -12,6 +12,7 @@ import io
 import os
 import re
 import string
+import threading
 import time
 from random import choice
 from typing import Any, Dict, Iterable, Optional, Tuple, Union
@@ -74,6 +75,14 @@ ONLINE_LOGIN_TEXT_MARKERS = (
     "账号已登录",
     "已登录",
 )
+
+# 媒体下载统一缓存：下载结果按 key 落盘（缓存目录），小文件同时进内存，后续引用/重复下载直接命中
+MEDIA_MEM_CACHE_MAX_BYTES = 1 * 1024 * 1024  # ≤1MB 进内存缓存；大文件仅落盘
+MEDIA_CACHE_FILE_EXT = {"video": ".mp4", "voice": ".silk", "attach": ".bin"}
+
+
+def _sanitize_cache_key(key: str) -> str:
+    return re.sub(r"[^0-9A-Za-z._-]", "_", key)
 
 
 def _extract_text(value: Any, default: str = "") -> str:
@@ -228,6 +237,7 @@ class Client869:
         protocol_version: Optional[str] = None,
         admin_key: str = "",
         ws_url: str = "",
+        media_cache_dir: str = "",
     ):
         self.ip = ip
         self.port = port
@@ -261,6 +271,17 @@ class Client869:
         self._operation_map_loaded = False
         self._operation_map: Dict[Tuple[str, str], Tuple[str, str]] = {}
         self._op_map_lock = asyncio.Lock()
+
+        # 媒体下载缓存（引用/重复下载时先命中本地，避免重复走网关）
+        self.media_cache_dir = media_cache_dir or os.path.join("admin", "static", "temp", "869", "media")
+        self._media_cache_mem: Dict[str, str] = {}
+        self._media_cache_lock = threading.Lock()
+
+        # new_msg_id(svrid) -> msg_id 映射，供引用消息按 svrid 反查 869 msg_id
+        self._msg_id_map: Dict[str, str] = {}
+        self._msg_id_map_lock = threading.Lock()
+        self._msg_id_map_path = os.path.join(os.path.dirname(self.media_cache_dir), "media_msg_id_map.json")
+        self._load_msg_id_map()
 
     def __getattr__(self, name: str):
         if name.startswith("_"):
@@ -2719,7 +2740,90 @@ class Client869:
             normalized["totalLen"] = normalized.get("TotalLen")
         return normalized
 
+    def _media_cache_filepath(self, key: str) -> str:
+        return os.path.join(self.media_cache_dir, key)
+
+    # ── msg_id 映射（new_msg_id/svrid -> 869 msg_id） ─────────────
+
+    def _load_msg_id_map(self) -> None:
+        try:
+            if os.path.isfile(self._msg_id_map_path):
+                with open(self._msg_id_map_path, "r", encoding="utf-8") as file:
+                    data = json.load(file)
+                if isinstance(data, dict):
+                    self._msg_id_map = {str(k): str(v) for k, v in data.items()}
+        except Exception:
+            self._msg_id_map = {}
+
+    def _save_msg_id_map(self) -> None:
+        try:
+            os.makedirs(os.path.dirname(self._msg_id_map_path), exist_ok=True)
+            with open(self._msg_id_map_path, "w", encoding="utf-8") as file:
+                json.dump(self._msg_id_map, file, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def register_msg_ids(self, msg_id, new_msg_id) -> None:
+        """记录 869 消息 msg_id 与 svrid(new_msg_id) 的映射，用于引用消息反查。"""
+        if not msg_id or not new_msg_id:
+            return
+        svrid = str(new_msg_id).strip()
+        mid = str(msg_id).strip()
+        if not svrid or not mid or svrid == mid:
+            return
+        with self._msg_id_map_lock:
+            if self._msg_id_map.get(svrid) != mid:
+                self._msg_id_map[svrid] = mid
+                self._save_msg_id_map()
+
+    def resolve_869_msg_id(self, msg_id) -> str:
+        """若传入的是 svrid(new_msg_id)，反查得到 869 的 uint32 msg_id；原样返回 msg_id。"""
+        raw = str(msg_id).strip()
+        if not raw:
+            return raw
+        if raw.isdigit() and int(raw) <= 0xFFFFFFFF:
+            return raw
+        with self._msg_id_map_lock:
+            resolved = self._msg_id_map.get(raw, "")
+        return resolved or raw
+
+    def _media_cache_get(self, key: str) -> str:
+        with self._media_cache_lock:
+            cached = self._media_cache_mem.get(key)
+        if cached:
+            return cached
+        path = self._media_cache_filepath(key)
+        if os.path.isfile(path):
+            try:
+                with open(path, "rb") as file:
+                    return base64.b64encode(file.read()).decode("utf-8")
+            except Exception:
+                pass
+        return ""
+
+    def _media_cache_put(self, key: str, base64_payload: str) -> None:
+        if not base64_payload:
+            return
+        try:
+            raw = base64.b64decode(base64_payload)
+        except Exception:
+            return
+        try:
+            if len(raw) <= MEDIA_MEM_CACHE_MAX_BYTES:
+                with self._media_cache_lock:
+                    self._media_cache_mem[key] = base64_payload
+            os.makedirs(self.media_cache_dir, exist_ok=True)
+            with open(self._media_cache_filepath(key), "wb") as file:
+                file.write(raw)
+        except Exception:
+            pass
+
     async def download_voice(self, msg_id: Union[str, int], voiceurl: str, length: int) -> str:
+        cache_key = _sanitize_cache_key(f"voice_{msg_id}")
+        cached = self._media_cache_get(cache_key)
+        if cached:
+            return cached
+
         old_payload = {
             "Wxid": self.wxid,
             "MsgId": str(msg_id),
@@ -2734,6 +2838,7 @@ class Client869:
                     nested = data.get("data", {}) if isinstance(data.get("data"), dict) else data
                     voice_data = nested.get("buffer")
                     if isinstance(voice_data, str) and voice_data:
+                        self._media_cache_put(cache_key, voice_data)
                         return voice_data
         except Exception:
             pass
@@ -2746,9 +2851,18 @@ class Client869:
         }
         data = await self.call_path("/message/GetMsgVoice", body=fallback_payload)
         base64_payload = self._extract_base64_from_payload(data)
+        if base64_payload:
+            self._media_cache_put(cache_key, base64_payload)
         return base64_payload or ""
 
     async def download_video(self, msg_id: Union[str, int]) -> str:
+        cache_key = _sanitize_cache_key(f"video_{msg_id}")
+        cached = self._media_cache_get(cache_key)
+        if cached:
+            logger.info("[Client869] download_video 缓存命中 key={} len={}", cache_key, len(cached))
+            return cached
+        logger.info("[Client869] download_video 未命中，开始下载 key={}", cache_key)
+
         old_payload = {"Wxid": self.wxid, "MsgId": msg_id}
         try:
             response = await self.request("/api/Tools/DownloadVideo", method="POST", body=old_payload)
@@ -2758,23 +2872,45 @@ class Client869:
                     nested = data.get("data", {}) if isinstance(data.get("data"), dict) else data
                     video_data = nested.get("buffer")
                     if isinstance(video_data, str) and video_data:
+                        self._media_cache_put(cache_key, video_data)
+                        logger.info("[Client869] download_video 下载成功 key={} len={}", cache_key, len(video_data))
                         return video_data
-        except Exception:
-            pass
+                    logger.warning("[Client869] download_video /api/Tools/DownloadVideo 无 buffer key={} data={}", cache_key, str(data)[:200])
+        except Exception as e:
+            logger.warning("[Client869] download_video /api/Tools/DownloadVideo 异常 key={} err={}", cache_key, e)
 
         fallback_payload = {
-            "MsgId": _safe_int(msg_id),
+            "MsgId": _safe_int(self.resolve_869_msg_id(msg_id)),
             "FromUserName": self.wxid,
             "ToUserName": self.wxid,
             "TotalLen": 0,
             "CompressType": 0,
             "Section": {"DataLen": 0, "StartPos": 0},
         }
-        data = await self.call_path("/message/GetMsgVideo", body=fallback_payload)
-        base64_payload = self._extract_base64_from_payload(data)
-        return base64_payload or ""
+        logger.info(
+            "[Client869] download_video fallback msg_id={} resolved={} map={}",
+            msg_id,
+            fallback_payload["MsgId"],
+            {k: v for k, v in list(self._msg_id_map.items())[-3:]},
+        )
+        try:
+            data = await self.call_path("/message/GetMsgVideo", body=fallback_payload)
+            base64_payload = self._extract_base64_from_payload(data)
+            if base64_payload:
+                self._media_cache_put(cache_key, base64_payload)
+                logger.info("[Client869] download_video fallback 成功 key={} len={}", cache_key, len(base64_payload))
+                return base64_payload
+            logger.warning("[Client869] download_video fallback 无数据 key={} resp={}", cache_key, str(data)[:200])
+        except Exception as e:
+            logger.warning("[Client869] download_video fallback 异常 key={} err={}", cache_key, e)
+        return ""
 
     async def download_attach(self, attach_id: str) -> str:
+        cache_key = _sanitize_cache_key(f"attach_{attach_id}")
+        cached = self._media_cache_get(cache_key)
+        if cached:
+            return cached
+
         file_url = ""
         aes_key = ""
 
@@ -2789,6 +2925,7 @@ class Client869:
             try:
                 base64_payload = await self._send_cdn_download(aes_key, file_url, 5)
                 if base64_payload:
+                    self._media_cache_put(cache_key, base64_payload)
                     return base64_payload
             except Exception:
                 pass
@@ -2796,6 +2933,7 @@ class Client869:
             try:
                 base64_payload = await self._send_cdn_download(aes_key, file_url, 7)
                 if base64_payload:
+                    self._media_cache_put(cache_key, base64_payload)
                     return base64_payload
             except Exception:
                 pass
@@ -2813,6 +2951,7 @@ class Client869:
                     nested = data.get("data", {}) if isinstance(data.get("data"), dict) else data
                     buffer_data = nested.get("buffer")
                     if isinstance(buffer_data, str) and buffer_data:
+                        self._media_cache_put(cache_key, buffer_data)
                         return buffer_data
         except Exception:
             pass

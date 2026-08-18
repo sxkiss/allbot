@@ -428,10 +428,7 @@ class TriggerHandler:
         attachments, attachment_meta = await self.plugin.mp.build_outbound_attachments(message)
 
         try:
-            reply_text = await asyncio.wait_for(
-                self.plugin.client.chat(prompt, session_id=session_id, attachments=attachments),
-                timeout=self.trigger_timeout_seconds,
-            )
+            reply_text = await self.plugin._chat_with_guard(prompt, route, attachments=attachments)
         except asyncio.TimeoutError:
             logger.warning("[Hermes] request timeout route_id={} to_wxid={}", route.route_id, route.to_wxid)
             return

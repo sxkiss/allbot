@@ -1410,8 +1410,25 @@ class XYBot:
                 quote_message["FromWxid"] = refermsg.find("chatusr").text
                 quote_message["Nickname"] = refermsg.find("displayname").text
                 quote_message["MsgSource"] = refermsg.find("msgsource").text
-                quote_message["Content"] = refermsg.find("content").text
+                content_text = refermsg.find("content").text
+                quote_message["Content"] = content_text
                 quote_message["Createtime"] = refermsg.find("createtime").text
+
+                # 从引用消息的 XML 内容中提取 CDN 下载地址与 md5（与图片引用保持一致）
+                if content_text:
+                    try:
+                        unescaped_inner = html.unescape(content_text)
+                        m_md5 = re.search(r'md5="([^"]+)"', unescaped_inner)
+                        if m_md5:
+                            quote_message["md5"] = m_md5.group(1).strip()
+                        m_aes = re.search(r'aeskey="([^"]+)"', unescaped_inner)
+                        if m_aes:
+                            quote_message["aeskey"] = m_aes.group(1).strip()
+                        m_url = re.search(r'(?:cdnvideourl|cdnurl)="([^"]+)"', unescaped_inner)
+                        if m_url:
+                            quote_message["cdnurl"] = m_url.group(1).strip()
+                    except Exception:
+                        pass
 
         except Exception as e:
             logger.error("解析引用消息失败: {}, 完整内容: {}", e, message["Content"])

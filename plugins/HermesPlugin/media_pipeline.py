@@ -1,6 +1,6 @@
 """
 @input: WechatAPIClient, os, base64, mimetypes, hashlib, glob, xml.etree.ElementTree, urllib.parse
-@output: MediaPipeline class - inbound media extraction, persistence, outbound attachments; 引用媒体CDN下载兜底（语音/视频/文件 FileType=5→7 大文件回退）；多子目录缓存查找
+@output: MediaPipeline class - inbound media extraction, persistence, outbound attachments; 引用媒体下载（视频/语音优先按被引用消息 msg_id 调框架下载器，CDN FileType=5→7 大文件回退；XML 提取支持 videomsg/voicemsg 标签与 cdnvideourl）；多子目录缓存查找
 @position: Media processing layer for HermesPlugin, supports image/voice/video/file messages and quoted media (all types)
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -121,6 +121,15 @@ class MediaPipeline:
         attachments: List[Dict[str, Any]] = []
         meta: Dict[str, bool] = {"quoted_image": False}
         msg_type = int(message.get("MsgType") or 0)
+        _quote_raw = message.get("Quote")
+        logger.info(
+            "[Hermes] build_outbound_attachments msg_type={} quote_type={} quote_msgtype={} quote_newmsgid={} quote_include={}",
+            msg_type,
+            type(_quote_raw).__name__,
+            _quote_raw.get("MsgType") if isinstance(_quote_raw, dict) else None,
+            _quote_raw.get("NewMsgId") if isinstance(_quote_raw, dict) else None,
+            self.quote_include_enable,
+        )
 
         # 图片消息
         if msg_type == 3:
@@ -221,6 +230,10 @@ class MediaPipeline:
             quoted_type = int(quoted_type) if quoted_type is not None else quoted_type
         except Exception:
             return []
+        logger.info(
+            "[Hermes] _build_quote_gateway_attachments quoted_type={} quote_keys={}",
+            quoted_type, sorted(quote.keys()),
+        )
         
         # 图片消息
         if quoted_type == 3:
@@ -332,11 +345,16 @@ class MediaPipeline:
             unescaped = html.unescape(quote_xml)
             try:
                 root = ET.fromstring(unescaped)
-                for tag in ("audio", "video", "file", "appmsg"):
+                # 微信视频/语音元素是 videomsg/voicemsg，而非 video/audio
+                for tag in ("audio", "video", "voicemsg", "videomsg", "file", "appmsg"):
                     elem = root.find(tag)
                     if elem is not None:
                         if not cdn_url:
-                            cdn_url = (_safe_text(elem.get("cdnurl")) or "").strip() or (_safe_text(elem.get("url")) or "").strip()
+                            cdn_url = (
+                                (_safe_text(elem.get("cdnvideourl")) or "").strip()
+                                or (_safe_text(elem.get("cdnurl")) or "").strip()
+                                or (_safe_text(elem.get("url")) or "").strip()
+                            )
                         if not aeskey:
                             aeskey = (_safe_text(elem.get("aeskey")) or "").strip()
                         if not attach_id:
@@ -347,9 +365,9 @@ class MediaPipeline:
                             md5_value = (_safe_text(elem.get("md5")) or "").strip()
             except Exception:
                 pass
-            # 正则兜底
+            # 正则兜底（兼容 videomsg 的 cdnvideourl）
             if not cdn_url:
-                m = re.search(r'cdnurl="([^"]+)"', unescaped)
+                m = re.search(r'(?:cdnvideourl|cdnurl|url)="([^"]+)"', unescaped)
                 if m:
                     cdn_url = m.group(1).strip()
             if not aeskey:
@@ -368,7 +386,9 @@ class MediaPipeline:
         # 3. 按媒体类型下载
         ext_map = {"audio": ".silk", "video": ".mp4", "file": ".bin"}
         ext = ext_map.get(media_type, ".bin")
-        stem = md5_value or "quote-{media_type}"
+        # 被引用消息的真实消息 ID（xybot_legacy 已提取为 NewMsgId=svrid），优先走框架下载器/缓存命中
+        quote_msg_id = _safe_text(quote.get("NewMsgId") or quote.get("MsgId")).strip()
+        stem = md5_value or quote_msg_id or f"quote-{media_type}"
 
         if media_type == "audio" and cdn_url and aeskey:
             try:
@@ -376,19 +396,29 @@ class MediaPipeline:
                 if payload_b64:
                     payload = self._coerce_media_payload_bytes(payload_b64)
                     if payload:
-                        return self._save_quote_binary_to_files(payload, f"{md5_value or stem}.silk")
+                        return self._save_quote_binary_to_files(payload, f"{stem}.silk")
             except Exception as e:
                 logger.warning("[Hermes] 引用语音 CDN 下载失败: {}", e)
 
-        elif media_type == "video" and cdn_url and aeskey:
+        elif media_type == "video":
             try:
-                payload_b64 = await self.bot.download_video(stem)
+                # 优先用被引用视频的真实 msg_id 下载（可命中框架下载器/本地缓存），CDN 参数作为兜底
+                if quote_msg_id:
+                    payload_b64 = await self.bot.download_video(quote_msg_id)
+                    if not payload_b64 and cdn_url and aeskey:
+                        payload_b64 = await self.bot.download_video(stem)
+                else:
+                    payload_b64 = await self.bot.download_video(stem) if (cdn_url and aeskey) else ""
+                logger.info(
+                    "[Hermes] 引用视频下载结果 quote_msg_id={} cdn_url={} aeskey={} 结果len={}",
+                    quote_msg_id, bool(cdn_url), bool(aeskey), len(payload_b64 or ""),
+                )
                 if payload_b64:
                     payload = self._coerce_media_payload_bytes(payload_b64)
                     if payload:
-                        return self._save_quote_binary_to_files(payload, f"{md5_value or stem}.mp4")
+                        return self._save_quote_binary_to_files(payload, f"{stem}.mp4")
             except Exception as e:
-                logger.warning("[Hermes] 引用视频 CDN 下载失败: {}", e)
+                logger.warning("[Hermes] 引用视频下载失败: {}", e)
 
         elif media_type == "file" and (attach_id or (cdn_url and aeskey)):
             try:
@@ -488,8 +518,8 @@ class MediaPipeline:
             if img is not None:
                 return (_safe_text(img.get("md5")) or "").strip()
             
-            # 尝试 audio/video/file 元素
-            for tag in ("audio", "video", "file", "appmsg"):
+            # 尝试 audio/video/file 元素（微信实际元素为 videomsg/voicemsg）
+            for tag in ("audio", "video", "voicemsg", "videomsg", "file", "appmsg"):
                 elem = root.find(tag)
                 if elem is not None:
                     md5 = (_safe_text(elem.get("md5")) or "").strip()

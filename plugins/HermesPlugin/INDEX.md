@@ -13,7 +13,7 @@ Hermes Agent API 桥接插件：微信消息 ↔ Hermes OpenAI-compatible API；
 | trigger_handler.py | Trigger | 触发词匹配、路由构建、去重、后台转发编排、媒体消息处理、引用图片附件提取 |
 | session_manager.py | Session | session ID 构建（私聊/群聊按人隔离）与路由映射 |
 | reply_writer.py | Reply | 回复分片、群 @ 提及、发送；send_stream() 伪流式分批发送 |
-| media_pipeline.py | Media | 入站媒体提取（图片/语音/视频/文件）、落盘、出站附件构建；引用媒体CDN下载兜底（语音/视频/文件 FileType=5→7 大文件回退）；多子目录缓存查找（hermes-media/ocwx）；图片重试3次 |
+| media_pipeline.py | Media | 入站媒体提取（图片/语音/视频/文件）、落盘、出站附件构建；引用媒体下载（视频/语音优先按被引用消息 msg_id 调框架下载器，CDN FileType=5→7 大文件回退；XML 提取支持 videomsg/voicemsg 标签与 cdnvideourl）；多子目录缓存查找（hermes-media/ocwx）；图片重试3次 |
 | config.toml | Config | 开关、API、session-prefix、group-history-count、媒体转发配置等 |
 | __init__.py | Export | 导出 HermesPlugin |
 

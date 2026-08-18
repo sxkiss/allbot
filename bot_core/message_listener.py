@@ -399,6 +399,12 @@ async def _process_ws_message(data: Dict[str, Any], xybot, redis, message_db):
                 (json.dumps(raw_message, ensure_ascii=False)[:600] if isinstance(raw_message, dict) else str(raw_message)[:200]),
             )
         logger.debug("ws消息适配为AddMsgs: {}", json.dumps(addmsg, ensure_ascii=False))
+        bot = getattr(xybot, "bot", None)
+        if bot is not None and hasattr(bot, "register_msg_ids"):
+            try:
+                bot.register_msg_ids(addmsg.get("MsgId"), addmsg.get("NewMsgId"))
+            except Exception:
+                pass
         await _save_and_enqueue_message(addmsg, redis, message_db, is_standard_format=True)
 
 
