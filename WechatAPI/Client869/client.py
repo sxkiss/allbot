@@ -2855,7 +2855,7 @@ class Client869:
             self._media_cache_put(cache_key, base64_payload)
         return base64_payload or ""
 
-    async def download_video(self, msg_id: Union[str, int]) -> str:
+    async def download_video(self, msg_id: Union[str, int], cdnvideourl: str = "", aeskey: str = "") -> str:
         cache_key = _sanitize_cache_key(f"video_{msg_id}")
         cached = self._media_cache_get(cache_key)
         if cached:
@@ -2863,22 +2863,19 @@ class Client869:
             return cached
         logger.info("[Client869] download_video 未命中，开始下载 key={}", cache_key)
 
-        old_payload = {"Wxid": self.wxid, "MsgId": msg_id}
-        try:
-            response = await self.request("/api/Tools/DownloadVideo", method="POST", body=old_payload)
-            if isinstance(response, dict):
-                data = response.get("Data", {})
-                if isinstance(data, dict):
-                    nested = data.get("data", {}) if isinstance(data.get("data"), dict) else data
-                    video_data = nested.get("buffer")
-                    if isinstance(video_data, str) and video_data:
-                        self._media_cache_put(cache_key, video_data)
-                        logger.info("[Client869] download_video 下载成功 key={} len={}", cache_key, len(video_data))
-                        return video_data
-                    logger.warning("[Client869] download_video /api/Tools/DownloadVideo 无 buffer key={} data={}", cache_key, str(data)[:200])
-        except Exception as e:
-            logger.warning("[Client869] download_video /api/Tools/DownloadVideo 异常 key={} err={}", cache_key, e)
+        # 优先使用 CDN 下载（FileType=4 为视频）
+        if cdnvideourl and aeskey:
+            try:
+                result = await self._send_cdn_download(aeskey, cdnvideourl, 4)
+                if result:
+                    self._media_cache_put(cache_key, result)
+                    logger.info("[Client869] download_video CDN 下载成功 key={} len={}", cache_key, len(result))
+                    return result
+                logger.warning("[Client869] download_video CDN 下载失败，回退 GetMsgVideo")
+            except Exception as e:
+                logger.warning("[Client869] download_video CDN 下载异常: {}", e)
 
+        # 回退到 GetMsgVideo 分段下载
         fallback_payload = {
             "MsgId": _safe_int(self.resolve_869_msg_id(msg_id)),
             "FromUserName": self.wxid,
@@ -2888,10 +2885,9 @@ class Client869:
             "Section": {"DataLen": 0, "StartPos": 0},
         }
         logger.info(
-            "[Client869] download_video fallback msg_id={} resolved={} map={}",
+            "[Client869] download_video fallback msg_id={} resolved={}",
             msg_id,
             fallback_payload["MsgId"],
-            {k: v for k, v in list(self._msg_id_map.items())[-3:]},
         )
         try:
             data = await self.call_path("/message/GetMsgVideo", body=fallback_payload)

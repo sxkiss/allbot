@@ -98,22 +98,32 @@ class ToolMixin(WechatAPIClientBase):
             else:
                 self.error_handler(json_resp)
 
-    async def download_video(self, msg_id) -> str:
+    async def download_video(self, msg_id, cdnvideourl="", aeskey="") -> str:
         """下载视频。
 
         Args:
             msg_id (str): 消息的msg_id
+            cdnvideourl (str): CDN 视频 URL（可选，有则走 CDN 下载）
+            aeskey (str): CDN 加密 key（可选）
 
         Returns:
             str: 视频的base64编码字符串
-
-        Raises:
-            UserLoggedOut: 未登录时调用
-            根据error_handler处理错误
         """
         if not self.wxid:
             raise UserLoggedOut("请先登录")
 
+        # 优先使用 CDN 下载（FileType=4 为视频）
+        if cdnvideourl and aeskey:
+            try:
+                from WechatAPI.Client869.client import Client869
+                # 调用 869 客户端的 CDN 下载
+                result = await self._send_cdn_download(aeskey, cdnvideourl, 4)
+                if result:
+                    return result
+            except Exception as e:
+                logger.warning("[Tool] CDN 下载失败，回退 msg_id 下载: {}", e)
+
+        # 回退到原接口
         async with aiohttp.ClientSession() as session:
             json_param = {"Wxid": self.wxid, "MsgId": msg_id}
             response = await session.post(f'http://{self.ip}:{self.port}/api/Tools/DownloadVideo', json=json_param)

@@ -246,7 +246,7 @@ class MediaPipeline:
         # 视频消息
         if quoted_type == 43:
             return await self._build_quote_binary_attachment(quote, media_type="video")
-        
+
         # 文件消息
         if quoted_type == 49:
             return await self._build_quote_binary_attachment(quote, media_type="file")
@@ -386,7 +386,7 @@ class MediaPipeline:
         # 3. 按媒体类型下载
         ext_map = {"audio": ".silk", "video": ".mp4", "file": ".bin"}
         ext = ext_map.get(media_type, ".bin")
-        # 被引用消息的真实消息 ID（xybot_legacy 已提取为 NewMsgId=svrid），优先走框架下载器/缓存命中
+        # 被引用消息的真实消息 ID（svrid / NewMsgId），download_video 内部会自动映射
         quote_msg_id = _safe_text(quote.get("NewMsgId") or quote.get("MsgId")).strip()
         stem = md5_value or quote_msg_id or f"quote-{media_type}"
 
@@ -402,17 +402,13 @@ class MediaPipeline:
 
         elif media_type == "video":
             try:
-                # 优先用被引用视频的真实 msg_id 下载（可命中框架下载器/本地缓存），CDN 参数作为兜底
-                if quote_msg_id:
+                # 有 CDN 字段时直接调框架 download_video（内部走 CDN FileType=4）
+                if cdn_url and aeskey:
+                    payload_b64 = await self.bot.download_video(quote_msg_id, cdn_url, aeskey)
+                elif quote_msg_id:
                     payload_b64 = await self.bot.download_video(quote_msg_id)
-                    if not payload_b64 and cdn_url and aeskey:
-                        payload_b64 = await self.bot.download_video(stem)
                 else:
-                    payload_b64 = await self.bot.download_video(stem) if (cdn_url and aeskey) else ""
-                logger.info(
-                    "[Hermes] 引用视频下载结果 quote_msg_id={} cdn_url={} aeskey={} 结果len={}",
-                    quote_msg_id, bool(cdn_url), bool(aeskey), len(payload_b64 or ""),
-                )
+                    payload_b64 = ""
                 if payload_b64:
                     payload = self._coerce_media_payload_bytes(payload_b64)
                     if payload:
@@ -435,15 +431,15 @@ class MediaPipeline:
         return "", ""
 
     async def _cdn_download_with_fallback(self, aes_key: str, file_url: str) -> str:
-        """CDN 下载并自动 FileType=5→7 大文件回退。"""
+        """CDN 下载并自动 FileType=4→3 视频回退（4=完整视频，3=缩略图）。"""
         try:
-            payload = await self.bot._send_cdn_download(aes_key, file_url, 5)
+            payload = await self.bot._send_cdn_download(aes_key, file_url, 4)
             if payload:
                 return payload
         except Exception:
             pass
         try:
-            payload = await self.bot._send_cdn_download(aes_key, file_url, 7)
+            payload = await self.bot._send_cdn_download(aes_key, file_url, 3)
             if payload:
                 return payload
         except Exception:
@@ -470,7 +466,8 @@ class MediaPipeline:
 
     async def _build_quote_binary_attachment(self, quote: dict, *, media_type: str) -> List[Dict[str, Any]]:
         """构建引用消息二进制附件（语音/视频/文件，URL 格式）。"""
-        quote_xml = _safe_text(quote.get("Content"))
+        # 优先使用框架保留的原始 refermsg XML
+        quote_xml = _safe_text(quote.get("RawReferMsgXml") or quote.get("Content"))
 
         # 尝试从 XML 提取资源路径
         resource_path = self._extract_resource_path_from_media_xml(quote_xml)
@@ -490,7 +487,7 @@ class MediaPipeline:
             return []
 
         # 构建公网 URL
-        public_url = self._build_public_media_url(local_path, md5_value=os.path.basename(local_path).split(".")[0], file_name=os.path.basename(local_path))
+        public_url = self._build_public_media_url(local_path, md5_value=md5_value or "", file_name=os.path.basename(local_path))
         if not public_url:
             return []
 

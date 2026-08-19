@@ -1169,6 +1169,19 @@ class XYBot:
             logger.error("处理 XML 时发生异常: {}, 完整内容: {}", e, message["Content"])
             return
 
+        # 调试：打印原始消息结构（视频/语音引用）
+        if message.get("MsgType") == 49:
+            try:
+                root = ET.fromstring(message["Content"])
+                appmsg = root.find("appmsg")
+                if appmsg is not None:
+                    refermsg = appmsg.find("refermsg")
+                    if refermsg is not None:
+                        ref_type = refermsg.find("type")
+                        ref_content = refermsg.find("content")
+                        logger.info("RAW_QUOTE type={} refer_content={}", int(ref_type.text) if ref_type is not None and ref_type.text else -1, ref_content.text if ref_content is not None else "N/A")
+            except Exception as e:
+                logger.warning("解析引用消息原始结构失败: {}", e)
         if type_value == 57:  # 引用消息
             await self.process_quote_message(message)
         elif type_value == 6:  # 文件消息
@@ -1227,6 +1240,8 @@ class XYBot:
     async def process_quote_message(self, message: Dict[str, Any]):
         """处理引用消息"""
         quote_message = {}
+        # 保存原始 XML，用于后续提取 cdnvideourl/aeskey
+        original_content = message.get("Content", "")
         try:
             root = ET.fromstring(message["Content"])
             appmsg = root.find("appmsg")
@@ -1413,20 +1428,41 @@ class XYBot:
                 content_text = refermsg.find("content").text
                 quote_message["Content"] = content_text
                 quote_message["Createtime"] = refermsg.find("createtime").text
+                quote_message["RawReferMsgXml"] = ET.tostring(refermsg, encoding="unicode", method="xml")
 
-                # 从引用消息的 XML 内容中提取 CDN 下载地址与 md5（与图片引用保持一致）
-                if content_text:
+                # 从原始 XML 的 appmsg.videomsg 提取视频字段（cdnvideourl/aeskey/md5等）
+                # 如果 refermsg content 里没有 CDN，用 createtime 查数据库找原始视频消息
+                if not quote_message.get("cdnurl") and quote_message.get("Createtime"):
                     try:
-                        unescaped_inner = html.unescape(content_text)
-                        m_md5 = re.search(r'md5="([^"]+)"', unescaped_inner)
-                        if m_md5:
-                            quote_message["md5"] = m_md5.group(1).strip()
-                        m_aes = re.search(r'aeskey="([^"]+)"', unescaped_inner)
-                        if m_aes:
-                            quote_message["aeskey"] = m_aes.group(1).strip()
-                        m_url = re.search(r'(?:cdnvideourl|cdnurl)="([^"]+)"', unescaped_inner)
-                        if m_url:
-                            quote_message["cdnurl"] = m_url.group(1).strip()
+                        import sqlite3
+                        createtime = int(quote_message["Createtime"])
+                        import datetime
+                        ts = datetime.datetime.fromtimestamp(createtime)
+                        conn = sqlite3.connect("/app/database/message.db")
+                        c = conn.cursor()
+                        # 查 ±60 秒内的 type=43 消息
+                        start_ts = (ts - datetime.timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S")
+                        end_ts = (ts + datetime.timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S")
+                        c.execute(
+                            "SELECT content FROM messages WHERE msg_type=43 AND timestamp BETWEEN ? AND ? ORDER BY timestamp ASC LIMIT 1",
+                            (start_ts, end_ts),
+                        )
+                        row = c.fetchone()
+                        conn.close()
+                        if row and row[0]:
+                            import re
+                            m = re.search(r'cdnvideourl="([^"]+)"', row[0])
+                            if m:
+                                quote_message["cdnurl"] = m.group(1)
+                            m = re.search(r'aeskey="([^"]+)"', row[0])
+                            if m:
+                                quote_message["aeskey"] = m.group(1)
+                            m = re.search(r'md5="([^"]+)"', row[0])
+                            if m:
+                                quote_message["md5"] = m.group(1)
+                            m = re.search(r'length="([^"]+)"', row[0])
+                            if m:
+                                quote_message["length"] = m.group(1)
                     except Exception:
                         pass
 

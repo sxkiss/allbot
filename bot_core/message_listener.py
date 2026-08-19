@@ -399,10 +399,35 @@ async def _process_ws_message(data: Dict[str, Any], xybot, redis, message_db):
                 (json.dumps(raw_message, ensure_ascii=False)[:600] if isinstance(raw_message, dict) else str(raw_message)[:200]),
             )
         logger.debug("ws消息适配为AddMsgs: {}", json.dumps(addmsg, ensure_ascii=False))
+        # 调试：打印完整原始 WS 消息（引用视频相关）
+        if "refermsg" in str(raw_message):
+            import json as _json
+            # 只打印引用消息的完整结构（用于调试）
+            if raw_message.get('Type') == '49' or 'refermsg' in str(raw_message.get('Content', '')):
+                logger.info("RAW_QUOTE_MSG {}", _json.dumps(raw_message, ensure_ascii=False, indent=2))
         bot = getattr(xybot, "bot", None)
         if bot is not None and hasattr(bot, "register_msg_ids"):
             try:
+                # 注册消息 ID 映射：原始 svrid → msg_id
+                # 引用消息的 new_msg_id 和 refermsg.svrid 可能是不同的值
                 bot.register_msg_ids(addmsg.get("MsgId"), addmsg.get("NewMsgId"))
+                # 同时尝试从 Content XML 中提取 refermsg.svrid
+                content_str = addmsg.get("Content", "")
+                if isinstance(content_str, dict):
+                    content_str = content_str.get("string", "")
+                if isinstance(content_str, str) and "refermsg" in content_str:
+                    import xml.etree.ElementTree as _ET
+                    try:
+                        root = _ET.fromstring(content_str.split("\n", 1)[1] if "\n" in content_str else content_str)
+                        appmsg = root.find(".//appmsg")
+                        if appmsg is not None:
+                            refermsg = appmsg.find("refermsg")
+                            if refermsg is not None:
+                                svrid = refermsg.findtext("svrid", "").strip()
+                                if svrid:
+                                    bot.register_msg_ids(addmsg.get("MsgId"), svrid)
+                    except Exception:
+                        pass
             except Exception:
                 pass
         await _save_and_enqueue_message(addmsg, redis, message_db, is_standard_format=True)

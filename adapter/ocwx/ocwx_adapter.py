@@ -555,12 +555,12 @@ def _patch_framework_downloaders() -> None:
             return cached
         return await original_869_download_voice(self, msg_id, voiceurl, length)
 
-    async def _869_download_video(self, msg_id: Any) -> str:
+    async def _869_download_video(self, msg_id: Any, cdnvideourl: str = "", aeskey: str = "") -> str:
         with _REGISTRY_LOCK:
             cached = _VIDEO_REGISTRY.get(str(msg_id))
         if cached:
             return cached
-        return await original_869_download_video(self, msg_id)
+        return await original_869_download_video(self, msg_id, cdnvideourl, aeskey)
 
     async def _869_download_attach(self, attach_id: str) -> str:
         with _REGISTRY_LOCK:

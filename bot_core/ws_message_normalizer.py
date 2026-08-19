@@ -173,6 +173,18 @@ def normalize_content(raw_message: Dict[str, Any]) -> Dict[str, str]:
     return {"string": extract_text(content)}
 
 
+def normalize_addmsg_full(raw_message: Dict[str, Any], bot_wxid: str) -> Dict[str, Any]:
+    """完整归一化，保留原始 Content 字段供插件解析。"""
+    addmsg = normalize_addmsg(raw_message, bot_wxid)
+    # 保留原始 Content 完整值（XML 格式），供引用消息处理使用
+    raw_content = pick_first(raw_message, ("Content", "content", "TextContent", "text", "message"), "")
+    if isinstance(raw_content, dict):
+        raw_content = extract_text(raw_content)
+    if isinstance(raw_content, str) and raw_content.strip():
+        addmsg["RawContent"] = raw_content
+    return addmsg
+
+
 def normalize_addmsg(raw_message: Dict[str, Any], bot_wxid: str) -> Dict[str, Any]:
     if not isinstance(raw_message, dict):
         return {
