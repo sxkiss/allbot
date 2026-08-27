@@ -7,7 +7,7 @@
 
 from WechatAPI.errors import *
 from .base import WechatAPIClientBase, Proxy, Section
-from .core import WechatAPIClient
+from .core import WechatAPIClient as _WechatAPIClient
 from .protect import protector
 import sqlite3
 import os
@@ -16,7 +16,7 @@ from loguru import logger
 __all__ = ["WechatAPIClient", "WechatAPIClientBase", "Proxy", "Section"]
 
 
-class WechatAPIClient(WechatAPIClient):
+class WechatAPIClient(_WechatAPIClient):
     """兼容别名：保持 WechatAPIClient 名称与插件调用方式不变。"""
 
     def get_contacts_db(self):

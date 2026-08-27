@@ -86,7 +86,7 @@ robot-wxids = [
 github-proxy = ""
 
 # SQLite数据库地址，一般无需修改
-AllBotDB-url = "sqlite:///database/allbot.db"
+AllBotDB-url = "sqlite:///data/allbot.db"
 msgDB-url = "sqlite+aiosqlite:///database/message.db"
 keyvalDB-url = "sqlite+aiosqlite:///database/keyval.db"
 
