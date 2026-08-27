@@ -295,7 +295,7 @@ AllBot/
       <a href="https://github.com/HenryXiaoYang" style="text-decoration: none; color: #0366d6;">个人主页</a>
     </td>
     <td style="border: none; padding: 10px;">
-      <p style="margin-bottom: 8px; font-size: 15px;">项目：<a href="https://github.com/HenryXiaoYang/XYBotV2" style="text-decoration: none; color: #0366d6;">XYBotV2</a> - 本项目的重要参考源</p>
+      <p style="margin-bottom: 8px; font-size: 15px;">项目：<a href="https://github.com/HenryXiaoYang/AllBotV2" style="text-decoration: none; color: #0366d6;">AllBotV2</a> - 本项目的重要参考源</p>
       <p style="margin-top: 0; font-size: 15px;">提供了微信机器人的基础架构和核心功能，为本项目的开发提供了宝贵的参考。</p>
     </td>
   </tr>

@@ -73,7 +73,7 @@ config = {
     "username": "admin",
     "password": "admin123",
     "debug": False,
-    "secret_key": "xybotv2_admin_secret_key",
+    "secret_key": "allbotv2_admin_secret_key",
     "session_cookie_secure": False,
     "cors_origins": [],
     "max_history": 1000,
@@ -214,7 +214,7 @@ def load_config():
 
 
 DEFAULT_ADMIN_SECRET_KEYS = {
-    "xybotv2_admin_secret_key",
+    "allbotv2_admin_secret_key",
     "admin_secret_key",
     "change_me",
     "change_me_to_a_random_secret",

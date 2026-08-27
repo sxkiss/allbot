@@ -517,15 +517,15 @@ def _patch_framework_downloaders() -> None:
         return
 
     from WechatAPI.Client.tool import ToolMixin
-    from WechatAPI.Client869.client import Client869
+    from WechatAPI.Client import WechatAPIClient as _Client
 
     original_tool_download_voice = ToolMixin.download_voice
     original_tool_download_video = ToolMixin.download_video
     original_tool_download_attach = ToolMixin.download_attach
-    original_869_download_voice = Client869.download_voice
-    original_869_download_video = Client869.download_video
-    original_869_download_attach = Client869.download_attach
-    original_869_download_image = Client869.download_image
+    original_client_download_voice = _Client.download_voice
+    original_client_download_video = _Client.download_video
+    original_client_download_attach = _Client.download_attach
+    original_client_download_image = _Client.download_image
 
     async def _tool_download_voice(self, msg_id: str, voiceurl: str, length: int) -> str:
         with _REGISTRY_LOCK:
@@ -548,38 +548,38 @@ def _patch_framework_downloaders() -> None:
             return cached
         return await original_tool_download_attach(self, attach_id)
 
-    async def _869_download_voice(self, msg_id: Any, voiceurl: str, length: int) -> str:
+    async def _client_download_voice(self, msg_id: Any, voiceurl: str, length: int) -> str:
         with _REGISTRY_LOCK:
             cached = _VOICE_REGISTRY.get(str(msg_id))
         if cached:
             return cached
-        return await original_869_download_voice(self, msg_id, voiceurl, length)
+        return await original_client_download_voice(self, msg_id, voiceurl, length)
 
-    async def _869_download_video(self, msg_id: Any, cdnvideourl: str = "", aeskey: str = "") -> str:
+    async def _client_download_video(self, msg_id: Any, cdnvideourl: str = "", aeskey: str = "") -> str:
         with _REGISTRY_LOCK:
             cached = _VIDEO_REGISTRY.get(str(msg_id))
         if cached:
             return cached
-        return await original_869_download_video(self, msg_id, cdnvideourl, aeskey)
+        return await original_client_download_video(self, msg_id, cdnvideourl, aeskey)
 
-    async def _869_download_attach(self, attach_id: str) -> str:
+    async def _client_download_attach(self, attach_id: str) -> str:
         with _REGISTRY_LOCK:
             cached = _FILE_REGISTRY.get(attach_id)
         if cached:
             return cached
-        return await original_869_download_attach(self, attach_id)
+        return await original_client_download_attach(self, attach_id)
 
-    async def _869_download_image(self, aeskey: str, cdnmidimgurl: str) -> str:
-        """869 download_image 带缓存。从 ImageRegistry 命中 md5 键；未命中时走框架下载并缓存。"""
+    async def _client_download_image(self, aeskey: str, cdnmidimgurl: str) -> str:
+        """客户端 download_image 带缓存。从 ImageRegistry 命中 md5 键；未命中时走框架下载并缓存。"""
         try:
             aes_key_hex = str(aeskey).strip()
             cdn_url = str(cdnmidimgurl).strip()
             if not aes_key_hex or not cdn_url:
                 return ""
             # 先用 CDN 下载（含 FileType 自动回退），得到 base64 payload
-            base64_payload = await Client869._send_cdn_download(self, aes_key_hex, cdn_url, 2)
+            base64_payload = await _Client._send_cdn_download(self, aes_key_hex, cdn_url, 2)
             if not base64_payload:
-                base64_payload = await Client869._send_cdn_download(self, aes_key_hex, cdn_url, 3)
+                base64_payload = await _Client._send_cdn_download(self, aes_key_hex, cdn_url, 3)
             if base64_payload:
                 raw_bytes = base64.b64decode(base64_payload)
                 image_md5 = _md5_bytes(raw_bytes)
@@ -588,15 +588,15 @@ def _patch_framework_downloaders() -> None:
         except Exception:
             pass
         # 回退到框架原始实现
-        return await original_869_download_image(self, aeskey, cdnmidimgurl)
+        return await original_client_download_image(self, aeskey, cdnmidimgurl)
 
     ToolMixin.download_voice = _tool_download_voice
     ToolMixin.download_video = _tool_download_video
     ToolMixin.download_attach = _tool_download_attach
-    Client869.download_voice = _869_download_voice
-    Client869.download_video = _869_download_video
-    Client869.download_attach = _869_download_attach
-    Client869.download_image = _869_download_image
+    _Client.download_voice = _client_download_voice
+    _Client.download_video = _client_download_video
+    _Client.download_attach = _client_download_attach
+    _Client.download_image = _client_download_image
     _PATCHED_DOWNLOADERS = True
 
 

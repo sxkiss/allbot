@@ -8,7 +8,7 @@ XXXBot 异常类定义模块
 from typing import Any, Dict, Optional
 
 
-class XYBotException(Exception):
+class AllBotException(Exception):
     """
     XXXBot 基础异常类
 
@@ -36,7 +36,7 @@ class XYBotException(Exception):
         }
 
 
-class ConfigurationException(XYBotException):
+class ConfigurationException(AllBotException):
     """配置相关异常"""
 
     def __init__(self, message: str, config_key: Optional[str] = None, **kwargs):
@@ -45,7 +45,7 @@ class ConfigurationException(XYBotException):
             self.details["config_key"] = config_key
 
 
-class WechatAPIException(XYBotException):
+class WechatAPIException(AllBotException):
     """微信API相关异常"""
 
     def __init__(
@@ -74,7 +74,7 @@ class WechatAuthException(WechatAPIException):
     pass
 
 
-class PluginException(XYBotException):
+class PluginException(AllBotException):
     """插件相关异常"""
 
     def __init__(
@@ -103,7 +103,7 @@ class PluginExecutionException(PluginException):
     pass
 
 
-class DatabaseException(XYBotException):
+class DatabaseException(AllBotException):
     """数据库相关异常"""
 
     def __init__(
@@ -132,7 +132,7 @@ class DatabaseQueryException(DatabaseException):
     pass
 
 
-class MessageProcessingException(XYBotException):
+class MessageProcessingException(AllBotException):
     """消息处理异常"""
 
     def __init__(
@@ -149,7 +149,7 @@ class MessageProcessingException(XYBotException):
             self.details["sender_wxid"] = sender_wxid
 
 
-class FileProcessingException(XYBotException):
+class FileProcessingException(AllBotException):
     """文件处理异常"""
 
     def __init__(
@@ -166,19 +166,19 @@ class FileProcessingException(XYBotException):
             self.details["file_type"] = file_type
 
 
-class AuthenticationException(XYBotException):
+class AuthenticationException(AllBotException):
     """认证相关异常"""
 
     pass
 
 
-class AuthorizationException(XYBotException):
+class AuthorizationException(AllBotException):
     """授权相关异常"""
 
     pass
 
 
-class RateLimitException(XYBotException):
+class RateLimitException(AllBotException):
     """频率限制异常"""
 
     def __init__(
@@ -195,7 +195,7 @@ class RateLimitException(XYBotException):
             self.details["limit_type"] = limit_type
 
 
-class ValidationException(XYBotException):
+class ValidationException(AllBotException):
     """数据验证异常"""
 
     def __init__(
@@ -243,10 +243,10 @@ def get_exception_class(error_type: str) -> type:
     Returns:
         对应的异常类，如果找不到则返回基础异常类
     """
-    return EXCEPTION_MAP.get(error_type, XYBotException)
+    return EXCEPTION_MAP.get(error_type, AllBotException)
 
 
-def create_exception(error_type: str, message: str, **kwargs) -> XYBotException:
+def create_exception(error_type: str, message: str, **kwargs) -> AllBotException:
     """
     创建指定类型的异常实例
 

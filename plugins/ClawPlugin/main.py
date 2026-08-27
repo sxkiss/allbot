@@ -273,8 +273,8 @@ class ClawPlugin(PluginBase):
             except Exception:
                 continue
             admins = None
-            if isinstance(cfg.get("XYBot"), dict):
-                admins = cfg["XYBot"].get("admins")
+            if isinstance(cfg.get("AllBot"), dict):
+                admins = cfg["AllBot"].get("admins")
             if admins is None:
                 admins = cfg.get("admins")
             if isinstance(admins, list):

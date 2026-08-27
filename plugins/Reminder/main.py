@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from loguru import logger
 from WechatAPI import WechatAPIClient
-from database.XYBotDB import XYBotDB
+from database.allbotDB import AllBotDB
 from utils.decorators import on_text_message, schedule
 from utils.plugin_base import PluginBase
 import os
@@ -25,7 +25,7 @@ class Reminder(PluginBase):
         super().__init__()
         with open("main_config.toml", "rb") as f:
             config = tomllib.load(f)
-        self.admins = config["XYBot"]["admins"]
+        self.admins = config["AllBot"]["admins"]
 
         with open("plugins/Reminder/config.toml", "rb") as f:
             config = tomllib.load(f)
@@ -43,7 +43,7 @@ class Reminder(PluginBase):
         self.simple_reminder_template = plugin_config.get("simple_reminder_template",
                                                      "⏰ 定时提醒 ⏰\n\n{content}\n\n⏱️ {time}")
 
-        self.db = XYBotDB()
+        self.db = AllBotDB()
         self.processed_message_ids = set()
         self.data_dir = "reminder_data"
         os.makedirs(self.data_dir, exist_ok=True)
@@ -597,7 +597,7 @@ class Reminder(PluginBase):
                     }
 
                     # 确保使用正确类型的 bot 对象
-                    # 如果 bot 是 XYBot 类型，使用 bot.bot (WechatAPIClient 类型)
+                    # 如果 bot 是 AllBot 类型，使用 bot.bot (WechatAPIClient 类型)
                     # 否则直接使用 bot
                     actual_bot = bot.bot if hasattr(bot, 'bot') else bot
 
@@ -652,7 +652,7 @@ class Reminder(PluginBase):
                 # 如果 bot 是 WechatAPIClient 类型
                 if hasattr(bot, 'send_at_message'):
                     await bot.send_at_message(chat_id, content, at_list)
-                # 如果 bot 是 XYBot 类型，它有一个 bot 属性是 WechatAPIClient 类型
+                # 如果 bot 是 AllBot 类型，它有一个 bot 属性是 WechatAPIClient 类型
                 elif hasattr(bot, 'bot') and hasattr(bot.bot, 'send_at_message'):
                     await bot.bot.send_at_message(chat_id, content, at_list)
                 else:
@@ -667,7 +667,7 @@ class Reminder(PluginBase):
                 # 如果 bot 是 WechatAPIClient 类型
                 if hasattr(bot, 'send_text_message'):
                     await bot.send_text_message(chat_id, content)
-                # 如果 bot 是 XYBot 类型，它有一个 bot 属性是 WechatAPIClient 类型
+                # 如果 bot 是 AllBot 类型，它有一个 bot 属性是 WechatAPIClient 类型
                 elif hasattr(bot, 'bot') and hasattr(bot.bot, 'send_text_message'):
                     await bot.bot.send_text_message(chat_id, content)
                 # 尝试使用 send_text 方法
@@ -688,7 +688,7 @@ class Reminder(PluginBase):
             # 如果 bot 是 WechatAPIClient 类型
             if hasattr(bot, 'get_nickname'):
                 nickname = await bot.get_nickname(wxid)
-            # 如果 bot 是 XYBot 类型，它有一个 bot 属性是 WechatAPIClient 类型
+            # 如果 bot 是 AllBot 类型，它有一个 bot 属性是 WechatAPIClient 类型
             elif hasattr(bot, 'bot') and hasattr(bot.bot, 'get_nickname'):
                 nickname = await bot.bot.get_nickname(wxid)
             else:

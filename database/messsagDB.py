@@ -29,13 +29,30 @@ class Message(DeclarativeBase):
     is_group = Column(Boolean, default=False, comment='是否群消息')
 
 
+class OutboundMessage(DeclarativeBase):
+    __tablename__ = 'outbound_messages'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    msg_id = Column(Integer, comment='客户端消息ID（来自869返回值，可为0）')
+    client_msg_id = Column(Integer, default=0, comment='869客户端消息ID')
+    to_wxid = Column(String(40), index=True, comment='接收者wxid/chatroom')
+    sender_wxid = Column(String(40), comment='发送者wxid（机器人自身）')
+    msg_type = Column(Integer, default=1, comment='消息类型（1=文本等）')
+    content = Column(Text, comment='出站消息正文')
+    sent_at = Column(DateTime, default=datetime.now, index=True, comment='发送时间')
+    send_success = Column(Boolean, default=False, comment='是否发送成功')
+    send_error = Column(Text, comment='发送失败原因')
+    is_group = Column(Boolean, default=False, comment='是否群消息')
+    route_type = Column(String(20), default='direct', comment='发送路由类型：direct/reply_router')
+
+
 class MessageDB(metaclass=Singleton):
     _instance = None
 
     def __new__(cls):
         with open("main_config.toml", "rb") as f:
             main_config = tomllib.load(f)
-        db_url = main_config["XYBot"]["msgDB-url"]
+        db_url = main_config["AllBot"]["msgDB-url"]
 
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -93,6 +110,70 @@ class MessageDB(metaclass=Singleton):
                 await session.rollback()
                 return False
 
+    async def save_outbound_message(
+        self,
+        to_wxid: str,
+        content: str,
+        msg_type: int = 1,
+        sender_wxid: str = "",
+        client_msg_id: int = 0,
+        send_success: bool = True,
+        send_error: str = "",
+        is_group: bool = False,
+        route_type: str = "direct",
+    ) -> bool:
+        """异步保存出站消息到数据库"""
+        async with self._async_session_factory() as session:
+            try:
+                record = OutboundMessage(
+                    msg_id=int(datetime.now().timestamp()),
+                    client_msg_id=client_msg_id,
+                    to_wxid=to_wxid,
+                    sender_wxid=sender_wxid,
+                    msg_type=msg_type,
+                    content=content[:65535] if content else "",
+                    sent_at=datetime.now(),
+                    send_success=send_success,
+                    send_error=send_error[:2000] if send_error else "",
+                    is_group=is_group,
+                    route_type=route_type[:20],
+                )
+                session.add(record)
+                await session.commit()
+                return True
+            except Exception as e:
+                logging.error(f"保存出站消息失败: {str(e)}")
+                await session.rollback()
+                return False
+
+    async def get_outbound_messages(
+        self,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        to_wxid: Optional[str] = None,
+        send_success: Optional[bool] = None,
+        limit: int = 100,
+    ) -> List[OutboundMessage]:
+        """异步查询出站消息记录"""
+        async with self._async_session_factory() as session:
+            try:
+                query = select(OutboundMessage).order_by(OutboundMessage.sent_at.desc()).limit(limit)
+
+                if start_time:
+                    query = query.where(OutboundMessage.sent_at >= start_time)
+                if end_time:
+                    query = query.where(OutboundMessage.sent_at <= end_time)
+                if to_wxid:
+                    query = query.where(OutboundMessage.to_wxid == to_wxid)
+                if send_success is not None:
+                    query = query.where(OutboundMessage.send_success == send_success)
+
+                result = await session.execute(query)
+                return result.scalars().all()
+            except Exception as e:
+                logging.error(f"查询出站消息失败: {str(e)}")
+                return []
+
     async def get_messages(self,
                            start_time: Optional[datetime] = None,
                            end_time: Optional[datetime] = None,
@@ -145,6 +226,21 @@ class MessageDB(metaclass=Singleton):
                     logging.error(f"清理消息失败: {str(e)}")
                     await session.rollback()
             await asyncio.sleep(259200)  # 每三天（259200秒）执行一次
+
+    async def cleanup_outbound_messages(self):
+        """每三天清理旧的出站消息"""
+        while True:
+            async with self._async_session_factory() as session:
+                try:
+                    three_days_ago = datetime.now() - timedelta(days=3)
+                    await session.execute(
+                        delete(OutboundMessage).where(OutboundMessage.sent_at < three_days_ago)
+                    )
+                    await session.commit()
+                except Exception as e:
+                    logging.error(f"清理出站消息失败: {str(e)}")
+                    await session.rollback()
+            await asyncio.sleep(259200)
 
     async def __aenter__(self):
         # 启动清理消息的定时任务

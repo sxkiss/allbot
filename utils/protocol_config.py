@@ -20,7 +20,7 @@ class ProtocolConfig:
         "car": "/api",        # Car 协议使用 /api 前缀
         "win": "/api",        # Win 协议使用 /api 前缀
         "855": "/api",        # 855 协议使用 /api 前缀
-        "869": "/api",        # 869 协议使用 /api 前缀（WS 由消息监听器单独处理）
+        "869": "/api",        # 协议使用 /api 前缀（WS 由消息监听器单独处理）
     }
 
     # 默认 API 前缀（当协议版本未知时使用）

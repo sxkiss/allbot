@@ -36,11 +36,11 @@
 
 ### 数据库初始化
 
-#### 1. XYBotDB（主数据库）
+#### 1. AllBotDB（主数据库）
 ```python
-from database.XYBotDB import XYBotDB
+from database.AllBotDB import AllBotDB
 
-db = XYBotDB()  # 单例模式，全局唯一实例
+db = AllBotDB()  # 单例模式，全局唯一实例
 # 自动创建表（User, Chatroom）
 ```
 
@@ -73,8 +73,8 @@ group_db = GroupMembersDB()
 
 默认路径（main_config.toml 配置）：
 ```toml
-[XYBot]
-XYBotDB-url = "sqlite:///XYBot.db"  # 主数据库
+[AllBot]
+AllBotDB-url = "sqlite:///AllBot.db"  # 主数据库
 # 其他数据库默认在项目根目录
 ```
 
@@ -82,7 +82,7 @@ XYBotDB-url = "sqlite:///XYBot.db"  # 主数据库
 
 ## 🔌 对外接口（CRUD API）
 
-### XYBotDB API
+### AllBotDB API
 
 #### 用户操作
 ```python
@@ -219,8 +219,8 @@ class Message(Base):
 ### 配置项（main_config.toml）
 
 ```toml
-[XYBot]
-XYBotDB-url = "sqlite:///XYBot.db"  # 主数据库路径
+[AllBot]
+AllBotDB-url = "sqlite:///AllBot.db"  # 主数据库路径
 ```
 
 **注意**：其他数据库（KeyvalDB、MessageDB）默认在项目根目录，暂不支持自定义路径。
@@ -234,10 +234,10 @@ XYBotDB-url = "sqlite:///XYBot.db"  # 主数据库路径
 **测试用户操作**：
 ```python
 import pytest
-from database.XYBotDB import XYBotDB
+from database.AllBotDB import AllBotDB
 
 def test_add_points():
-    db = XYBotDB()
+    db = AllBotDB()
     assert db.set_points("test_wxid", 100)
     assert db.get_points("test_wxid") == 100
     assert db.add_points("test_wxid", 50)
@@ -247,10 +247,10 @@ def test_add_points():
 **测试线程安全**：
 ```python
 import threading
-from database.XYBotDB import XYBotDB
+from database.AllBotDB import AllBotDB
 
 def test_thread_safety():
-    db = XYBotDB()
+    db = AllBotDB()
     def worker():
         for _ in range(100):
             db.add_points("test_wxid", 1)
@@ -270,7 +270,7 @@ def test_thread_safety():
 **手动备份**：
 ```bash
 # 备份主数据库
-cp XYBot.db XYBot_backup_$(date +%Y%m%d).db
+cp AllBot.db AllBot_backup_$(date +%Y%m%d).db
 
 # 备份所有数据库
 tar -czf databases_backup_$(date +%Y%m%d).tar.gz *.db
@@ -285,7 +285,7 @@ from datetime import datetime
 @schedule('cron', hour=2, minute=0)  # 每天凌晨 2 点
 async def backup_databases(self, bot):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    shutil.copy("XYBot.db", f"backups/XYBot_{timestamp}.db")
+    shutil.copy("AllBot.db", f"backups/AllBot_{timestamp}.db")
 ```
 
 ---
@@ -294,13 +294,13 @@ async def backup_databases(self, bot):
 
 ### Q1: 如何迁移数据库？
 **A**：
-1. 备份旧数据库：`cp XYBot.db XYBot_old.db`
-2. 修改 `main_config.toml` 中的 `XYBotDB-url`
+1. 备份旧数据库：`cp AllBot.db AllBot_old.db`
+2. 修改 `main_config.toml` 中的 `AllBotDB-url`
 3. 重启程序，自动创建新表结构
 4. 使用 SQL 工具或脚本迁移数据
 
 ### Q2: 如何清空所有数据？
-**A**：删除 `XYBot.db` 文件，重启程序自动重建表。
+**A**：删除 `AllBot.db` 文件，重启程序自动重建表。
 
 ### Q3: 数据库性能优化建议？
 **A**：
@@ -311,7 +311,7 @@ async def backup_databases(self, bot):
 ### Q4: 如何查看数据库内容？
 **A**：使用 SQLite 客户端工具：
 ```bash
-sqlite3 XYBot.db
+sqlite3 AllBot.db
 sqlite> SELECT * FROM user LIMIT 10;
 ```
 
@@ -330,7 +330,7 @@ def _execute_in_queue(self, method, *args, **kwargs):
 ## 📁 相关文件清单
 
 ### 核心文件
-- `database/XYBotDB.py`：主数据库（约 500 行）
+- `database/AllBotDB.py`：主数据库（约 500 行）
 - `database/keyvalDB.py`：键值存储（约 100 行）
 - `database/messsagDB.py`：消息存储（约 200 行）
 - `database/message_counter.py`：消息计数器（约 100 行）
@@ -339,7 +339,7 @@ def _execute_in_queue(self, method, *args, **kwargs):
 - `database/__init__.py`：模块导出
 
 ### 数据库文件（默认位置）
-- `XYBot.db`：主数据库
+- `AllBot.db`：主数据库
 - `keyval.db`：键值存储
 - `messages.db`：消息历史
 - `contacts.db`：联系人数据

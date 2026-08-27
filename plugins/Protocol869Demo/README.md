@@ -31,5 +31,5 @@ enable = true
 ## 注意
 
 - 仅当 `bot.protocol_version == "869"` 时可用。
-- 仅 `main_config.toml` 中 `XYBot.admins` 配置的全局管理员可使用。
+- 仅 `main_config.toml` 中 `AllBot.admins` 配置的全局管理员可使用。
 - 撤回接口需要 `client_msg_id/create_time/new_msg_id` 三元组，本插件只保证撤回“自身发送并记录过”的消息。

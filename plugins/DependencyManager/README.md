@@ -1,7 +1,7 @@
 # 🔧 依赖包管理器 (DependencyManager)
 
 > 🚀 通过微信命令直接管理 Python 依赖包，无需登录服务器！
-> **本插件是 [XYBotv2](https://github.com/HenryXiaoYang/XYBotv2) 的一个插件。**
+> **本插件是 [AllBotv2](https://github.com/HenryXiaoYang/AllBotv2) 的一个插件。**
 
  <img src="https://github.com/user-attachments/assets/a2627960-69d8-400d-903c-309dbeadf125" width="400" height="600">
 

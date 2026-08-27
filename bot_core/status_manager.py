@@ -86,7 +86,7 @@ def set_bot_instance(bot):
     """设置bot实例到管理后台
 
     Args:
-        bot: XYBot 实例
+        bot: AllBot 实例
 
     Returns:
         bot 实例

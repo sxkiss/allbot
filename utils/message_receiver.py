@@ -34,7 +34,7 @@ class MessageReceiver:
         self.parser = MQMessageParser()
         self.redis = None
         self.message_db = None
-        self.xybot = None
+        self.allbot = None
         
         # RabbitMQ配置
         self.rabbitmq_config = config.get('WechatAPIServer', {})
@@ -56,9 +56,9 @@ class MessageReceiver:
         logger.info(f"  - RabbitMQ: {'启用' if self.rabbitmq_enabled else '禁用'}")
         logger.info(f"  - WebSocket: {'启用' if self.ws_enabled else '禁用'}")
     
-    def set_dependencies(self, xybot, redis, message_db):
+    def set_dependencies(self, allbot, redis, message_db):
         """设置依赖项"""
-        self.xybot = xybot
+        self.allbot = allbot
         self.redis = redis
         self.message_db = message_db
     
@@ -250,7 +250,7 @@ class MessageReceiver:
                 addmsg = {
                     "MsgId": msg.get("msgId"),
                     "FromUserName": {"string": msg.get("sender", {}).get("id", "")},
-                    "ToUserName": {"string": getattr(self.xybot.bot, "wxid", "")},
+                    "ToUserName": {"string": getattr(self.allbot.bot, "wxid", "")},
                     "MsgType": msg.get("category", 1),
                     "Content": {"string": msg.get("content", "")},
                     "Status": 3,

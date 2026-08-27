@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-XYBotV2 管理后台启动脚本
+AllBotV2 管理后台启动脚本
 此脚本用于单独启动管理后台服务器
 """
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     default_config = get_default_config()
 
     # 解析命令行参数
-    parser = argparse.ArgumentParser(description="XYBotV2管理后台服务器")
+    parser = argparse.ArgumentParser(description="AllBotV2管理后台服务器")
     parser.add_argument("--host", type=str, default=default_config["host"], help="服务器监听地址")
     parser.add_argument("--port", type=int, default=default_config["port"], help="服务器监听端口")
     parser.add_argument("--username", type=str, default=default_config["username"], help="管理员用户名")
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # 记录启动参数
-    logger.info(f"=== 启动XYBotV2管理后台服务器 ===")
+    logger.info(f"=== 启动AllBotV2管理后台服务器 ===")
     logger.info(f"主机: {args.host}")
     logger.info(f"端口: {args.port}")
     logger.info(f"用户名: {args.username}")
@@ -109,7 +109,7 @@ if __name__ == "__main__":
         logger.debug(f"FastAPI应用初始化完成")
 
         # 启动uvicorn服务器
-        logger.info(f"正在启动XYBotV2管理后台服务器: {args.host}:{args.port}")
+        logger.info(f"正在启动AllBotV2管理后台服务器: {args.host}:{args.port}")
         # 注意：不再在这里设置日志级别
         # 日志级别已经在main.py中设置好了
         # 这里只是使用已经配置好的日志级别

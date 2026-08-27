@@ -12,13 +12,13 @@ import logging
 from loguru import logger
 
 import WechatAPI
-from database.XYBotDB import XYBotDB
+from database.allbotDB import AllBotDB
 from database.keyvalDB import KeyvalDB
 from database.messsagDB import MessageDB
 from database.message_counter import get_instance as get_message_counter  # 导入消息计数器
 from utils.decorators import scheduler
 from utils.plugin_manager import plugin_manager
-from utils.xybot import XYBot
+from utils.allbot import AllBot
 from utils.notification_service import init_notification_service, get_notification_service
 from utils.reply_router import ReplyRouter, ReplyDispatcher, has_enabled_adapters
 import websockets  # 如果未导入，确保添加这行
@@ -121,13 +121,13 @@ except ImportError as e:
 NUM_CONSUMERS = 1  # 可根据需要调整并发消费者数量
 QUEUE_NAME = 'allbot'  # 自定义队列名
 
-async def message_consumer(xybot, redis, message_db):
+async def message_consumer(allbot, redis, message_db):
     while True:
         _, msg_json = await redis.blpop(QUEUE_NAME)
         message = json.loads(msg_json)
         logger.info(f"消息已出队并开始处理，队列: {QUEUE_NAME}，消息ID: {message.get('MsgId') or message.get('msgId')}")
         try:
-            await xybot.process_message(message)
+            await allbot.process_message(message)
         except Exception as e:
             logger.error(f"消息处理异常: {e}")
 
@@ -169,23 +169,23 @@ async def bot_core():
                 "redis-password": app_config.wechat_api.redis_password,
                 "redis-db": app_config.wechat_api.redis_db
             },
-            "XYBot": {
-                "version": app_config.xybot.version,
-                "enable-wechat-login": app_config.xybot.enable_wechat_login,
-                "ignore-protection": app_config.xybot.ignore_protection,
-                "enable-group-wakeup": app_config.xybot.enable_group_wakeup,
-                "group-wakeup-words": app_config.xybot.group_wakeup_words,
-                "robot-names": app_config.xybot.robot_names,
-                "robot-wxids": app_config.xybot.robot_wxids,
-                "github-proxy": app_config.xybot.github_proxy,
-                "admins": app_config.xybot.admins,
-                "disabled-plugins": app_config.xybot.disabled_plugins,
-                "timezone": app_config.xybot.timezone,
-                "auto-restart": app_config.xybot.auto_restart,
-                "files-cleanup-days": app_config.xybot.files_cleanup_days,
-                "ignore-mode": app_config.xybot.ignore_mode,
-                "whitelist": app_config.xybot.whitelist,
-                "blacklist": app_config.xybot.blacklist
+            "AllBot": {
+                "version": app_config.allbot.version,
+                "enable-wechat-login": app_config.allbot.enable_wechat_login,
+                "ignore-protection": app_config.allbot.ignore_protection,
+                "enable-group-wakeup": app_config.allbot.enable_group_wakeup,
+                "group-wakeup-words": app_config.allbot.group_wakeup_words,
+                "robot-names": app_config.allbot.robot_names,
+                "robot-wxids": app_config.allbot.robot_wxids,
+                "github-proxy": app_config.allbot.github_proxy,
+                "admins": app_config.allbot.admins,
+                "disabled-plugins": app_config.allbot.disabled_plugins,
+                "timezone": app_config.allbot.timezone,
+                "auto-restart": app_config.allbot.auto_restart,
+                "files-cleanup-days": app_config.allbot.files_cleanup_days,
+                "ignore-mode": app_config.allbot.ignore_mode,
+                "whitelist": app_config.allbot.whitelist,
+                "blacklist": app_config.allbot.blacklist
             },
             "AutoRestart": {
                 "enabled": app_config.auto_restart.enabled,
@@ -263,8 +263,8 @@ async def bot_core():
     logger.success(f"✅ 成功加载统一 WechatAPIClient 客户端，protocol_version={getattr(bot, 'protocol_version', None)}")
 
     # 设置客户端属性
-    bot.ignore_protect = config.get("XYBot", {}).get("ignore-protection", False)
-    enable_wechat_login = config.get("XYBot", {}).get("enable-wechat-login", True)
+    bot.ignore_protect = config.get("AllBot", {}).get("ignore-protection", False)
+    enable_wechat_login = config.get("AllBot", {}).get("enable-wechat-login", True)
 
     if has_enabled_adapters(script_dir):
         reply_router = ReplyRouter(
@@ -609,14 +609,14 @@ async def bot_core():
         })
 
     # 初始化机器人
-    xybot = XYBot(bot)
-    xybot.update_profile(bot.wxid, bot.nickname, bot.alias, bot.phone)
+    allbot = AllBot(bot)
+    allbot.update_profile(bot.wxid, bot.nickname, bot.alias, bot.phone)
 
     # 设置机器人实例到管理后台
-    set_bot_instance(xybot)
+    set_bot_instance(allbot)
 
     # 初始化数据库
-    XYBotDB()
+    AllBotDB()
 
     message_db = MessageDB()
     await message_db.initialize()
@@ -635,7 +635,7 @@ async def bot_core():
         from utils.files_cleanup import FilesCleanup
 
         # 获取清理天数配置
-        cleanup_days = config.get("XYBot", {}).get("files-cleanup-days", 7)
+        cleanup_days = config.get("AllBot", {}).get("files-cleanup-days", 7)
 
         if cleanup_days > 0:
             # 创建清理任务
@@ -706,7 +706,7 @@ async def bot_core():
 
     # 启动消息消费者
     consumer_tasks = [
-        asyncio.create_task(message_consumer(xybot, redis, message_db))
+        asyncio.create_task(message_consumer(allbot, redis, message_db))
         for _ in range(NUM_CONSUMERS)
     ]
 
@@ -735,7 +735,7 @@ async def bot_core():
                 ws_url = ws_url.rstrip("/") + f"/{wxid}"
 
             logger.info(f"WebSocket 消息推送地址: {ws_url}")
-            await listen_ws_messages(xybot, ws_url, redis, message_db)
+            await listen_ws_messages(allbot, ws_url, redis, message_db)
         else:
             logger.info("WebSocket 消息通道已禁用（enable-websocket = false），消息消费者将继续从 Redis 队列读取")
             # 阻塞当前协程，保持消费者持续运行（Ctrl+C 触发 CancelledError 后跳出）
@@ -746,9 +746,9 @@ async def bot_core():
         await asyncio.gather(*consumer_tasks, return_exceptions=True)
 
     # 返回机器人实例（正常情况下不会执行到，因为上面会阻塞）
-    return xybot
+    return allbot
 
-async def listen_ws_messages(xybot, ws_url, redis, message_db):
+async def listen_ws_messages(allbot, ws_url, redis, message_db):
     """WebSocket 客户端，实时接收消息并处理，自动重连，依赖官方ping/pong心跳机制"""
     import traceback
     import websockets
@@ -796,7 +796,7 @@ async def listen_ws_messages(xybot, ws_url, redis, message_db):
                                     addmsg = {
                                         "MsgId": msg.get("msgId"),
                                         "FromUserName": {"string": msg.get("sender", {}).get("id", "")},
-                                        "ToUserName": {"string": getattr(xybot.bot, "wxid", "")},
+                                        "ToUserName": {"string": getattr(allbot.bot, "wxid", "")},
                                         "MsgType": msg.get("category", 1),
                                         "Content": {"string": msg.get("content", "")},
                                         "Status": 3,

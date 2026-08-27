@@ -209,8 +209,8 @@ class HermesPlugin(PluginBase):
             except Exception:
                 continue
             admins = None
-            if isinstance(cfg.get("XYBot"), dict):
-                admins = cfg["XYBot"].get("admins")
+            if isinstance(cfg.get("AllBot"), dict):
+                admins = cfg["AllBot"].get("admins")
             if admins is None:
                 admins = cfg.get("admins")
             if isinstance(admins, list):
@@ -434,17 +434,60 @@ class HermesPlugin(PluginBase):
     async def _chat_with_guard(self, prompt: str, route: WatchRoute, *, attachments: Optional[list] = None) -> str:
         """Chat with Hermes, notifying the user on start (ack) and on timeout.
 
-        Prefers the /v1/runs async channel (long-lived SSE with reconnect)
-        for long tasks; falls back to the sync SSE chat channel when
-        attachments are present (runs API input is text-only) or on
-        connection errors.
+        Prefers the /v1/chat/completions sync channel (session continuity via
+        X-Hermes-Session-Id) for normal text turns so the gateway loads
+        conversation history from state.db.  Falls back to /v1/runs when
+        attachments are present (runs API input is text-only) or when the chat
+        channel errors out.
         """
         session_id = self.sm.resolve_session_id(route)
         self.sm.remember_session_route(session_id, route)
         self._send_task_start_ack(route)
         timeout = max(10, int(self.trigger_timeout_seconds))
 
-        if not attachments:
+        if attachments:
+            # Runs API is text-only; use /v1/chat/completions with attachments.
+            try:
+                return await asyncio.wait_for(
+                    self.client.chat(prompt, session_id=session_id, attachments=attachments),
+                    timeout=timeout,
+                )
+            except (TimeoutError, asyncio.TimeoutError):
+                logger.warning("[Hermes] request timeout route_id={}", route.route_id)
+                await self._send_task_timeout_b(route)
+                raise
+            except Exception as exc:
+                logger.warning("[Hermes] chat channel failed(route={}), fallback to run: {}",
+                               route.route_id, exc)
+                try:
+                    return await asyncio.wait_for(
+                        self.client.chat_via_run(
+                            prompt,
+                            session_id=session_id,
+                            system_prompt=self.system_prompt,
+                        ),
+                        timeout=timeout,
+                    )
+                except (TimeoutError, asyncio.TimeoutError):
+                    logger.warning("[Hermes] run request timeout route_id={}", route.route_id)
+                    await self._send_task_timeout_b(route)
+                    raise
+                except Exception as run_exc:
+                    raise RuntimeError(f"Both chat and run channels failed: chat={exc}, run={run_exc}") from run_exc
+
+        # No attachments: use /v1/chat/completions for session continuity.
+        try:
+            return await asyncio.wait_for(
+                self.client.chat(prompt, session_id=session_id),
+                timeout=timeout,
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            logger.warning("[Hermes] request timeout route_id={}", route.route_id)
+            await self._send_task_timeout_b(route)
+            raise
+        except Exception as exc:
+            logger.warning("[Hermes] chat channel failed(route={}), fallback to run: {}",
+                           route.route_id, exc)
             try:
                 return await asyncio.wait_for(
                     self.client.chat_via_run(
@@ -458,18 +501,8 @@ class HermesPlugin(PluginBase):
                 logger.warning("[Hermes] run request timeout route_id={}", route.route_id)
                 await self._send_task_timeout_b(route)
                 raise
-            except Exception as exc:
-                logger.warning("[Hermes] run channel failed(route={}), fallback to sync chat: {}",
-                               route.route_id, exc)
-        try:
-            return await asyncio.wait_for(
-                self.client.chat(prompt, session_id=session_id, attachments=attachments),
-                timeout=timeout,
-            )
-        except (TimeoutError, asyncio.TimeoutError):
-            logger.warning("[Hermes] request timeout route_id={}", route.route_id)
-            await self._send_task_timeout_b(route)
-            raise
+            except Exception as run_exc:
+                raise RuntimeError(f"Both chat and run channels failed: chat={exc}, run={run_exc}") from run_exc
 
     async def _forward_to_hermes(self, prompt: str, route: WatchRoute, *, attachments: Optional[list] = None) -> str:
         """Send prompt to Hermes API and return reply text."""

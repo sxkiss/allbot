@@ -48,11 +48,11 @@ class FilesCleanup:
         """
         try:
             # 检查是否是AppConfig对象
-            if hasattr(config, 'xybot'):
-                cleanup_days = config.xybot.files_cleanup_days
+            if hasattr(config, 'allbot'):
+                cleanup_days = config.allbot.files_cleanup_days
             # 否则当作字典处理
             elif isinstance(config, dict):
-                cleanup_days = config.get("XYBot", {}).get("files-cleanup-days", 7)
+                cleanup_days = config.get("AllBot", {}).get("files-cleanup-days", 7)
             else:
                 cleanup_days = 7
 

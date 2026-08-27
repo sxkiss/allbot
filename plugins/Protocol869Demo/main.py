@@ -1,5 +1,5 @@
 """
-@input: WechatAPIClient（运行时可能为 Client869）、插件消息字典（text/quote/emoji）
+@input: WechatAPIClient、插件消息字典（text/quote/emoji）
 @output: Protocol869Demo 插件：仅向全局管理员提供一组 869 专属能力演示命令（拍一拍/撤回/二维码/标签/群信息/动态调用）
 @position: 示例插件，用于展示“管理员插件如何调用 869 专属方法与参数”
 @auto-doc: Update header and folder INDEX.md when this file changes
@@ -105,7 +105,7 @@ class Protocol869Demo(PluginBase):
             main_config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "main_config.toml"))
             with open(main_config_path, "rb") as file:
                 main_cfg = tomllib.load(file)
-            admins_value = main_cfg.get("XYBot", {}).get("admins", [])
+            admins_value = main_cfg.get("AllBot", {}).get("admins", [])
             if isinstance(admins_value, list):
                 return {str(item).strip() for item in admins_value if str(item).strip()}
             if isinstance(admins_value, str):

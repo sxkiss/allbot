@@ -22,7 +22,7 @@ from .exceptions import ConfigurationException
 class DatabaseConfig:
     """数据库配置"""
 
-    xybot_url: str = "sqlite:///database/xybot.db"
+    allbot_url: str = "sqlite:///database/allbot.db"
     msg_url: str = "sqlite+aiosqlite:///database/message.db"
     keyval_url: str = "sqlite+aiosqlite:///database/keyval.db"
 
@@ -83,8 +83,8 @@ class FrameworkConfig:
 
 
 @dataclass
-class XYBotConfig:
-    """XYBot核心配置"""
+class AllBotConfig:
+    """AllBot核心配置"""
 
     version: str = "v1.0.0"
     enable_wechat_login: bool = True
@@ -187,7 +187,7 @@ class AppConfig:
     admin: AdminConfig = field(default_factory=AdminConfig)
     protocol: ProtocolConfig = field(default_factory=ProtocolConfig)
     framework: FrameworkConfig = field(default_factory=FrameworkConfig)
-    xybot: XYBotConfig = field(default_factory=XYBotConfig)
+    allbot: AllBotConfig = field(default_factory=AllBotConfig)
     auto_restart: AutoRestartConfig = field(default_factory=AutoRestartConfig)
     notification: NotificationConfig = field(default_factory=NotificationConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -256,7 +256,7 @@ class ConfigManager:
         """应用环境变量覆盖"""
         env_mappings = {
             # 数据库配置
-            "XYBOT_DB_URL": ["database", "xybot_url"],
+            "ALLBOT_DB_URL": ["database", "allbot_url"],
             "MSG_DB_URL": ["database", "msg_url"],
             "KEYVAL_DB_URL": ["database", "keyval_url"],
             # 微信API配置
@@ -275,9 +275,9 @@ class ConfigManager:
             "ADMIN_LOG_LEVEL": ["Admin", "log_level"],
             # 协议配置
             "PROTOCOL_VERSION": ["Protocol", "version"],
-            # XYBot配置
-            "GITHUB_PROXY": ["XYBot", "github-proxy"],
-            "AUTO_RESTART": ["XYBot", "auto-restart"],
+            # AllBot配置
+            "GITHUB_PROXY": ["AllBot", "github-proxy"],
+            "AUTO_RESTART": ["AllBot", "auto-restart"],
             # 通知配置
             "NOTIFICATION_TOKEN": ["Notification", "token"],
             "NOTIFICATION_CHANNEL": ["Notification", "channel"],
@@ -339,15 +339,15 @@ class ConfigManager:
             db_config = self._raw_config["database"]
             config.database = DatabaseConfig(**db_config)
         elif any(
-            key in self._raw_config.get("XYBot", {})
-            for key in ["XYBotDB-url", "msgDB-url", "keyvalDB-url"]
+            key in self._raw_config.get("AllBot", {})
+            for key in ["AllBotDB-url", "msgDB-url", "keyvalDB-url"]
         ):
             # 兼容旧配置格式
-            xybot_config = self._raw_config.get("XYBot", {})
+            allbot_config = self._raw_config.get("AllBot", {})
             config.database = DatabaseConfig(
-                xybot_url=xybot_config.get("XYBotDB-url", config.database.xybot_url),
-                msg_url=xybot_config.get("msgDB-url", config.database.msg_url),
-                keyval_url=xybot_config.get("keyvalDB-url", config.database.keyval_url),
+                allbot_url=allbot_config.get("AllBotDB-url", config.database.allbot_url),
+                msg_url=allbot_config.get("msgDB-url", config.database.msg_url),
+                keyval_url=allbot_config.get("keyvalDB-url", config.database.keyval_url),
             )
 
         # 微信API配置
@@ -478,42 +478,42 @@ class ConfigManager:
                 type=framework_config.get("type", config.framework.type)
             )
 
-        # XYBot配置
-        if "XYBot" in self._raw_config:
-            xybot_config = self._raw_config["XYBot"]
-            config.xybot = XYBotConfig(
-                version=xybot_config.get("version", config.xybot.version),
-                enable_wechat_login=xybot_config.get(
-                    "enable-wechat-login", config.xybot.enable_wechat_login
+        # AllBot配置
+        if "AllBot" in self._raw_config:
+            allbot_config = self._raw_config["AllBot"]
+            config.allbot = AllBotConfig(
+                version=allbot_config.get("version", config.allbot.version),
+                enable_wechat_login=allbot_config.get(
+                    "enable-wechat-login", config.allbot.enable_wechat_login
                 ),
-                ignore_protection=xybot_config.get(
-                    "ignore-protection", config.xybot.ignore_protection
+                ignore_protection=allbot_config.get(
+                    "ignore-protection", config.allbot.ignore_protection
                 ),
-                enable_group_wakeup=xybot_config.get(
-                    "enable-group-wakeup", config.xybot.enable_group_wakeup
+                enable_group_wakeup=allbot_config.get(
+                    "enable-group-wakeup", config.allbot.enable_group_wakeup
                 ),
-                group_wakeup_words=xybot_config.get(
-                    "group-wakeup-words", config.xybot.group_wakeup_words
+                group_wakeup_words=allbot_config.get(
+                    "group-wakeup-words", config.allbot.group_wakeup_words
                 ),
-                robot_names=xybot_config.get("robot-names", config.xybot.robot_names),
-                robot_wxids=xybot_config.get("robot-wxids", config.xybot.robot_wxids),
-                github_proxy=xybot_config.get(
-                    "github-proxy", config.xybot.github_proxy
+                robot_names=allbot_config.get("robot-names", config.allbot.robot_names),
+                robot_wxids=allbot_config.get("robot-wxids", config.allbot.robot_wxids),
+                github_proxy=allbot_config.get(
+                    "github-proxy", config.allbot.github_proxy
                 ),
-                admins=xybot_config.get("admins", config.xybot.admins),
-                disabled_plugins=xybot_config.get(
-                    "disabled-plugins", config.xybot.disabled_plugins
+                admins=allbot_config.get("admins", config.allbot.admins),
+                disabled_plugins=allbot_config.get(
+                    "disabled-plugins", config.allbot.disabled_plugins
                 ),
-                timezone=xybot_config.get("timezone", config.xybot.timezone),
-                auto_restart=xybot_config.get(
-                    "auto-restart", config.xybot.auto_restart
+                timezone=allbot_config.get("timezone", config.allbot.timezone),
+                auto_restart=allbot_config.get(
+                    "auto-restart", config.allbot.auto_restart
                 ),
-                files_cleanup_days=xybot_config.get(
-                    "files-cleanup-days", config.xybot.files_cleanup_days
+                files_cleanup_days=allbot_config.get(
+                    "files-cleanup-days", config.allbot.files_cleanup_days
                 ),
-                ignore_mode=xybot_config.get("ignore-mode", config.xybot.ignore_mode),
-                whitelist=xybot_config.get("whitelist", config.xybot.whitelist),
-                blacklist=xybot_config.get("blacklist", config.xybot.blacklist),
+                ignore_mode=allbot_config.get("ignore-mode", config.allbot.ignore_mode),
+                whitelist=allbot_config.get("whitelist", config.allbot.whitelist),
+                blacklist=allbot_config.get("blacklist", config.allbot.blacklist),
             )
 
         # 自动重启配置

@@ -386,7 +386,7 @@ def register_plugins_routes(app, current_dir, plugin_manager=None):
             docker_paths = [
                 os.path.join("/app/data/plugins", plugin_id, "config.toml"),
                 os.path.join("/data/plugins", plugin_id, "config.toml"),
-                os.path.join("/usr/local/xybot/plugins", plugin_id, "config.toml")
+                os.path.join("/usr/local/allbot/plugins", plugin_id, "config.toml")
             ]
             possible_paths.extend(docker_paths)
 
@@ -719,7 +719,7 @@ def register_plugins_routes(app, current_dir, plugin_manager=None):
         return {
             "X-Client-ID": get_client_id(),
             "X-Bot-Version": bot_version,
-            "User-Agent": f"XYBot/{bot_version}",
+            "User-Agent": f"AllBot/{bot_version}",
         }
 
     def _market_cache_path() -> str:

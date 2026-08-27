@@ -109,3 +109,41 @@ class WechatAPIClientBase:
     def set_reply_router(self, router):
         """绑定统一回复路由"""
         self.reply_router = router
+
+    def _record_outbound(
+        self,
+        to_wxid: str,
+        content: str,
+        success: bool = True,
+        error: str = "",
+        client_msg_id: int = 0,
+        route_type: str = "direct",
+    ) -> None:
+        """统一出站消息落库（best-effort，失败只记日志不抛异常）。"""
+        try:
+            from database.messsagDB import MessageDB
+            import asyncio
+
+            is_group = str(to_wxid).endswith("@chatroom")
+            sender = getattr(self, "wxid", "") or ""
+            content_truncated = (content[:65535] if content else "")
+            error_truncated = (error[:2000] if error else "")
+
+            async def _do_save():
+                await MessageDB().save_outbound_message(
+                    to_wxid=to_wxid,
+                    content=content_truncated,
+                    msg_type=1,
+                    sender_wxid=sender,
+                    client_msg_id=client_msg_id,
+                    send_success=success,
+                    send_error=error_truncated,
+                    is_group=is_group,
+                    route_type=route_type,
+                )
+
+            loop = asyncio.get_event_loop()
+            loop.create_task(_do_save())
+        except Exception as exc:
+            from loguru import logger as _log
+            _log.warning("出站消息落库失败(忽略): {}", exc)

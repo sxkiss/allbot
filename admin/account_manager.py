@@ -38,7 +38,7 @@ ACTIVE_ACCOUNT_FILE = Path("resource") / "robot_stat.json"
 
 # 数据库文件列表
 DATABASE_FILES = [
-    Path("database") / "xybot.db",
+    Path("database") / "allbot.db",
     Path("database") / "keyval.db",
     Path("database") / "message.db",
     Path("database") / "contacts.db"

@@ -78,7 +78,7 @@ class LoggerManager:
             if not enable_json_format:
                 file_format = self._get_file_format()
                 logger.add(
-                    self.log_dir / "xybot_{time:YYYY-MM-DD}.log",
+                    self.log_dir / "allbot_{time:YYYY-MM-DD}.log",
                     format=file_format,
                     level="DEBUG",  # 文件日志始终记录所有级别
                     rotation=log_rotation,
@@ -93,7 +93,7 @@ class LoggerManager:
             # JSON格式日志（用于结构化分析）
             if enable_json_format:
                 logger.add(
-                    self.log_dir / "xybot_{time:YYYY-MM-DD}.json",
+                    self.log_dir / "allbot_{time:YYYY-MM-DD}.json",
                     format=self._json_formatter,
                     level="DEBUG",
                     rotation=log_rotation,

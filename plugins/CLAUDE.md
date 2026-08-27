@@ -55,7 +55,7 @@
 
 **全局禁用（main_config.toml）**：
 ```toml
-[XYBot]
+[AllBot]
 disabled-plugins = ["PluginA", "PluginB"]
 ```
 
@@ -171,7 +171,7 @@ option_2 = 123
 
 ### 数据库模型（部分插件使用）
 
-**用户表（XYBotDB）**：
+**用户表（AllBotDB）**：
 ```python
 class User(Base):
     wxid = Column(String(20), primary_key=True)
@@ -235,10 +235,10 @@ isort plugins/YourPlugin/
 **A**：在装饰器中指定 `priority` 参数，或在 `config.toml` 中设置全局优先级（后者覆盖前者）。
 
 ### Q2: 如何访问数据库？
-**A**：通过 `database.XYBotDB.XYBotDB()` 获取单例实例，调用 CRUD 方法。
+**A**：通过 `database.AllBotDB.AllBotDB()` 获取单例实例，调用 CRUD 方法。
 ```python
-from database.XYBotDB import XYBotDB
-db = XYBotDB()
+from database.AllBotDB import AllBotDB
+db = AllBotDB()
 points = db.get_points("wxid_xxx")
 ```
 

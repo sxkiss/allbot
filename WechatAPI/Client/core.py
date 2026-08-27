@@ -1,7 +1,7 @@
 """
 @input: aiohttp/http 接口, pysilk 语音解码; bot_core 与插件层的调用契约
-@output: Client869 全接口动态调用能力、显式 auth 探测/唤醒/拉码 helper、30000 类型 AuthKey 生成与 bot_core 兼容方法；媒体下载器统一缓存（引用/重复下载先命中本地磁盘+内存缓存，避免重复走网关）
-@position: 869 协议专用客户端，隔离新协议实现，并向启动链路/二维码辅助接口提供共享登录判定能力
+@output: WechatAPIClient 全接口动态调用能力、显式 auth 探测/唤醒/拉码 helper、30000 类型 AuthKey 生成与 bot_core 兼容方法；媒体下载器统一缓存（引用/重复下载先命中本地磁盘+内存缓存，避免重复走网关）
+@position: 微信协议客户端，提供统一动态调用能力与共享登录判定
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
 
@@ -24,6 +24,7 @@ from loguru import logger
 from pydub import AudioSegment
 
 from WechatAPI.errors import UserLoggedOut
+from .base import WechatAPIClientBase
 
 
 TEXT_VALUE_KEYS = ("string", "String", "str", "Str", "value", "Value", "text", "Text")
@@ -178,7 +179,7 @@ def _normalize_proxy_value(proxy: Any) -> str:
 
 
 class OperationGroupProxy:
-    def __init__(self, client: "Client869", group: str):
+    def __init__(self, client: "WechatAPIClient", group: str):
         self._client = client
         self._group = group
 
@@ -202,7 +203,7 @@ class OperationGroupProxy:
         return _caller
 
 
-class Client869:
+class WechatAPIClient(WechatAPIClientBase):
     DEFAULT_GROUPS = {
         "admin",
         "applet",
@@ -277,7 +278,7 @@ class Client869:
         self._media_cache_mem: Dict[str, str] = {}
         self._media_cache_lock = threading.Lock()
 
-        # new_msg_id(svrid) -> msg_id 映射，供引用消息按 svrid 反查 869 msg_id
+        # new_msg_id(svrid) -> msg_id 映射，供引用消息按 svrid 反查客户端 msg_id
         self._msg_id_map: Dict[str, str] = {}
         self._msg_id_map_lock = threading.Lock()
         self._msg_id_map_path = os.path.join(os.path.dirname(self.media_cache_dir), "media_msg_id_map.json")
@@ -302,7 +303,7 @@ class Client869:
         """判断当前消息是否应走 ReplyRouter（多平台适配器队列）。
 
         约定：
-        - 默认平台为 wechat（无前缀/或普通 wxid/chatroom），应直发 869；
+        - 默认平台为 wechat（无前缀/或普通 wxid/chatroom），应直发本客户端；
         - 带前缀的平台（如 wxfilehelper-xxx、tg-xxx、web-xxx）才走 ReplyRouter。
         """
         if not self.reply_router:
@@ -319,7 +320,7 @@ class Client869:
         return self.token_key or self.poll_key or self.auth_key
 
     def _resolve_request_key(self, path: str, provided: Optional[str]) -> str:
-        """解析 869 请求 key。
+        """解析请求 key。
 
         约定：
         - 业务接口优先使用授权码（token_key/poll_key/auth_key），避免误用 admin_key；
@@ -422,9 +423,9 @@ class Client869:
 
             self._operation_map_loaded = True
             if self._operation_map:
-                logger.info("Client869 已加载 {} 条 Swagger 接口映射", len(self._operation_map))
+                logger.info("WechatAPIClient 已加载 {} 条 Swagger 接口映射", len(self._operation_map))
             else:
-                logger.warning("Client869 未加载到 Swagger 映射，动态调用将使用路径推断")
+                logger.warning("WechatAPIClient 未加载到 Swagger 映射，动态调用将使用路径推断")
 
     async def _resolve_operation(
         self,
@@ -489,24 +490,32 @@ class Client869:
             self._log_response_preview(request_method, request_path, payload)
             if raise_for_api_error:
                 code = payload.get("Code")
+                text = payload.get("Text") or payload.get("Message") or payload.get("message") or ""
+                success_flag = payload.get("Success")
+
                 if code not in (None, 0, 200):
-                    raise RuntimeError(
-                        payload.get("Text")
-                        or payload.get("Message")
-                        or payload.get("message")
-                        or "869 接口请求失败"
-                    )
-                if code is None and payload.get("Success") is False:
-                    raise RuntimeError(
-                        payload.get("Text")
-                        or payload.get("Message")
-                        or payload.get("message")
-                        or "869 接口请求失败"
-                    )
+                    raise RuntimeError(text or f"协议接口请求失败: Code={code}")
+
+                if success_flag is False:
+                    if self._is_send_related_path(request_path):
+                        if self._looks_like_send_ack(payload):
+                            logger.warning(
+                                "WechatAPIClient 发送接口 Success=false 但有发送回执(可能协议 quirk): path={} text={}",
+                                request_path,
+                                text,
+                            )
+                        else:
+                            raise RuntimeError(
+                                text or f"协议发送失败: path={request_path} Success=false 无回执"
+                            )
+                    else:
+                        raise RuntimeError(
+                            text or f"协议接口请求失败: path={request_path} Success=false"
+                        )
         elif self._is_send_related_path(request_path):
             text_preview = str(payload).strip().replace("\n", " ")
             logger.warning(
-                "Client869 响应: {} {} 非JSON payload={}",
+                "WechatAPIClient 响应: {} {} 非JSON payload={}",
                 request_method,
                 request_path,
                 text_preview[:200],
@@ -558,7 +567,7 @@ class Client869:
             else:
                 receiver = str(body.get("ToUserName") or "")
 
-        logger.info("Client869 请求: {} {} to={} type={}", method, path, receiver, msg_type)
+        logger.info("WechatAPIClient 请求: {} {} to={} type={}", method, path, receiver, msg_type)
 
     def _log_response_preview(self, method: str, path: str, payload: Dict[str, Any]) -> None:
         if not self._is_send_related_path(path):
@@ -573,7 +582,7 @@ class Client869:
             send_success = data[0].get("isSendSuccess")
 
         logger.info(
-            "Client869 响应: {} {} code={} success={} isSendSuccess={} text={}",
+            "WechatAPIClient 响应: {} {} code={} success={} isSendSuccess={} text={}",
             method,
             path,
             code,
@@ -1040,7 +1049,7 @@ class Client869:
         uuid = state.get("uuid", "")
 
         if print_qr and qr_url:
-            logger.info("869 二维码链接: {}", qr_url)
+            logger.info("二维码链接: {}", qr_url)
 
         summary.update(state)
         summary.update(
@@ -1070,7 +1079,7 @@ class Client869:
         )
         if result.get("ok"):
             return str(result.get("uuid", "")), str(result.get("qrcode_url", ""))
-        raise RuntimeError(str(result.get("text") or "获取 869 二维码失败"))
+        raise RuntimeError(str(result.get("text") or "获取二维码失败"))
 
     async def check_login_uuid(self, uuid: str, device_id: str = "") -> Tuple[bool, Union[Dict[str, Any], int, str]]:
         check_key = self.token_key or self.poll_key or self.auth_key or uuid
@@ -1218,7 +1227,7 @@ class Client869:
             candidate = result.get("uuid") or result.get("qrcode_url") or ""
             return str(candidate or "")
         except Exception as error:
-            logger.debug("869 唤醒登录失败: {}", error)
+            logger.debug("唤醒登录失败: {}", error)
             return ""
 
     async def try_wakeup_login(self, *, attempts: int = 6, interval_seconds: float = 2.0) -> bool:
@@ -1276,7 +1285,7 @@ class Client869:
 
     @classmethod
     def _normalize_contract_detail_item(cls, item: Dict[str, Any]) -> Dict[str, Any]:
-        """将 869 联系人详情统一补齐为旧 Client 约定字段（尽量不破坏原始结构）。"""
+        """将联系人详情统一补齐为约定字段（尽量不破坏原始结构）。"""
         if not isinstance(item, dict):
             return item
 
@@ -1366,18 +1375,18 @@ class Client869:
 
         result: Dict[str, Any] = dict(payload)
 
-        # 869 Swagger 常见返回：Data.ContactList 为 dict（内部字段为 lowerCamelCase）
+        # Swagger 常见返回：Data.ContactList 为 dict（内部字段为 lowerCamelCase）
         embedded = result.get("ContactList")
         if isinstance(embedded, dict):
             result = dict(embedded)
 
-        # seq 字段：869 Swagger 使用 CurrentChatRoomContactSeq（R 大写），旧逻辑常用 CurrentChatroomContactSeq
+        # seq 字段：Swagger 使用 CurrentChatRoomContactSeq（R 大写），旧逻辑常用 CurrentChatroomContactSeq
         if "CurrentChatroomContactSeq" not in result and "CurrentChatRoomContactSeq" in result:
             result["CurrentChatroomContactSeq"] = result.get("CurrentChatRoomContactSeq")
         if "CurrentChatRoomContactSeq" not in result and "CurrentChatroomContactSeq" in result:
             result["CurrentChatRoomContactSeq"] = result.get("CurrentChatroomContactSeq")
 
-        # 869 lowerCamelCase -> 旧字段
+        # lowerCamelCase -> 约定字段
         if "CurrentWxcontactSeq" not in result and "currentWxcontactSeq" in result:
             result["CurrentWxcontactSeq"] = result.get("currentWxcontactSeq")
         if "CurrentChatRoomContactSeq" not in result and "currentChatRoomContactSeq" in result:
@@ -1388,7 +1397,7 @@ class Client869:
         # 联系人列表：可能是 ContactUsernameList 或 ContactList
         usernames = result.get("ContactUsernameList")
         if not isinstance(usernames, list):
-            # 869 lowerCamelCase contactUsernameList
+            # lowerCamelCase contactUsernameList
             camel_list = result.get("contactUsernameList")
             if isinstance(camel_list, list):
                 result["ContactUsernameList"] = [str(x).strip() for x in camel_list if str(x).strip()]
@@ -1457,11 +1466,11 @@ class Client869:
     ) -> Dict[str, Any]:
         """获取全部通讯录联系人。
 
-        869 Swagger 仅暴露 `/friend/GetContactList`（基于 seq 分批拉取），因此这里做“自动翻页”合并，
+        Swagger 仅暴露 `/friend/GetContactList`（基于 seq 分批拉取），因此这里做“自动翻页”合并，
         保证上层（管理后台/框架）拿到的是完整 `ContactUsernameList`。
 
         参数 offset/limit 为框架兼容保留：
-        - 869 端不支持 Offset/Limit 入参，本实现会在本地对合并后的结果做切片；
+        - 协议端不支持 Offset/Limit 入参，本实现会在本地对合并后的结果做切片；
         - 若 limit > 0，则最多返回 limit 条（从 offset 开始）。
         """
 
@@ -1514,7 +1523,7 @@ class Client869:
             if limit and offset >= 0 and len(merged) >= offset + limit:
                 break
 
-        # 兼容 offset/limit（869 服务端不支持，改为本地切片）
+        # 兼容 offset/limit（网关服务端不支持，改为本地切片）
         start = max(int(offset or 0), 0)
         if limit and int(limit) > 0:
             sliced = merged[start : start + int(limit)]
@@ -1633,7 +1642,7 @@ class Client869:
                 return [x for x in members if isinstance(x, dict)]
             return []
 
-        # 869 Swagger: /group/GetChatroomMemberDetail
+        # 网关 Swagger: /group/GetChatroomMemberDetail
         detail_data = await self.call_path("/group/GetChatroomMemberDetail", body={"ChatRoomName": group_wxid})
         members = _extract_members(detail_data)
         if members:
@@ -1783,9 +1792,9 @@ class Client869:
         return []
 
     async def download_emoji(self, md5: str) -> Dict[str, Any]:
-        """兼容旧客户端：下载表情（869 需要传 msg_type=47 的 xml_content）。"""
+        """兼容旧客户端：下载表情（网关需要传 msg_type=47 的 xml_content）。"""
         if "<" not in str(md5):
-            logger.warning("Client869 download_emoji 收到非 XML 参数，无法调用 869 DownloadEmojiGif")
+            logger.warning("WechatAPIClient download_emoji 收到非 XML 参数，无法调用网关 DownloadEmojiGif")
             return {"Success": False, "Message": "download_emoji 需要表情消息 XML（msg_type=47）"}
         data = await self.call_path("/message/DownloadEmojiGif", body={"xml_content": str(md5)})
         return data if isinstance(data, dict) else {"Data": data}
@@ -1888,7 +1897,7 @@ class Client869:
     def _extract_send_tuple(data: Any) -> Tuple[int, int, int]:
         now = int(time.time())
 
-        # 869 的部分接口返回 Data 为 list，元素中包含 resp.chat_send_ret_list
+        # 网关部分接口返回 Data 为 list，元素中包含 resp.chat_send_ret_list
         if isinstance(data, list) and data:
             first = data[0]
             if isinstance(first, dict):
@@ -1958,7 +1967,16 @@ class Client869:
             ]
         }
         data = await self.call_path("/message/SendTextMessage", body=payload)
-        return self._extract_send_tuple(data)
+        result = self._extract_send_tuple(data)
+        self._record_outbound(
+            to_wxid=wxid,
+            content=content,
+            success=self._looks_like_send_ack(data),
+            error="",
+            client_msg_id=(result[0] or result[2]) if result else 0,
+            route_type="direct",
+        )
+        return result
 
     async def send_text(self, wxid: str, content: str, at: Union[list[str], str] = "") -> Tuple[int, int, int]:
         """兼容旧插件：send_text -> send_text_message。"""
@@ -1998,7 +2016,7 @@ class Client869:
                     data.get("Success") if "Success" in data else data.get("success")
                 )
                 if success is False:
-                    # 869 常见：Success=false 但 isSendSuccess=true / 有 msg id
+                    # 网关常见：Success=false 但 isSendSuccess=true / 有 msg id
                     if self._looks_like_send_ack(data):
                         return True
                     return False
@@ -2010,7 +2028,7 @@ class Client869:
                 body={"imageContent": image_base64},
             )
         except Exception as exc:
-            logger.warning("Client869 UploadImageToCDN 调用异常，回退 SendImageMessage: {}", exc)
+            logger.warning("WechatAPIClient UploadImageToCDN 调用异常，回退 SendImageMessage: {}", exc)
             upload_data = None
 
         if isinstance(upload_data, dict):
@@ -2041,7 +2059,7 @@ class Client869:
                 try:
                     forward_data = await self.call_path("/message/ForwardImageMessage", body=forward_payload)
                 except Exception as exc:
-                    logger.warning("Client869 ForwardImageMessage 调用异常，回退直发: {}", exc)
+                    logger.warning("WechatAPIClient ForwardImageMessage 调用异常，回退直发: {}", exc)
                     forward_data = None
                 if forward_data is not None:
                     wrapped = _wrap_result(forward_data, upload=upload_data)
@@ -2049,7 +2067,7 @@ class Client869:
                         return wrapped
                     last_result = wrapped
                     logger.warning(
-                        "Client869 ForwardImageMessage 未确认成功，回退 SendImageMessage: {}",
+                        "WechatAPIClient ForwardImageMessage 未确认成功，回退 SendImageMessage: {}",
                         self._summarize_image_send_result(forward_data),
                     )
 
@@ -2069,18 +2087,18 @@ class Client869:
                 return wrapped
             last_result = wrapped
             logger.warning(
-                "Client869 SendImageMessage 未确认成功，回退 SendImageNewMessage: {}",
+                "WechatAPIClient SendImageMessage 未确认成功，回退 SendImageNewMessage: {}",
                 self._summarize_image_send_result(fallback_data),
             )
         except Exception as exc:
-            logger.warning("Client869 SendImageMessage 调用异常，回退 SendImageNewMessage: {}", exc)
+            logger.warning("WechatAPIClient SendImageMessage 调用异常，回退 SendImageNewMessage: {}", exc)
             fallback_data = None
 
         try:
             new_data = await self.call_path("/message/SendImageNewMessage", body=payload)
             return _wrap_result(new_data)
         except Exception as exc:
-            logger.warning("Client869 SendImageNewMessage 调用异常: {}", exc)
+            logger.warning("WechatAPIClient SendImageNewMessage 调用异常: {}", exc)
             if last_result is not None:
                 return last_result if isinstance(last_result, dict) else {"Data": last_result}
             if fallback_data is not None:
@@ -2479,7 +2497,7 @@ class Client869:
             try:
                 raw_payload = await self.request(path, body=payload)
             except Exception as exc:
-                logger.warning("Client869 {} 调用异常 payload={}: {}", path, payload, exc)
+                logger.warning("WechatAPIClient {} 调用异常 payload={}: {}", path, payload, exc)
                 return None
 
             if isinstance(raw_payload, dict):
@@ -2491,7 +2509,7 @@ class Client869:
                 success = self._coerce_optional_bool(raw_payload.get("Success"))
                 if success is True:
                     return True
-                # 869 的大量接口会返回 Success=false 但 Code=200/0 且实际成功（见 send 系列日志）。
+                # 网关大量接口会返回 Success=false 但 Code=200/0 且实际成功（见 send 系列日志）。
                 # 对撤回来说，只要 Code 正常且 Text 为空/非错误，视为成功，避免“已撤回但返回失败”。
                 if code in (0, 200):
                     lowered = str(text).strip().lower()
@@ -2511,7 +2529,7 @@ class Client869:
                 return True
 
         logger.error(
-            "Client869 revoke_message 失败: wxid={}, client_msg_id={}, create_time={}, new_msg_id={}",
+            "WechatAPIClient revoke_message 失败: wxid={}, client_msg_id={}, create_time={}, new_msg_id={}",
             wxid,
             client_msg_id_raw,
             create_time_int,
@@ -2578,14 +2596,14 @@ class Client869:
         return self._looks_like_send_ack(data)
 
     async def check_database(self) -> bool:
-        """兼容旧客户端：检查数据库状态（869退化为登录态探测）。"""
+        """兼容旧客户端：检查数据库状态（网关退化为登录态探测）。"""
         try:
             return bool(await self.is_logged_in(self.wxid or None))
         except Exception:
             return False
 
     async def get_auto_heartbeat_status(self) -> bool:
-        """兼容旧客户端：自动心跳状态（869退化为登录态探测）。"""
+        """兼容旧客户端：自动心跳状态（网关退化为登录态探测）。"""
         try:
             return bool(await self.is_logged_in(self.wxid or None))
         except Exception:
@@ -2668,7 +2686,7 @@ class Client869:
         return ""
 
     async def _send_cdn_download(self, aes_key: str, file_url: str, file_type: int) -> str:
-        """调用 869 Swagger 的 /message/SendCdnDownload，返回 base64(FileData)。
+        """调用网关 Swagger 的 /message/SendCdnDownload，返回 base64(FileData)。
 
         file_type:
           - 2: 图片高清
@@ -2724,7 +2742,7 @@ class Client869:
         return base64.b64encode(image_bytes).decode() if image_bytes else ""
 
     async def upload_file(self, file_data: Union[str, bytes, os.PathLike]) -> Dict[str, Any]:
-        """上传文件并返回 mediaId 等信息（优先走 869 Swagger 接口）。"""
+        """上传文件并返回 mediaId 等信息（优先走网关 Swagger 接口）。"""
         file_base64 = self._coerce_binary_to_base64(file_data)
         response = await self.request("/other/UploadAppAttach", method="POST", body={"fileData": file_base64})
         if not isinstance(response, dict):
@@ -2743,7 +2761,7 @@ class Client869:
     def _media_cache_filepath(self, key: str) -> str:
         return os.path.join(self.media_cache_dir, key)
 
-    # ── msg_id 映射（new_msg_id/svrid -> 869 msg_id） ─────────────
+    # ── msg_id 映射（new_msg_id/svrid -> 网关 msg_id） ─────────────
 
     def _load_msg_id_map(self) -> None:
         try:
@@ -2764,7 +2782,7 @@ class Client869:
             pass
 
     def register_msg_ids(self, msg_id, new_msg_id) -> None:
-        """记录 869 消息 msg_id 与 svrid(new_msg_id) 的映射，用于引用消息反查。"""
+        """记录网关消息 msg_id 与 svrid(new_msg_id) 的映射，用于引用消息反查。"""
         if not msg_id or not new_msg_id:
             return
         svrid = str(new_msg_id).strip()
@@ -2776,8 +2794,8 @@ class Client869:
                 self._msg_id_map[svrid] = mid
                 self._save_msg_id_map()
 
-    def resolve_869_msg_id(self, msg_id) -> str:
-        """若传入的是 svrid(new_msg_id)，反查得到 869 的 uint32 msg_id；原样返回 msg_id。"""
+    def resolve_gateway_msg_id(self, msg_id) -> str:
+        """若传入的是 svrid(new_msg_id)，反查得到网关的 uint32 msg_id；原样返回 msg_id。"""
         raw = str(msg_id).strip()
         if not raw:
             return raw
@@ -2859,9 +2877,9 @@ class Client869:
         cache_key = _sanitize_cache_key(f"video_{msg_id}")
         cached = self._media_cache_get(cache_key)
         if cached:
-            logger.info("[Client869] download_video 缓存命中 key={} len={}", cache_key, len(cached))
+            logger.info("[WechatAPIClient] download_video 缓存命中 key={} len={}", cache_key, len(cached))
             return cached
-        logger.info("[Client869] download_video 未命中，开始下载 key={}", cache_key)
+        logger.info("[WechatAPIClient] download_video 未命中，开始下载 key={}", cache_key)
 
         # 优先使用 CDN 下载（FileType=4 为视频）
         if cdnvideourl and aeskey:
@@ -2869,15 +2887,15 @@ class Client869:
                 result = await self._send_cdn_download(aeskey, cdnvideourl, 4)
                 if result:
                     self._media_cache_put(cache_key, result)
-                    logger.info("[Client869] download_video CDN 下载成功 key={} len={}", cache_key, len(result))
+                    logger.info("[WechatAPIClient] download_video CDN 下载成功 key={} len={}", cache_key, len(result))
                     return result
-                logger.warning("[Client869] download_video CDN 下载失败，回退 GetMsgVideo")
+                logger.warning("[WechatAPIClient] download_video CDN 下载失败，回退 GetMsgVideo")
             except Exception as e:
-                logger.warning("[Client869] download_video CDN 下载异常: {}", e)
+                logger.warning("[WechatAPIClient] download_video CDN 下载异常: {}", e)
 
         # 回退到 GetMsgVideo 分段下载
         fallback_payload = {
-            "MsgId": _safe_int(self.resolve_869_msg_id(msg_id)),
+            "MsgId": _safe_int(self.resolve_gateway_msg_id(msg_id)),
             "FromUserName": self.wxid,
             "ToUserName": self.wxid,
             "TotalLen": 0,
@@ -2885,7 +2903,7 @@ class Client869:
             "Section": {"DataLen": 0, "StartPos": 0},
         }
         logger.info(
-            "[Client869] download_video fallback msg_id={} resolved={}",
+            "[WechatAPIClient] download_video fallback msg_id={} resolved={}",
             msg_id,
             fallback_payload["MsgId"],
         )
@@ -2894,11 +2912,11 @@ class Client869:
             base64_payload = self._extract_base64_from_payload(data)
             if base64_payload:
                 self._media_cache_put(cache_key, base64_payload)
-                logger.info("[Client869] download_video fallback 成功 key={} len={}", cache_key, len(base64_payload))
+                logger.info("[WechatAPIClient] download_video fallback 成功 key={} len={}", cache_key, len(base64_payload))
                 return base64_payload
-            logger.warning("[Client869] download_video fallback 无数据 key={} resp={}", cache_key, str(data)[:200])
+            logger.warning("[WechatAPIClient] download_video fallback 无数据 key={} resp={}", cache_key, str(data)[:200])
         except Exception as e:
-            logger.warning("[Client869] download_video fallback 异常 key={} err={}", cache_key, e)
+            logger.warning("[WechatAPIClient] download_video fallback 异常 key={} err={}", cache_key, e)
         return ""
 
     async def download_attach(self, attach_id: str) -> str:
@@ -3031,4 +3049,4 @@ class Client869:
 
     @staticmethod
     async def wav_byte_to_silk_base64(wav_byte: bytes) -> str:
-        return base64.b64encode(await Client869.wav_byte_to_silk_byte(wav_byte)).decode()
+        return base64.b64encode(await WechatAPIClient.wav_byte_to_silk_byte(wav_byte)).decode()

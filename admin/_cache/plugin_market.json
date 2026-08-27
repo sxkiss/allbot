@@ -51,7 +51,7 @@
       },
       {
         "name": "AutoSummary",
-        "description": "快速总结文本内容和卡片消息，让你的 XYBotV2 瞬间变身效率助手！🚀\r\nAutoSummary 是一款为 XYBotV2 设计的插件，旨在帮助用户快速总结微信聊天中的文本内容和卡片消息。它能够：\r\n\r\n✨ 自动提取文本消息中的链接，并抓取网页内容进行总结。\r\n📰 解析微信卡片消息 (XML 消息)，例如公众号文章分享等，并进行内容概括。\r\n🤖 集成 Dify API，利用强大的 AI 能力生成高质量的摘要。\r\n🛡️ 支持黑名单和白名单，灵活控制插件处理的链接范围。\r\n无论是快速了解群内分享的文章内容，还是概括长篇对话的重点，AutoSummary 都能帮你节省宝贵的时间！",
+        "description": "快速总结文本内容和卡片消息，让你的 AllBotV2 瞬间变身效率助手！🚀\r\nAutoSummary 是一款为 AllBotV2 设计的插件，旨在帮助用户快速总结微信聊天中的文本内容和卡片消息。它能够：\r\n\r\n✨ 自动提取文本消息中的链接，并抓取网页内容进行总结。\r\n📰 解析微信卡片消息 (XML 消息)，例如公众号文章分享等，并进行内容概括。\r\n🤖 集成 Dify API，利用强大的 AI 能力生成高质量的摘要。\r\n🛡️ 支持黑名单和白名单，灵活控制插件处理的链接范围。\r\n无论是快速了解群内分享的文章内容，还是概括长篇对话的重点，AutoSummary 都能帮你节省宝贵的时间！",
         "author": "老夏的金库",
         "version": "1.3.0",
         "github_url": "https://github.com/NanSsye/AutoSummary",
@@ -115,10 +115,10 @@
       },
       {
         "name": "FastGPT",
-        "description": "一个基于 XYBot 框架的插件，用于集成 FastGPT 知识库问答功能，支持文本对话和图片分析。\r\n\r\n本项目由小x宝社区（https://github.com/pancrePal-xiaoyibao/pancrePal-xiaoyibao）开发者Sam贡献，目的是服务患者在Fastgpt RAG平台上，借助优秀的多模态模型能力（stepfun- step1o-Vision等）方便的进行病情对话和图像报告分析。",
+        "description": "一个基于 AllBot 框架的插件，用于集成 FastGPT 知识库问答功能，支持文本对话和图片分析。\r\n\r\n本项目由小x宝社区（https://github.com/pancrePal-xiaoyibao/pancrePal-xiaoyibao）开发者Sam贡献，目的是服务患者在Fastgpt RAG平台上，借助优秀的多模态模型能力（stepfun- step1o-Vision等）方便的进行病情对话和图像报告分析。",
         "author": "小X宝社区",
         "version": "1.5.0",
-        "github_url": "https://github.com/NanSsye/FastGPT-XYBotV2",
+        "github_url": "https://github.com/NanSsye/FastGPT-AllBotV2",
         "icon": null,
         "id": "f09bc645-df26-4403-9363-106503239295",
         "status": "approved",
@@ -179,7 +179,7 @@
       },
       {
         "name": "Reminder",
-        "description": "这个备忘录插件是为 XYBotV2 平台量身打造的，旨在帮助用户创建和管理个性化备忘录。它支持各种时间格式，还能与其他插件联动，并提供全面的管理功能。再也不用担心忘记重要的事情啦！😎\r\n\r\n功能特性\r\n灵活的时间格式 🕒：支持多种时间格式，包括指定时间、相对时间和循环提醒，想怎么设置就怎么设置。\r\n插件联动 🤝：与其他 XYBotV2 插件无缝集成，允许备忘录触发其他插件的操作。比如，提醒你查看天气、新闻等等。\r\n全面的管理 🗂️：提供存储、查询和删除备忘录的命令，支持单个和批量操作，管理起来So easy！\r\n用户友好的界面 🙋：提供清晰的说明和示例，指导用户设置提醒，再也不怕不会用啦！\r\n积分控制 💰：集成积分系统来管理使用情况，管理员和白名单用户还可以享受免积分特权，贴心不贴心！",
+        "description": "这个备忘录插件是为 AllBotV2 平台量身打造的，旨在帮助用户创建和管理个性化备忘录。它支持各种时间格式，还能与其他插件联动，并提供全面的管理功能。再也不用担心忘记重要的事情啦！😎\r\n\r\n功能特性\r\n灵活的时间格式 🕒：支持多种时间格式，包括指定时间、相对时间和循环提醒，想怎么设置就怎么设置。\r\n插件联动 🤝：与其他 AllBotV2 插件无缝集成，允许备忘录触发其他插件的操作。比如，提醒你查看天气、新闻等等。\r\n全面的管理 🗂️：提供存储、查询和删除备忘录的命令，支持单个和批量操作，管理起来So easy！\r\n用户友好的界面 🙋：提供清晰的说明和示例，指导用户设置提醒，再也不怕不会用啦！\r\n积分控制 💰：集成积分系统来管理使用情况，管理员和白名单用户还可以享受免积分特权，贴心不贴心！",
         "author": "老夏的金库",
         "version": "1.3.0",
         "github_url": "https://github.com/NanSsye/Reminder.git",
@@ -202,7 +202,7 @@
       },
       {
         "name": "StockAnalysis",
-        "description": "一个专为 XYBotv2 设计的强大微信插件，可以直接在您的聊天界面中实现实时股票数据分析和投资建议。此插件利用 akshare 库获取股票数据，并可选择与 Dify AI 服务集成，以进行深入的分析和建议。",
+        "description": "一个专为 AllBotv2 设计的强大微信插件，可以直接在您的聊天界面中实现实时股票数据分析和投资建议。此插件利用 akshare 库获取股票数据，并可选择与 Dify AI 服务集成，以进行深入的分析和建议。",
         "author": "老夏的金库",
         "version": "1.0.0",
         "github_url": "https://github.com/NanSsye/StockAnalysis.git",
@@ -350,7 +350,7 @@
       },
       {
         "name": "MemeGen",
-        "description": "MemeGen是XYBotV2、xxxBot信机器人的一个表情包生成插件，可以在微信群聊中根据用户头像生成各种有趣的表情包。\r\n注意！！！！\r\n安装meme-generator库：\r\n\r\npip install meme_generator==0.1.11\r\n下载表情资源：\r\n\r\nmeme download\r\n基础命令\r\n他人单人表情：@用户名 触发词（如\"@张三 摸\"）- 使用被@用户的头像\r\n双人表情：@用户A 触发词 @用户B（如\"@张三 亲 @李四\"）- 使用两位被@用户的头像\r\n查看表情列表：发送\"表情列表\"或\"表情菜单\"",
+        "description": "MemeGen是AllBotV2、xxxBot信机器人的一个表情包生成插件，可以在微信群聊中根据用户头像生成各种有趣的表情包。\r\n注意！！！！\r\n安装meme-generator库：\r\n\r\npip install meme_generator==0.1.11\r\n下载表情资源：\r\n\r\nmeme download\r\n基础命令\r\n他人单人表情：@用户名 触发词（如\"@张三 摸\"）- 使用被@用户的头像\r\n双人表情：@用户A 触发词 @用户B（如\"@张三 亲 @李四\"）- 使用两位被@用户的头像\r\n查看表情列表：发送\"表情列表\"或\"表情菜单\"",
         "author": "阿孟",
         "version": "1.0.0",
         "github_url": "https://github.com/Vita0519/MemeGen",
@@ -961,7 +961,7 @@
       },
       {
         "name": "Webhook_XXX",
-        "description": "-Webhook 对接插件是为在原始框架上实现dow框架回调功能的替代性插件，您可以在原始框架基础上设置回调地址，对接外部程序进行信息处理。 -目前可实现文本消息、图片消息、语音消息、文件消息、引用消息的传递，其他需要信息传递的内容请自行对接 -语音消息传递请查看使用方法部分对XYBot.py部分代码进行调整，传递出的语音通过api获取的base64为silk格式 -引用消息无法引用语音消息的内容，针对图片、文件类型的引用消息，因无法获取引用消息的旧msgid，导致无法通过api重新下载数据，请根据引用数据中对应的值进行数据库索引处理 -如需配置多个回调地址请自行复制插件修改插件名称，配置多个插件进行设置",
+        "description": "-Webhook 对接插件是为在原始框架上实现dow框架回调功能的替代性插件，您可以在原始框架基础上设置回调地址，对接外部程序进行信息处理。 -目前可实现文本消息、图片消息、语音消息、文件消息、引用消息的传递，其他需要信息传递的内容请自行对接 -语音消息传递请查看使用方法部分对AllBot.py部分代码进行调整，传递出的语音通过api获取的base64为silk格式 -引用消息无法引用语音消息的内容，针对图片、文件类型的引用消息，因无法获取引用消息的旧msgid，导致无法通过api重新下载数据，请根据引用数据中对应的值进行数据库索引处理 -如需配置多个回调地址请自行复制插件修改插件名称，配置多个插件进行设置",
         "author": "喵子柒",
         "version": "1.1.0",
         "github_url": "https://github.com/nanaaya98/Webhook_XXX",
@@ -1262,7 +1262,7 @@
       },
       {
         "name": "Moyu",
-        "description": "适用于allbot、xybot的摸鱼插件，🐟摸鱼提醒小助手",
+        "description": "适用于allbot、allbot的摸鱼插件，🐟摸鱼提醒小助手",
         "author": "Felix",
         "version": "1.0.0",
         "github_url": "https://github.com/Felix-sec/Moyu",

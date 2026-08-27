@@ -275,7 +275,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
         icon="bi-speedometer2",
     ),
     _section(
-        "XYBot",
+        "AllBot",
         "机器人核心",
         "机器人身份、管理员、数据库与常用运行开关。",
         [
@@ -293,7 +293,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
                 description="留空表示直连；填写时请以 / 结尾。",
                 placeholder="https://ghfast.top/",
             ),
-            _field("XYBotDB-url", "主数据库地址", "text", advanced=True),
+            _field("AllBotDB-url", "主数据库地址", "text", advanced=True),
             _field("msgDB-url", "消息数据库地址", "text", advanced=True),
             _field("keyvalDB-url", "键值数据库地址", "text", advanced=True),
             _field("admins", "管理员 wxid", "list", description="可从消息日志中获取。", item_label="wxid"),
@@ -393,7 +393,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
 
 
 MESSAGE_FILTER_KEYS = ("ignore-mode", "whitelist", "blacklist")
-MESSAGE_FILTER_CANDIDATES = ("XYBot", "AutoRestart", "")
+MESSAGE_FILTER_CANDIDATES = ("AllBot", "AutoRestart", "")
 
 
 def get_project_root() -> Path:
@@ -503,7 +503,7 @@ def _resolve_message_filter_owner(document) -> str:
             continue
         if any(key in container for key in MESSAGE_FILTER_KEYS):
             return owner
-    return "XYBot"
+    return "AllBot"
 
 
 def _get_message_filter_values(document) -> Dict[str, Any]:
@@ -524,7 +524,7 @@ def _get_message_filter_values(document) -> Dict[str, Any]:
 
 def _set_message_filter_values(document, values: Dict[str, Any]) -> None:
     owner = _resolve_message_filter_owner(document)
-    preferred_owner = "XYBot"
+    preferred_owner = "AllBot"
     if owner and owner != preferred_owner:
         old_container = document if owner == "" else document.get(owner)
         if _is_table_like(old_container):

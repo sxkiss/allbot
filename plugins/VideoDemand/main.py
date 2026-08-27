@@ -30,7 +30,7 @@ class VideoDemand(PluginBase):
     """视频点播插件"""
 
     description = "视频点播插件 - 支持多类型视频点播"
-    author = "XYBot"
+    author = "AllBot"
     version = "1.0.0"
 
     def __init__(self):

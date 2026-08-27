@@ -159,11 +159,11 @@ async def main():
                     "redis-password": app_config.wechat_api.redis_password,
                     "redis-db": app_config.wechat_api.redis_db
                 },
-                "XYBot": {
-                    "version": app_config.xybot.version,
-                    "auto-restart": app_config.xybot.auto_restart,
-                    "admins": app_config.xybot.admins,
-                    "disabled-plugins": app_config.xybot.disabled_plugins
+                "AllBot": {
+                    "version": app_config.allbot.version,
+                    "auto-restart": app_config.allbot.auto_restart,
+                    "admins": app_config.allbot.admins,
+                    "disabled-plugins": app_config.allbot.disabled_plugins
                 }
             }
         
@@ -177,7 +177,7 @@ async def main():
         logger.info(f"📊 配置详情:")
         logger.info(f"  - API端口: {app_config.wechat_api.port}")
         logger.info(f"  - 管理后台端口: {app_config.admin.port}")
-        logger.info(f"  - 自动重启: {app_config.xybot.auto_restart}")
+        logger.info(f"  - 自动重启: {app_config.allbot.auto_restart}")
         
         # 设置日志级别
         log_level = config.get("Admin", {}).get("log_level", "INFO")
@@ -220,7 +220,7 @@ async def main():
 
             # 添加文件日志处理器
             logger.add(
-                "logs/XYBot_{time}.log",
+                "logs/AllBot_{time}.log",
                 format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {extra[module_path]}:{line} | {message}",
                 encoding="utf-8",
                 enqueue=True,
@@ -330,7 +330,7 @@ async def main():
     logger.info("linuxService 已由 entrypoint.sh 启动")
 
     # 检查是否启用自动重启
-    auto_restart = config.get("XYBot", {}).get("auto-restart", False)
+    auto_restart = config.get("AllBot", {}).get("auto-restart", False)
 
     if auto_restart:
         # 设置监控

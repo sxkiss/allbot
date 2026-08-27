@@ -1,6 +1,6 @@
 """
 @input: AppConfig 配置与 ReplyRouter/ReplyDispatcher 组件（含 869 admin-key/ws-url/login-qrcode-proxy）
-@output: 根据协议版本初始化微信客户端并接入回复路由（869 会注入拉码代理配置到 Client869）
+@output: 初始化统一微信客户端并接入回复路由（注入拉码代理配置到客户端）
 @position: bot_core 启动流程中的客户端构建层
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -11,7 +11,6 @@ from typing import Any
 from loguru import logger
 
 from WechatAPI.Client import WechatAPIClient
-from WechatAPI.Client869 import Client869
 from utils.reply_router import ReplyRouter, ReplyDispatcher, has_enabled_adapters
 from utils.config_manager import AppConfig
 
@@ -40,26 +39,22 @@ class ClientInitializer:
         logger.debug("WechatAPI 服务器地址: {}", api_config.host)
         logger.debug("Redis 主机地址: {}:{}", api_config.redis_host, api_config.redis_port)
 
-        # 读取协议版本设置
+        # 读取协议版本设置（仅作标识兼容，客户端统一为单一实现）
         protocol_version = self.config.protocol.version.lower()
         logger.info(f"使用协议版本: {protocol_version}")
 
-        if protocol_version == "869":
-            bot = Client869(
-                api_config.host,
-                api_config.port,
-                protocol_version=protocol_version,
-                admin_key=api_config.admin_key,
-                ws_url=api_config.ws_url,
-            )
-            bot.login_qrcode_proxy = api_config.login_qrcode_proxy or ""
-            logger.success("✅ 成功加载 Client869 客户端")
-        else:
-            bot = WechatAPIClient(api_config.host, api_config.port, protocol_version=protocol_version)
-        logger.success(f"✅ 成功加载统一 WechatAPIClient 客户端，protocol_version={getattr(bot, 'protocol_version', None)}")
+        bot = WechatAPIClient(
+            api_config.host,
+            api_config.port,
+            protocol_version=protocol_version,
+            admin_key=api_config.admin_key,
+            ws_url=api_config.ws_url,
+        )
+        bot.login_qrcode_proxy = api_config.login_qrcode_proxy or ""
+        logger.success("✅ 成功加载统一 WechatAPIClient 客户端（单一实现，以网关协议为主）")
 
         # 设置客户端属性
-        bot.ignore_protect = self.config.xybot.ignore_protection
+        bot.ignore_protect = self.config.allbot.ignore_protection
 
         # 设置回复路由器
         self._setup_reply_router(bot)

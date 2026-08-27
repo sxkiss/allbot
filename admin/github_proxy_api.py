@@ -172,7 +172,7 @@ def _read_current_github_proxy() -> str:
     try:
         with open(_CONFIG_PATH, "rb") as f:
             config = tomllib.load(f)
-        value = config.get("XYBot", {}).get("github-proxy", "")
+        value = config.get("AllBot", {}).get("github-proxy", "")
         return _normalize_proxy_url(value) if value else ""
     except Exception as e:
         logger.warning(f"读取当前 github-proxy 失败: {e}")
@@ -195,7 +195,7 @@ def _write_github_proxy(value: str) -> None:
     value_literal = normalized.replace('"', '\\"')
     replacement_line = f'github-proxy = "{value_literal}"'
 
-    section_re = re.compile(r"(?ms)^\[XYBot\]\s*$.*?(?=^\[|\Z)")
+    section_re = re.compile(r"(?ms)^\[AllBot\]\s*$.*?(?=^\[|\Z)")
     match = section_re.search(content)
     if match:
         section = match.group(0)
@@ -211,12 +211,12 @@ def _write_github_proxy(value: str) -> None:
                 lines.insert(1, replacement_line + "\n")
                 section = "".join(lines)
             else:
-                section = f"[XYBot]\n{replacement_line}\n"
+                section = f"[AllBot]\n{replacement_line}\n"
 
         content = content[: match.start()] + section + content[match.end() :]
     else:
         suffix = "\n" if content and not content.endswith("\n") else ""
-        content = content + suffix + f"\n[XYBot]\n{replacement_line}\n"
+        content = content + suffix + f"\n[AllBot]\n{replacement_line}\n"
 
     _CONFIG_PATH.write_text(content, encoding="utf-8")
 

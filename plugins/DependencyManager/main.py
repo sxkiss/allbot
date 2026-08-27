@@ -199,7 +199,7 @@ class DependencyManager(PluginBase):
             return {"success": False, "error": "未配置插件市场地址"}
 
         headers = {
-            "User-Agent": "XYBot/DependencyManager",
+            "User-Agent": "AllBot/DependencyManager",
             "Content-Type": "application/json",
         }
         results = {}
@@ -260,7 +260,7 @@ class DependencyManager(PluginBase):
                 main_config = tomllib.load(f)
             
             # 读取 github-proxy 配置
-            self.github_proxy = main_config.get("XYBot", {}).get("github-proxy", "")
+            self.github_proxy = main_config.get("AllBot", {}).get("github-proxy", "")
             
             logger.critical(f"[DependencyManager] GitHub反代地址: '{self.github_proxy}'")
             
@@ -354,7 +354,7 @@ class DependencyManager(PluginBase):
 
         all_plugins = []
         headers = {
-            "User-Agent": "XYBot/DependencyManager",
+            "User-Agent": "AllBot/DependencyManager",
         }
         for base_url in base_urls:
             url = self._build_market_url(base_url, "/plugins/?status=approved")
@@ -928,7 +928,7 @@ class DependencyManager(PluginBase):
     # 直接作为目录名会导致加载失败。
 
     _PLUGIN_DIR_PREFIXES = (
-        "allbot-", "allbot_", "xybot-", "xybot_",
+        "allbot-", "allbot_", "allbot-", "allbot_",
         "plugin-", "plugin_", "plugins-", "plugins_",
     )
 

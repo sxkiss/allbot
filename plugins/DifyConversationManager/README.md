@@ -1,9 +1,9 @@
-# Dify 对话管理插件 💬 (适用于 XYBotV2)
+# Dify 对话管理插件 💬 (适用于 AllBotV2)
 
 <img src="https://github.com/user-attachments/assets/a2627960-69d8-400d-903c-309dbeadf125" width="400" height="600">
 ## 简介 🌟
 
-本插件为 XYBotV2 微信机器人提供 Dify (一个LLM应用开发平台) 对话管理功能。用户可以通过微信消息快捷地：
+本插件为 AllBotV2 微信机器人提供 Dify (一个LLM应用开发平台) 对话管理功能。用户可以通过微信消息快捷地：
 
 *   查看 Dify 中的对话列表 📝
 *   查看指定对话的历史消息 📜
@@ -15,14 +15,14 @@
 
 *   **命令式交互**: 通过简单的微信命令管理 Dify 对话。
 *   **配置灵活**: 详尽的配置项，满足不同需求。
-*   **异步处理**: 基于 `asyncio`，保证 XYBotV2 的流畅运行。
+*   **异步处理**: 基于 `asyncio`，保证 AllBotV2 的流畅运行。
 *   **轻量风控**: 插件本身不涉及高频操作，降低风控风险。
 
 ## 安装 🛠️
 
-1.  将 `DifyConversationManager` 文件夹复制到 XYBotV2 的 `plugins` 目录下。
+1.  将 `DifyConversationManager` 文件夹复制到 AllBotV2 的 `plugins` 目录下。
 2.  编辑 `plugins/DifyConversationManager/config.toml` 文件，配置 Dify API 密钥、服务器地址等信息。
-3.  重启 XYBotV2 即可生效。
+3.  重启 AllBotV2 即可生效。
 
 ## 配置 ⚙️ (plugins/DifyConversationManager/config.toml)
 
@@ -39,7 +39,7 @@ default-page-size = 20                         # 默认每页显示的条数
 
 # 命令设置
 command-prefix = "/dify" # 命令前缀
-command-tip = """-----XYBot-----
+command-tip = """-----AllBot-----
 📝 Dify对话管理助手
 
 支持的命令：

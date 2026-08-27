@@ -29,8 +29,8 @@ class PluginManager:
                 main_config = tomllib.load(f)
 
             # 安全地获取 'disabled-plugins' 配置
-            # 使用 .get("XYBot", {}).get("disabled-plugins") 防止因键不存在而引发 KeyError
-            disabled_plugins_setting = main_config.get("XYBot", {}).get(
+            # 使用 .get("AllBot", {}).get("disabled-plugins") 防止因键不存在而引发 KeyError
+            disabled_plugins_setting = main_config.get("AllBot", {}).get(
                 "disabled-plugins"
             )
 
@@ -560,7 +560,7 @@ class PluginManager:
                 config = tomllib.load(f)
 
             # 更新禁用插件列表
-            config["XYBot"]["disabled-plugins"] = self.excluded_plugins
+            config["AllBot"]["disabled-plugins"] = self.excluded_plugins
 
             # 写回配置文件
             with open("main_config.toml", "wb") as f:

@@ -1,6 +1,6 @@
 """
-@input: WechatAPIClient/Client869 实例、原始 AddMsg 消息字典与本地 files 缓存目录
-@output: 旧版 XYBot 消息处理实现（图片/语音/XML/文件等），供 utils.xybot.core 兼容委托；文件消息解析对缺失 `fileext` 的 XML 也能继续提取 `title/attachid` 并触发后续下载
+@input: WechatAPIClient 实例、原始 AddMsg 消息字典与本地 files 缓存目录
+@output: 旧版 AllBot 消息处理实现（图片/语音/XML/文件等），供 utils.allbot.core 兼容委托；文件消息解析对缺失 `fileext` 的 XML 也能继续提取 `title/attachid` 并触发后续下载
 @position: 历史兼容层：承载未拆分的消息处理逻辑与媒体落盘（files/）
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -29,7 +29,7 @@ from WechatAPI.Client.protect import protector
 from database.message_counter import get_instance as get_message_counter
 
 
-class XYBot:
+class AllBot:
     def __init__(self, bot_client: WechatAPIClient):
         self.bot = bot_client
         self.wxid = None
@@ -60,24 +60,24 @@ class XYBot:
                 logger.error(f"加载配置文件失败: {e}")
                 main_config = {}
 
-        # 读取 XYBot 配置段
-        xybot_config = main_config.get("XYBot", {})
-        if not isinstance(xybot_config, dict):
-            xybot_config = {}
+        # 读取 AllBot 配置段
+        allbot_config = main_config.get("AllBot", {})
+        if not isinstance(allbot_config, dict):
+            allbot_config = {}
 
-        # 管理员列表：优先读取 [XYBot].admins，其次读取顶层 admins（兼容不同写法）
-        admins = xybot_config.get("admins")
+        # 管理员列表：优先读取 [AllBot].admins，其次读取顶层 admins（兼容不同写法）
+        admins = allbot_config.get("admins")
         if admins is None:
             admins = main_config.get("admins", [])
         self.admins = admins if isinstance(admins, list) else []
 
-        self.ignore_protection = xybot_config.get(
+        self.ignore_protection = allbot_config.get(
             "ignore-protection", False
         )
 
         # 读取群聊唤醒词配置
-        self.group_wakeup_words = xybot_config.get("group-wakeup-words", ["bot"])
-        self.enable_group_wakeup = xybot_config.get("enable-group-wakeup", True)
+        self.group_wakeup_words = allbot_config.get("group-wakeup-words", ["bot"])
+        self.enable_group_wakeup = allbot_config.get("enable-group-wakeup", True)
         logger.info(
             f"群聊唤醒词: {self.group_wakeup_words}, 启用状态: {self.enable_group_wakeup}"
         )
@@ -1878,7 +1878,7 @@ class XYBot:
 
                 with open("main_config.toml", "rb") as f:
                     main_config = tomllib.load(f)
-                    robot_names = main_config.get("XYBot", {}).get("robot-names", [])
+                    robot_names = main_config.get("AllBot", {}).get("robot-names", [])
                     logger.debug(
                         f"从main_config.toml中读取到机器人名称列表: {robot_names}"
                     )

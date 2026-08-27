@@ -367,7 +367,7 @@ class MyPlugin(PluginBase):
 ### 5. 数据持久化（database/）
 
 **数据库模块**：
-- `XYBotDB.py`：主数据库（用户、群组、配置）
+- `AllBotDB.py`：主数据库（用户、群组、配置）
 - `keyvalDB.py`：键值存储（缓存、临时数据）
 - `messsagDB.py`：消息历史记录
 - `message_counter.py`：消息统计
@@ -537,7 +537,7 @@ docker logs -f allbot
 
 | 模式 | 应用位置 | 作用 |
 |------|---------|------|
-| **单例模式** | `database/XYBotDB.py` | 全局唯一数据库连接 |
+| **单例模式** | `database/AllBotDB.py` | 全局唯一数据库连接 |
 | **装饰器模式** | `utils/decorators.py` | 事件处理器注册 |
 | **工厂模式** | `utils/plugin_manager.py` | 插件动态加载 |
 | **观察者模式** | `utils/event_manager.py` | 事件发布/订阅 |
@@ -614,7 +614,7 @@ curl http://localhost:9090/api/system/stats
 
 1. **从示例插件开始**：阅读 `plugins/BotStatus/`、`plugins/RandomPicture/`、`plugins/Reminder/`
 2. **理解装饰器机制**：`utils/decorators.py` + `utils/event_manager.py`
-3. **掌握数据持久化**：`database/XYBotDB.py` 的 CRUD 操作
+3. **掌握数据持久化**：`database/AllBotDB.py` 的 CRUD 操作
 4. **深入核心调度**：`bot_core/` 的消息处理流程（入口：`bot_core/orchestrator.py`）
 5. **扩展前端界面**：`admin/templates/` + `admin/static/`
 

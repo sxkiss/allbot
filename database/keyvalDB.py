@@ -28,7 +28,7 @@ class KeyvalDB(metaclass=Singleton):
     def __new__(cls):
         with open("main_config.toml", "rb") as f:
             main_config = tomllib.load(f)
-        db_url = main_config["XYBot"]["keyvalDB-url"]
+        db_url = main_config["AllBot"]["keyvalDB-url"]
 
         if cls._instance is None:
             cls._instance = super().__new__(cls)

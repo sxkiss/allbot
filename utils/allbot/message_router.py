@@ -13,9 +13,9 @@ from WechatAPI.Client.protect import protector
 class MessageRouter:
     """消息路由器 - 单一职责：消息预处理和路由分发"""
 
-    def __init__(self, bot_client, xybot_instance):
+    def __init__(self, bot_client, allbot_instance):
         self.bot = bot_client
-        self.xybot = xybot_instance
+        self.allbot = allbot_instance
 
     async def process(self, message: Dict[str, Any]):
         """处理接收到的消息"""
@@ -42,7 +42,7 @@ class MessageRouter:
         """处理自己发的消息"""
         to_wxid = message.get("ToWxid", "")
         if (
-            message.get("FromWxid") == self.xybot.wxid
+            message.get("FromWxid") == self.allbot.wxid
             and isinstance(to_wxid, str)
             and to_wxid.endswith("@chatroom")
         ):
@@ -54,10 +54,10 @@ class MessageRouter:
     async def _update_contact_async(self, message: Dict[str, Any]):
         """异步更新联系人信息"""
         from_wxid = message.get("FromWxid", "")
-        if from_wxid and from_wxid != self.xybot.wxid:
+        if from_wxid and from_wxid != self.allbot.wxid:
             logger.info(f"开始异步更新联系人信息: {from_wxid}")
             update_task = asyncio.create_task(
-                self.xybot.contacts.update_contact_info(from_wxid)
+                self.allbot.contacts.update_contact_info(from_wxid)
             )
             update_task.add_done_callback(
                 lambda t: logger.info(
@@ -72,20 +72,20 @@ class MessageRouter:
 
         # 消息类型路由表
         type_handlers = {
-            1: self.xybot._process_text_message,
-            3: self.xybot._process_image_message,
-            34: self.xybot._process_voice_message,
-            43: self.xybot._process_video_message,
-            47: self.xybot._process_emoji_message,
-            49: self.xybot._process_xml_message,
-            10002: self.xybot._process_system_message,
+            1: self.allbot._process_text_message,
+            3: self.allbot._process_image_message,
+            34: self.allbot._process_voice_message,
+            43: self.allbot._process_video_message,
+            47: self.allbot._process_emoji_message,
+            49: self.allbot._process_xml_message,
+            10002: self.allbot._process_system_message,
         }
 
         handler = type_handlers.get(msg_type)
         if handler:
             await handler(message)
         elif msg_type == 37:  # 好友请求
-            if self.xybot.ignore_protection or not protector.check(14400):
+            if self.allbot.ignore_protection or not protector.check(14400):
                 await EventManager.emit("friend_request", self.bot, message)
             else:
                 logger.warning("风控保护: 新设备登录后4小时内请挂机")

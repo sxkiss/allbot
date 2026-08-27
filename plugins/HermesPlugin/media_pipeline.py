@@ -334,7 +334,7 @@ class MediaPipeline:
         if not self.bot:
             return "", ""
 
-        # 1. 优先从 quote dict 取（xybot_legacy 已提取的字段）
+        # 1. 优先从 quote dict 取（allbot_legacy 已提取的字段）
         cdn_url = _safe_text(quote.get("cdnurl") or quote.get("cdnmidimgurl")).strip()
         aeskey = _safe_text(quote.get("aeskey") or quote.get("cdnthumbaeskey")).strip()
         attach_id = _safe_text(quote.get("attachid") or quote.get("appattach", {}).get("attachid") or "").strip()

@@ -1,5 +1,5 @@
 """
-@input: FastAPI app、require_auth 鉴权依赖、bot_instance（可能为 XYBot 或 WechatAPIClient/Client869）
+@input: FastAPI app、require_auth 鉴权依赖、bot_instance（可能为 AllBot 或 WechatAPIClient）
 @output: 兼容旧前端的消息/群聊接口（发送消息、群公告）
 @position: 管理后台 routes 兼容层，避免旧页面在基础消息能力上出现 404
 @auto-doc: Update header and folder INDEX.md when this file changes

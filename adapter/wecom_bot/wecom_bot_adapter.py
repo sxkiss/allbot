@@ -517,9 +517,9 @@ class WecomBotAdapter:
     def _load_framework_bot_wxids(self) -> List[str]:
         """收集框架用于 at_message 判定的登录/机器人 wxid。"""
         ids: List[str] = []
-        xybot_cfg = self.main_config.get("XYBot") or {}
-        ids.extend(self._normalize_str_list(xybot_cfg.get("robot-wxids")))
-        ids.extend(self._normalize_str_list(xybot_cfg.get("robot_wxids")))
+        allbot_cfg = self.main_config.get("AllBot") or {}
+        ids.extend(self._normalize_str_list(allbot_cfg.get("robot-wxids")))
+        ids.extend(self._normalize_str_list(allbot_cfg.get("robot_wxids")))
 
         for path in (
             Path("bot_status.json"),
@@ -553,10 +553,10 @@ class WecomBotAdapter:
     def _load_bot_mention_names(self) -> List[str]:
         names: List[str] = []
         names.extend(self.mention_names)
-        xybot_cfg = self.main_config.get("XYBot") or {}
-        names.extend(self._normalize_str_list(xybot_cfg.get("robot-names")))
-        names.extend(self._normalize_str_list(xybot_cfg.get("robot_names")))
-        names.extend(self._normalize_str_list(xybot_cfg.get("group-wakeup-words")))
+        allbot_cfg = self.main_config.get("AllBot") or {}
+        names.extend(self._normalize_str_list(allbot_cfg.get("robot-names")))
+        names.extend(self._normalize_str_list(allbot_cfg.get("robot_names")))
+        names.extend(self._normalize_str_list(allbot_cfg.get("group-wakeup-words")))
 
         for path in (
             Path("bot_status.json"),
@@ -1542,7 +1542,7 @@ class WecomBotAdapter:
             content,
         )
 
-        # Client869/部分插件会把 send_app_message(type=5 链接卡) 以 text 塞入 appmsg XML
+        # 客户端/部分插件会把 send_app_message(type=5 链接卡) 以 text 塞入 appmsg XML
         # 在适配器侧识别并升级为 link → template_card
         appmsg_fields = self._extract_appmsg_fields(content)
         if appmsg_fields:

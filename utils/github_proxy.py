@@ -17,7 +17,7 @@ def get_github_proxy() -> str:
             config = tomllib.load(f)
 
         # 获取GitHub加速服务配置
-        github_proxy = config.get("XYBot", {}).get("github-proxy", "")
+        github_proxy = config.get("AllBot", {}).get("github-proxy", "")
 
         # 确保如果配置了加速服务，URL以"/"结尾
         if github_proxy and not github_proxy.endswith("/"):

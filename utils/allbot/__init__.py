@@ -1,6 +1,6 @@
-"""XYBot 模块 - 重构后的模块化版本
+"""AllBot 模块 - 重构后的模块化版本
 
-将原始 2433 行的 XYBot 类拆分为多个职责清晰的模块：
+将原始 2433 行的 AllBot 类拆分为多个职责清晰的模块：
 - profile_manager: 个人信息管理
 - contact_manager: 联系人管理
 - permission_checker: 权限检查
@@ -11,10 +11,10 @@
 
 配置管理：使用统一的 utils.config_manager
 
-向后兼容：保持 `from utils.xybot import XYBot` 可用
+向后兼容：保持 `from utils.allbot import AllBot` 可用
 """
 
 # 导出主类以保持向后兼容
-from utils.xybot.core import XYBot
+from utils.allbot.core import AllBot
 
-__all__ = ["XYBot"]
+__all__ = ["AllBot"]

@@ -59,8 +59,8 @@ cpu_alert_threshold = 80   # CPU使用率警告阈值（%）
 memory_alert_threshold = 85 # 内存使用率警告阈值（%）
 memory_low_threshold_mb = 500 # 可用内存警告阈值（MB）
 
-# XYBot 核心设置
-[XYBot]
+# AllBot 核心设置
+[AllBot]
 version = "v2.0.0"                    # 版本号，请勿修改
 enable-wechat-login = false            # 869 需要启用登录以获取 token_key 并更新 wxid/profile
 ignore-protection = false             # 是否忽略风控保护机制，建议保持false
@@ -84,7 +84,7 @@ robot-wxids = [
 github-proxy = ""
 
 # SQLite数据库地址，一般无需修改
-XYBotDB-url = "sqlite:///database/xybot.db"
+AllBotDB-url = "sqlite:///database/allbot.db"
 msgDB-url = "sqlite+aiosqlite:///database/message.db"
 keyvalDB-url = "sqlite+aiosqlite:///database/keyval.db"
 

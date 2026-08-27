@@ -2,7 +2,7 @@
 
 ## 简介
 
-Dify 插件是为 XYBotV2 机器人框架设计的一个插件，它允许机器人与 Dify (一个 LLM 应用开发平台) 进行交互。通过这个插件，你可以让你的微信机器人具备强大的自然语言处理能力，例如文本生成、对话、语音处理和文件处理等。🚀
+Dify 插件是为 AllBotV2 机器人框架设计的一个插件，它允许机器人与 Dify (一个 LLM 应用开发平台) 进行交互。通过这个插件，你可以让你的微信机器人具备强大的自然语言处理能力，例如文本生成、对话、语音处理和文件处理等。🚀
 
 <img src="https://github.com/user-attachments/assets/a2627960-69d8-400d-903c-309dbeadf125" width="400" height="600">
 
@@ -21,15 +21,15 @@ Dify 插件是为 XYBotV2 机器人框架设计的一个插件，它允许机器
 
 ## 安装
 
-1.  确保你已经安装了 XYBotV2 机器人框架。 ✅
-2.  将 `Dify` 插件文件夹复制到 XYBotV2 的 `plugins` 目录下。 📁
+1.  确保你已经安装了 AllBotV2 机器人框架。 ✅
+2.  将 `Dify` 插件文件夹复制到 AllBotV2 的 `plugins` 目录下。 📁
 
 ## 配置
 
 1.  编辑 `main_config.toml` 文件，配置管理员列表：
 
     ```toml
-    [XYBot]
+    [AllBot]
     admins = ["your_wxid"] # 你的微信ID
     ```
 
@@ -42,7 +42,7 @@ Dify 插件是为 XYBotV2 机器人框架设计的一个插件，它允许机器
     commands = ["聊天", "AI"]
     # 聊天室功能已移除
     support_agent_mode = true  # 是否支持Agent模式
-    command-tip = """-----XYBot-----
+    command-tip = """-----AllBot-----
     💬AI聊天指令：
     1. 切换模型（将会一直保持到下次切换）：
        - @学姐 切换：切换到学姐模型
@@ -101,19 +101,19 @@ Dify 插件是为 XYBotV2 机器人框架设计的一个插件，它允许机器
 
 ## 积分系统
 
-- 插件使用了 XYBotDB 来管理用户的积分。 📊
+- 插件使用了 AllBotDB 来管理用户的积分。 📊
 - 每次调用 Dify 插件会消耗用户一定数量的积分（可在配置文件中设置）。 💸
 - 管理员和白名单用户可以配置为忽略积分检查。 🛡️
 
 ## 依赖
 
-- XYBotV2 机器人框架
+- AllBotV2 机器人框架
 - `aiohttp`
 - `filetype`
 - `loguru`
 - `tomllib` (Python 3.11+) or `toml` (Python < 3.11)
 - `WechatAPI`
-- `database.XYBotDB`
+- `database.AllBotDB`
 - `utils.decorators`
 - `utils.plugin_base`
 
@@ -129,7 +129,7 @@ Dify 插件是为 XYBotV2 机器人框架设计的一个插件，它允许机器
 
 - 请确保你的 Dify API 密钥和基础 URL 配置正确。🔑
 - 语音合成功能依赖于第三方 API，请确保 API 可用。 🌐
-- 如果遇到问题，请查看 XYBotV2 的日志文件 `logs/xybot.log`。 🔍
+- 如果遇到问题，请查看 AllBotV2 的日志文件 `logs/allbot.log`。 🔍
 
 ## 作者
 

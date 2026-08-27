@@ -78,7 +78,7 @@ async def bot_core():
 **关键特性**:
 - 清晰的阶段划分，每个阶段有明确的日志输出
 - 统一的异常处理和状态更新
-- 返回 `XYBot` 实例供外部使用
+- 返回 `AllBot` 实例供外部使用
 
 **文件位置**: [bot_core/orchestrator.py](./orchestrator.py)
 
@@ -155,12 +155,12 @@ class WechatLoginHandler:
 ```python
 class ServiceInitializer:
     async def initialize_all_services(self):
-        # 1. 初始化数据库 (XYBotDB, MessageDB, KeyvalDB)
-        # 2. 初始化 XYBot 核心实例
+        # 1. 初始化数据库 (AllBotDB, MessageDB, KeyvalDB)
+        # 2. 初始化 AllBot 核心实例
         # 3. 加载插件系统 (PluginManager)
         # 4. 初始化通知服务 (NotificationService)
         # 5. 启动定时任务调度器 (APScheduler)
-        # 6. 返回 (xybot, message_db, keyval_db, notification_service)
+        # 6. 返回 (allbot, message_db, keyval_db, notification_service)
 ```
 
 **关键功能**:
@@ -170,12 +170,12 @@ class ServiceInitializer:
 - 自动重启监控器启动
 
 **依赖模块**:
-- `database/XYBotDB.py`: 主数据库
+- `database/AllBotDB.py`: 主数据库
 - `database/messsagDB.py`: 消息历史数据库
 - `database/keyvalDB.py`: 键值存储
 - `utils/plugin_manager.py`: 插件管理器
 - `utils/notification_service.py`: 通知服务
-- `utils/xybot/core.py`: XYBot 核心类
+- `utils/allbot/core.py`: AllBot 核心类
 
 ---
 
@@ -302,7 +302,7 @@ sequenceDiagram
     Service->>Service: 初始化数据库
     Service->>Service: 加载插件
     Service->>Service: 启动定时任务
-    Service-->>Orch: 返回 XYBot 实例
+    Service-->>Orch: 返回 AllBot 实例
 
     Orch->>Status: update_bot_status("ready")
     Orch->>Listener: 6. 启动消息监听
@@ -328,7 +328,7 @@ redis-port = 6379
 redis-password = ""
 redis-db = 0
 
-[XYBot]
+[AllBot]
 enable-wechat-login = true  # 是否启用微信登录
 auto-restart = true         # 是否启用自动重启
 admins = ["wxid_xxx"]       # 管理员列表
@@ -399,8 +399,8 @@ class CustomListener(MessageListener):
 | `utils/reply_router.py` | 响应路由 |
 | `utils/login_cache.py` | 登录缓存 |
 | `utils/notification_service.py` | 通知服务 |
-| `utils/xybot/core.py` | XYBot 核心类 |
-| `database/XYBotDB.py` | 主数据库 |
+| `utils/allbot/core.py` | AllBot 核心类 |
+| `database/AllBotDB.py` | 主数据库 |
 | `database/messsagDB.py` | 消息数据库 |
 | `database/keyvalDB.py` | 键值存储 |
 | `WechatAPI/` | 微信 API 封装 |
@@ -445,7 +445,7 @@ log_level = "DEBUG"
 设置配置项:
 
 ```toml
-[XYBot]
+[AllBot]
 enable-wechat-login = false
 ```
 

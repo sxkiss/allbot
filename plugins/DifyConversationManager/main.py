@@ -7,7 +7,7 @@ from datetime import datetime
 from WechatAPI import WechatAPIClient
 from utils.decorators import on_text_message
 from utils.plugin_base import PluginBase
-from database.XYBotDB import XYBotDB
+from database.allbotDB import AllBotDB
 
 class DifyConversationManager(PluginBase):
     description = "Dify对话管理插件"
@@ -46,14 +46,14 @@ class DifyConversationManager(PluginBase):
         try:
             with open("main_config.toml", "rb") as f:
                 main_config = tomllib.load(f)
-            self.admins = main_config["XYBot"]["admins"]
+            self.admins = main_config["AllBot"]["admins"]
             logger.info(f"已加载管理员列表: {self.admins}")
         except Exception as e:
             logger.error(f"加载管理员列表失败: {e}")
             self.admins = []
 
         # 初始化数据库
-        self.db = XYBotDB()
+        self.db = AllBotDB()
 
     @on_text_message
     async def handle_text(self, bot: WechatAPIClient, message: dict) -> bool:

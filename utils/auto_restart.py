@@ -266,7 +266,7 @@ class AutoRestartMonitor:
                         latest_mtime = 0
 
                         # 遍历日志目录中的所有文件
-                        for log_file in logs_dir.glob("XYBot_*.log"):
+                        for log_file in logs_dir.glob("AllBot_*.log"):
                             # 获取文件的修改时间
                             mtime = os.path.getmtime(log_file)
                             # 如果这个文件比当前找到的最新文件还新，则更新
@@ -302,7 +302,7 @@ class AutoRestartMonitor:
 
                                         # 提取时间戳
                                         try:
-                                            # XYBot 日志格式可能是多种的，尝试不同的格式
+                                            # AllBot 日志格式可能是多种的，尝试不同的格式
                                             # 尝试格式 1: "YYYY-MM-DD HH:MM:SS | LEVEL | 消息内容"
                                             if " | " in line:
                                                 timestamp_str = line.split(" | ")[0]

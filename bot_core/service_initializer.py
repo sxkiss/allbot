@@ -1,6 +1,6 @@
 """
 @input: AppConfig、WechatAPIClient、数据库与 plugin_manager
-@output: 初始化后的 XYBot/DB/通知服务实例
+@output: 初始化后的 AllBot/DB/通知服务实例
 @position: bot_core 服务装配层，通知配置使用 to_service_dict 保留触发条件
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -12,12 +12,12 @@ from dataclasses import asdict
 
 from loguru import logger
 
-from database.XYBotDB import XYBotDB
+from database.allbotDB import AllBotDB
 from database.keyvalDB import KeyvalDB
 from database.messsagDB import MessageDB
 from utils.decorators import scheduler
 from utils.plugin_manager import plugin_manager
-from utils.xybot import XYBot
+from utils.allbot import AllBot
 from utils.notification_service import init_notification_service
 from utils.config_manager import AppConfig
 
@@ -41,14 +41,14 @@ class ServiceInitializer:
         """初始化所有服务
 
         Returns:
-            (xybot, message_db, keyval_db, notification_service) 元组
+            (allbot, message_db, keyval_db, notification_service) 元组
         """
         # 初始化机器人
-        xybot = XYBot(self.bot)
-        xybot.update_profile(self.bot.wxid, self.bot.nickname, self.bot.alias, self.bot.phone)
+        allbot = AllBot(self.bot)
+        allbot.update_profile(self.bot.wxid, self.bot.nickname, self.bot.alias, self.bot.phone)
 
         # 初始化数据库
-        XYBotDB()
+        AllBotDB()
         message_db = MessageDB()
         await message_db.initialize()
 
@@ -81,7 +81,7 @@ class ServiceInitializer:
         # 加载插件
         await self._load_plugins()
 
-        return xybot, message_db, keyval_db, notification_service
+        return allbot, message_db, keyval_db, notification_service
 
     async def _send_reconnect_notification(self, notification_service):
         """发送重连通知
@@ -101,7 +101,7 @@ class ServiceInitializer:
         try:
             from utils.files_cleanup import FilesCleanup
 
-            cleanup_days = self.config.xybot.files_cleanup_days
+            cleanup_days = self.config.allbot.files_cleanup_days
 
             if cleanup_days > 0:
                 cleanup_task = FilesCleanup.schedule_cleanup(self.config)

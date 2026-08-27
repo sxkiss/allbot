@@ -28,7 +28,7 @@ class BotStatus(PluginBase):
             main_config = tomllib.load(f)
 
         config = plugin_config["BotStatus"]
-        main_config = main_config["XYBot"]
+        main_config = main_config["AllBot"]
 
         self.enable = config["enable"]
         self.command = config["command"]

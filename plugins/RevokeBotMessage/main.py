@@ -1,5 +1,5 @@
 """
-@input: WechatAPIClient / Client869 实例（send_* / revoke_message）；引用消息事件（message["Quote"]）
+@input: WechatAPIClient 实例（send_* / revoke_message）；引用消息事件（message["Quote"]）
 @output: 撤回引用的机器人消息；失败提示“撤回过期 时间过了”
 @position: 插件层撤回能力（依赖框架发送回执记录，而非硬编码协议接口）
 @auto-doc: Update header and folder INDEX.md when this file changes
@@ -268,7 +268,7 @@ class RevokeBotMessage(PluginBase):
         try:
             with open("main_config.toml", "rb") as f:
                 main_cfg = tomllib.load(f)
-            admins_value = main_cfg.get("XYBot", {}).get("admins", [])
+            admins_value = main_cfg.get("AllBot", {}).get("admins", [])
             if isinstance(admins_value, list):
                 return {str(item).strip() for item in admins_value if str(item).strip()}
             if isinstance(admins_value, str):

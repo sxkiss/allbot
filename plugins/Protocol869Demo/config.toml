@@ -4,5 +4,5 @@ enable = false
 
 # 说明：
 # - 该插件是 869 能力示例插件，只在 protocol=869 时生效。
-# - 仅 main_config.toml 中 XYBot.admins 配置的全局管理员可使用。
+# - 仅 main_config.toml 中 AllBot.admins 配置的全局管理员可使用。
 # - 使用文本命令前缀 "869"（例如：869帮助、869拍拍、869撤回）。

@@ -14,7 +14,7 @@ try:
     from server import config
 except ImportError:
     # 如果无法导入，使用默认值
-    config = {"secret_key": "xybotv2_admin_secret_key"}
+    config = {"secret_key": "allbotv2_admin_secret_key"}
 
 def get_reminder_file_path(wxid: str) -> str:
     """获取提醒文件路径"""

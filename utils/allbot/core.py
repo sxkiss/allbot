@@ -1,6 +1,6 @@
-"""XYBot 核心类 - Facade 模式
+"""AllBot 核心类 - Facade 模式
 
-重构后的 XYBot 类，组合各个功能模块，提供统一接口。
+重构后的 AllBot 类，组合各个功能模块，提供统一接口。
 保持向后兼容，所有公共方法和属性保持不变。
 """
 from typing import Dict, Any
@@ -13,39 +13,39 @@ from WechatAPI import WechatAPIClient
 from utils.config_manager import get_config, AppConfig
 
 # 导入拆分后的模块
-from utils.xybot.profile_manager import ProfileManager
-from utils.xybot.contact_manager import ContactManager
-from utils.xybot.permission_checker import PermissionChecker
-from utils.xybot.wakeup_checker import WakeupChecker
-from utils.xybot.friend_circle import FriendCircleManager
-from utils.xybot.message_router import MessageRouter
+from utils.allbot.profile_manager import ProfileManager
+from utils.allbot.contact_manager import ContactManager
+from utils.allbot.permission_checker import PermissionChecker
+from utils.allbot.wakeup_checker import WakeupChecker
+from utils.allbot.friend_circle import FriendCircleManager
+from utils.allbot.message_router import MessageRouter
 
 
-def _convert_app_config_to_xybot_config(app_config: AppConfig) -> Dict[str, Any]:
-    """将 AppConfig 转换为 XYBot 需要的配置字典格式
+def _convert_app_config_to_allbot_config(app_config: AppConfig) -> Dict[str, Any]:
+    """将 AppConfig 转换为 AllBot 需要的配置字典格式
 
     Args:
         app_config: 应用配置对象
 
     Returns:
-        XYBot 配置字典
+        AllBot 配置字典
     """
-    xybot_cfg = app_config.xybot
+    allbot_cfg = app_config.allbot
 
     return {
-        "admins": xybot_cfg.admins,
-        "ignore_protection": xybot_cfg.ignore_protection,
-        "group_wakeup_words": xybot_cfg.group_wakeup_words,
-        "enable_group_wakeup": xybot_cfg.enable_group_wakeup,
-        "ignore_mode": xybot_cfg.ignore_mode,
-        "whitelist": xybot_cfg.whitelist,
-        "blacklist": xybot_cfg.blacklist,
-        "robot_names": xybot_cfg.robot_names,
+        "admins": allbot_cfg.admins,
+        "ignore_protection": allbot_cfg.ignore_protection,
+        "group_wakeup_words": allbot_cfg.group_wakeup_words,
+        "enable_group_wakeup": allbot_cfg.enable_group_wakeup,
+        "ignore_mode": allbot_cfg.ignore_mode,
+        "whitelist": allbot_cfg.whitelist,
+        "blacklist": allbot_cfg.blacklist,
+        "robot_names": allbot_cfg.robot_names,
     }
 
 
-class XYBot:
-    """XYBot 核心类 - 使用 Facade 模式组合各个功能模块
+class AllBot:
+    """AllBot 核心类 - 使用 Facade 模式组合各个功能模块
     
     重构说明：
     - 原始文件 2433 行，拆分为 8 个模块
@@ -54,7 +54,7 @@ class XYBot:
     """
 
     def __init__(self, bot_client: WechatAPIClient):
-        """初始化 XYBot
+        """初始化 AllBot
 
         Args:
             bot_client: 微信 API 客户端
@@ -63,7 +63,7 @@ class XYBot:
 
         # 加载配置（使用统一配置管理器）
         app_config = get_config()
-        config = _convert_app_config_to_xybot_config(app_config)
+        config = _convert_app_config_to_allbot_config(app_config)
 
         # 初始化各个功能模块
         self.profile = ProfileManager()
@@ -164,61 +164,61 @@ class XYBot:
         await self.message_router.process(message)
 
     # ==================== 内部消息处理方法（由 MessageRouter 调用） ====================
-    # 这些方法直接从 xybot_legacy 模块的原始 XYBot 类继承
+    # 这些方法直接从 allbot_legacy 模块的原始 AllBot 类继承
     # 后续可以逐步拆分到独立的 MessageHandler 类中
 
     async def _process_text_message(self, message: Dict[str, Any]):
         """处理文本消息 - 使用原始实现"""
-        from utils import xybot_legacy
-        legacy_bot = xybot_legacy.XYBot.__new__(xybot_legacy.XYBot)
+        from utils import allbot_legacy
+        legacy_bot = allbot_legacy.AllBot.__new__(allbot_legacy.AllBot)
         legacy_bot.__dict__ = self.__dict__
         await legacy_bot.process_text_message(message)
 
     async def _process_image_message(self, message: Dict[str, Any]):
         """处理图片消息 - 使用原始实现"""
-        from utils import xybot_legacy
-        legacy_bot = xybot_legacy.XYBot.__new__(xybot_legacy.XYBot)
+        from utils import allbot_legacy
+        legacy_bot = allbot_legacy.AllBot.__new__(allbot_legacy.AllBot)
         legacy_bot.__dict__ = self.__dict__
         await legacy_bot.process_image_message(message)
 
     async def _process_voice_message(self, message: Dict[str, Any]):
         """处理语音消息 - 使用原始实现"""
-        from utils import xybot_legacy
-        legacy_bot = xybot_legacy.XYBot.__new__(xybot_legacy.XYBot)
+        from utils import allbot_legacy
+        legacy_bot = allbot_legacy.AllBot.__new__(allbot_legacy.AllBot)
         legacy_bot.__dict__ = self.__dict__
         await legacy_bot.process_voice_message(message)
 
     async def _process_emoji_message(self, message: Dict[str, Any]):
         """处理表情消息 - 使用原始实现"""
-        from utils import xybot_legacy
-        legacy_bot = xybot_legacy.XYBot.__new__(xybot_legacy.XYBot)
+        from utils import allbot_legacy
+        legacy_bot = allbot_legacy.AllBot.__new__(allbot_legacy.AllBot)
         legacy_bot.__dict__ = self.__dict__
         await legacy_bot.process_emoji_message(message)
 
     async def _process_xml_message(self, message: Dict[str, Any]):
         """处理 XML 消息 - 使用原始实现"""
-        from utils import xybot_legacy
-        legacy_bot = xybot_legacy.XYBot.__new__(xybot_legacy.XYBot)
+        from utils import allbot_legacy
+        legacy_bot = allbot_legacy.AllBot.__new__(allbot_legacy.AllBot)
         legacy_bot.__dict__ = self.__dict__
         await legacy_bot.process_xml_message(message)
 
     async def _process_video_message(self, message: Dict[str, Any]):
         """处理视频消息 - 使用原始实现"""
-        from utils import xybot_legacy
-        legacy_bot = xybot_legacy.XYBot.__new__(xybot_legacy.XYBot)
+        from utils import allbot_legacy
+        legacy_bot = allbot_legacy.AllBot.__new__(allbot_legacy.AllBot)
         legacy_bot.__dict__ = self.__dict__
         await legacy_bot.process_video_message(message)
 
     async def _process_file_message(self, message: Dict[str, Any]):
         """处理文件消息 - 使用原始实现"""
-        from utils import xybot_legacy
-        legacy_bot = xybot_legacy.XYBot.__new__(xybot_legacy.XYBot)
+        from utils import allbot_legacy
+        legacy_bot = allbot_legacy.AllBot.__new__(allbot_legacy.AllBot)
         legacy_bot.__dict__ = self.__dict__
         await legacy_bot.process_file_message(message)
 
     async def _process_system_message(self, message: Dict[str, Any]):
         """处理系统消息 - 使用原始实现"""
-        from utils import xybot_legacy
-        legacy_bot = xybot_legacy.XYBot.__new__(xybot_legacy.XYBot)
+        from utils import allbot_legacy
+        legacy_bot = allbot_legacy.AllBot.__new__(allbot_legacy.AllBot)
         legacy_bot.__dict__ = self.__dict__
         await legacy_bot.process_system_message(message)

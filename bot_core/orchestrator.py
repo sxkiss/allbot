@@ -50,7 +50,7 @@ async def bot_core():
         )
 
         login_task: asyncio.Task | None = None
-        if app_config.xybot.enable_wechat_login:
+        if app_config.allbot.enable_wechat_login:
             login_task = asyncio.create_task(login_handler.handle_login(True))
 
             def _log_login_task_done(task: asyncio.Task):
@@ -78,9 +78,9 @@ async def bot_core():
 
         logger.info("⚙️ 开始初始化服务...")
         service_initializer = ServiceInitializer(bot, app_config, script_dir)
-        xybot, message_db, keyval_db, notification_service = await service_initializer.initialize_all_services()
+        allbot, message_db, keyval_db, notification_service = await service_initializer.initialize_all_services()
 
-        set_bot_instance(xybot)
+        set_bot_instance(allbot)
         service_initializer.start_auto_restart_monitor()
 
         logger.info("🔌 开始启动适配器...")
@@ -98,12 +98,12 @@ async def bot_core():
         logger.success("🚀 开始处理消息")
 
         logger.info("👂 开始启动消息监听...")
-        message_listener = MessageListener(xybot, app_config, script_dir)
+        message_listener = MessageListener(allbot, app_config, script_dir)
         if login_task is not None:
-            xybot._wechat_login_task = login_task
+            allbot._wechat_login_task = login_task
         await message_listener.start_listening(message_db)
 
-        return xybot
+        return allbot
 
     except Exception as e:
         logger.error(f"❌ bot_core 启动失败: {e}")

@@ -21,7 +21,7 @@ from loguru import logger
 import speech_recognition as sr
 import os
 from WechatAPI import WechatAPIClient
-from database.XYBotDB import XYBotDB
+from database.allbotDB import AllBotDB
 from utils.decorators import *
 from utils.plugin_base import PluginBase
 from gtts import gTTS
@@ -74,7 +74,7 @@ class Dify(PluginBase):
         try:
             with open("main_config.toml", "rb") as f:
                 config = tomllib.load(f)
-            self.admins = config["XYBot"]["admins"]
+            self.admins = config["AllBot"]["admins"]
         except (FileNotFoundError, tomllib.TOMLDecodeError) as e:
             logger.error(f"加载主配置文件失败: {e}")
             raise
@@ -115,7 +115,7 @@ class Dify(PluginBase):
             logger.error(f"加载Dify插件配置文件失败: {e}")
             raise
 
-        self.db = XYBotDB()
+        self.db = AllBotDB()
         self.image_cache = {}
         self.image_cache_timeout = 60
         # 添加文件缓存

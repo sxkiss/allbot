@@ -13,7 +13,7 @@
 1. 外部平台消息进入适配器（QQ/TG/Web/ocwx/wecom_bot 等）
 2. 适配器将消息写入 Redis 主队列 `allbot`
 3. `bot_core.py` 中的 `message_consumer` 从 `allbot` 取出消息
-4. `XYBot.process_message` 解析并触发插件处理
+4. `AllBot.process_message` 解析并触发插件处理
 5. 插件通过 `bot.send_text_message` 等方法发送回复
 6. `ReplyRouter` 将回复写入主回复队列 `allbot_reply`
 7. `ReplyDispatcher` 按 `platform` 字段分发到各适配器的 `replyQueue`
@@ -21,7 +21,7 @@
 
 ## 2. 入站消息格式（推荐）
 
-入站消息建议遵循以下字段，以保证与 `utils/xybot_legacy.py` 等通用处理逻辑兼容：
+入站消息建议遵循以下字段，以保证与 `utils/allbot_legacy.py` 等通用处理逻辑兼容：
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
