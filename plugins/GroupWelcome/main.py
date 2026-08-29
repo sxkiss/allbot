@@ -28,11 +28,11 @@ class GroupWelcome(PluginBase):
         with open("plugins/GroupWelcome/config.toml", "rb") as f:
             plugin_config = tomllib.load(f)
 
-        config = plugin_config["GroupWelcome"]
+        config = plugin_config.get("GroupWelcome", {})
 
-        self.enable = config["enable"]
-        self.welcome_message = config["welcome-message"]
-        self.url = config["url"]
+        self.enable = bool(config.get("enable", True))
+        self.welcome_message = config.get("welcome-message", "欢迎加入群聊！")
+        self.url = config.get("url", "")
         # 是否发送PDF文件，默认为True
         self.send_file = config.get("send-file", False)
 

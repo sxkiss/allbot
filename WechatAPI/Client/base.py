@@ -1,3 +1,10 @@
+"""
+@input: WechatAPIClient 各 mixin 初始化契约；出站消息落库依赖 database.messsagDB.MessageDB（懒加载）
+@output: 微信客户端公共基类 `WechatAPIClientBase`（公共属性、error_handler 错误码解析、回复路由绑定、出站消息落库），及数据类 `Proxy`、`Section`
+@position: WechatAPI/Client 所有客户端的公共基类
+@auto-doc: Update header and folder INDEX.md when this file changes
+"""
+
 from dataclasses import dataclass
 
 from WechatAPI.errors import *
@@ -110,7 +117,7 @@ class WechatAPIClientBase:
         """绑定统一回复路由"""
         self.reply_router = router
 
-    def _record_outbound(
+    async def _record_outbound(
         self,
         to_wxid: str,
         content: str,
@@ -122,28 +129,23 @@ class WechatAPIClientBase:
         """统一出站消息落库（best-effort，失败只记日志不抛异常）。"""
         try:
             from database.messsagDB import MessageDB
-            import asyncio
 
             is_group = str(to_wxid).endswith("@chatroom")
             sender = getattr(self, "wxid", "") or ""
             content_truncated = (content[:65535] if content else "")
             error_truncated = (error[:2000] if error else "")
 
-            async def _do_save():
-                await MessageDB().save_outbound_message(
-                    to_wxid=to_wxid,
-                    content=content_truncated,
-                    msg_type=1,
-                    sender_wxid=sender,
-                    client_msg_id=client_msg_id,
-                    send_success=success,
-                    send_error=error_truncated,
-                    is_group=is_group,
-                    route_type=route_type,
-                )
-
-            loop = asyncio.get_event_loop()
-            loop.create_task(_do_save())
+            await MessageDB().save_outbound_message(
+                to_wxid=to_wxid,
+                content=content_truncated,
+                msg_type=1,
+                sender_wxid=sender,
+                client_msg_id=client_msg_id,
+                send_success=success,
+                send_error=error_truncated,
+                is_group=is_group,
+                route_type=route_type,
+            )
         except Exception as exc:
             from loguru import logger as _log
             _log.warning("出站消息落库失败(忽略): {}", exc)

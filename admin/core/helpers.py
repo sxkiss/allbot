@@ -1,7 +1,8 @@
 """
-AllBot 管理后台 - 辅助函数模块
-
-职责：提供系统信息获取、状态管理等辅助功能
+@input: psutil、bot_status.json 状态文件、运行时 bot 实例
+@output: 系统信息/状态采集（get_system_info/get_system_status/update_bot_status）与版本读取
+@position: 管理后台共享辅助层，为页面与系统 API 提供数据
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 import os
 import re

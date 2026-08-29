@@ -1017,6 +1017,62 @@
         });
     </script>
 
+    <!-- 共享安全工具函数（所有页面可用） -->
+    <script>
+    (function() {
+        if (!window.escapeHtml) {
+            window.escapeHtml = function escapeHtml(unsafe) {
+                if (unsafe == null) return '';
+                return String(unsafe)
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            };
+        }
+        if (!window.sanitizeMarkupHtml) {
+            window.sanitizeMarkupHtml = function sanitizeMarkupHtml(html) {
+                if (typeof html !== 'string') return '';
+                return html
+                    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+                    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+                    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '')
+                    .replace(/<embed\b[^>]*>[\s\S]*?\/?>/gi, '')
+                    .replace(/<applet\b[^>]*>[\s\S]*?<\/applet>/gi, '')
+                    .replace(/\son[a-z][a-z0-9_-]*\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+                    .replace(/(?:href|src|action)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, ' data-blocked=')
+                    .replace(/(?:href|src|action)\s*=\s*(?:"data:text\/html[^"]*"|'data:text\/html[^']*')/gi, ' data-blocked=');
+            };
+        }
+        window.getCsrfToken = window.getCsrfToken || function getCsrfToken() {
+            var metaEl = document.querySelector('meta[name="X-CSRF-Token"]');
+            if (metaEl) return metaEl.getAttribute('content') || '';
+            var match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+            return match ? decodeURIComponent(match[1]) : '';
+        };
+        var _origFetch = window.fetch;
+        window.fetch = function(input, init) {
+            init = init || {};
+            var method = (init.method || 'GET').toUpperCase();
+            if (method !== 'GET' && method !== 'HEAD') {
+                var token = window.getCsrfToken();
+                if (token) {
+                    init.headers = init.headers || {};
+                    if (typeof init.headers.set === 'function') {
+                        init.headers.set('X-CSRF-Token', token);
+                    } else if (!(init.headers['X-CSRF-Token'] || init.headers['x-csrf-token'])) {
+                        init.headers['X-CSRF-Token'] = token;
+                    }
+                }
+            }
+            return _origFetch.call(this, input, init);
+        };
+    })();
+    </script>
+
+    <meta name="X-CSRF-Token" content="">
+
     <!-- 通用模态窗口管理 -->
     <script src="/admin/static/js/custom.js?v={{ version }}"></script>
 

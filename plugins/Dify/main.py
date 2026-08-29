@@ -597,83 +597,6 @@ class Dify(PluginBase):
                     await self.dify(bot, message, processed_query, files=files, specific_model=model)
             return
 
-        # 聊天室功能已移除，所有消息都需要@或命令触发
-        if is_at or is_command:
-            query = content
-            for robot_name in self.robot_names:
-                query = query.replace(f"@{robot_name}", "").strip()
-            if command in self.commands:
-                query = query[len(command):].strip()
-            if query:
-                # 获取用户当前使用的模型
-                model = self.get_user_model(message["SenderWxid"])
-                if await self._check_point(bot, message, model):
-                    await self.dify(bot, message, query, files=files, specific_model=model)
-        return
-
-        if content:
-            if is_at or is_command:
-                query = content
-
-                # 检查是否以@开头，如果是，则移除@部分
-                if content.startswith('@'):
-                    # 先检查是否是@机器人
-                    at_bot_prefix = None
-                    for robot_name in self.robot_names:
-                        if content.startswith(f'@{robot_name}'):
-                            at_bot_prefix = f'@{robot_name}'
-                            break
-
-                    if at_bot_prefix:
-                        # 如果是@机器人，移除@机器人部分
-                        query = content[len(at_bot_prefix):].strip()
-                        logger.debug(f"移除@{at_bot_prefix}后的查询内容: {query}")
-                    else:
-                        # 如果不是@机器人，则尝试找第一个空格
-                        space_index = content.find(' ')
-                        if space_index > 0:
-                            # 保留第一个空格后面的所有内容
-                            query = content[space_index+1:].strip()
-                            logger.debug(f"移除@前缀后的查询内容: {query}")
-                        else:
-                            # 如果没有空格，尝试提取@后面的内容
-                            # 找到第一个非空格字符的位置
-                            for i in range(1, len(content)):
-                                if content[i] != '@' and content[i] != ' ':
-                                    query = content[i:].strip()
-                                    logger.debug(f"提取@后面的内容: {query}")
-                                    break
-                            else:
-                                # 如果整个内容都是@，将query设为空
-                                query = ""
-                else:
-                    # 如果不是以@开头，则尝试移除@机器人名称
-                    for robot_name in self.robot_names:
-                        query = query.replace(f"@{robot_name}", "").strip()
-                if command in self.commands:
-                    query = query[len(command):].strip()
-                if query:
-                    # 获取用户当前使用的模型
-                    model = self.get_user_model(message["SenderWxid"])
-                    if await self._check_point(bot, message, model):
-                        # 检查是否有唤醒词或触发词
-                        model, processed_query, is_switch = self.get_model_from_message(query, message["SenderWxid"])
-                        if is_switch:
-                            model_name = next(name for name, config in self.models.items() if config == model)
-                            await bot.send_at_message(
-                                message["FromWxid"],
-                                f"\n已切换到{model_name.upper()}模型，将一直使用该模型直到下次切换。",
-                                [message["SenderWxid"]]
-                            )
-                            return
-                        await self.dify(bot, message, processed_query, files=files, specific_model=model)
-            else:
-                # 只有在聊天室功能开启时，才缓冲普通消息
-                if self.chatroom_enable:
-                    await self.chat_manager.add_message_to_buffer(group_id, user_wxid, content, files)
-                    await self.schedule_message_processing(bot, group_id, user_wxid)
-        return
-
     @on_at_message(priority=20)
     async def handle_at(self, bot: WechatAPIClient, message: dict):
         if not self.enable:
@@ -826,6 +749,7 @@ class Dify(PluginBase):
         quote_info = message.get("Quote", {})
         quoted_content = quote_info.get("Content", "")
         quoted_sender = quote_info.get("Nickname", "")
+        quoted_msg_type = quote_info.get("MsgType")
 
         logger.info(f"处理引用消息: 内容={content}, 引用内容={quoted_content}, 引用发送者={quoted_sender}")
 

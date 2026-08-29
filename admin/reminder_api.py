@@ -1,3 +1,10 @@
+"""
+@input: FastAPI app、check_auth 鉴权、SQLite 提醒库（reminder_data/）
+@output: 定时提醒 CRUD API（/api/reminders/*）
+@position: 管理后台定时提醒数据层入口，经 registry._register_external_apis 注册
+@auto-doc: Update header and folder INDEX.md when this file changes
+"""
+
 import os
 import json
 import logging

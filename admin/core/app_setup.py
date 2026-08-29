@@ -642,7 +642,15 @@ def init_app_state(app: FastAPI):
         status_data.setdefault("status", "offline")
 
         raw_status = str(status_data.get("status", "") or "").strip().lower()
-        if raw_status in {"initializing", "initialized", "switching"}:
+        if raw_status == "initializing":
+            # 系统仍在初始化，尚未进入登录流程
+            status_data["status"] = "offline"
+        elif raw_status == "initialized":
+            # "initialized" 仅表示 bot 实例已注入后台；真实在线态以登录态为准。
+            # 若状态文件/运行时已携带真实账户资料(wxid 非空)，说明已完成一次登录，判定为 online；
+            # 否则视为尚未登录，避免把“已登录但状态未回落到 online”误报成离线。
+            status_data["status"] = "online" if status_data.get("wxid") else "offline"
+        elif raw_status in {"switching"}:
             status_data["status"] = "offline"
         elif raw_status == "adapter_mode":
             status_data["status"] = "ready"

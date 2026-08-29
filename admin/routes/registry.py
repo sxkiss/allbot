@@ -1,13 +1,8 @@
 """
-路由注册中心（统一入口）
-
-职责：
-- 统一管理管理后台所有路由的注册顺序与依赖注入
-- 避免在多个位置重复 include_router / 重复定义同一路由
-- 为 tools/route_audit.py 提供“实际会被注册”的路由文件清单
-
-注意：
-- 本模块应保持依赖最小化，避免引入不必要的运行时副作用
+@input: FastAPI app、各路由模块的 register_* 函数、app.state 注入依赖
+@output: register_all() 统一注册管理后台全部路由（含顶层 admin/*_api.py 外部模块）
+@position: 管理后台路由注册中心（唯一入口），为 tools/route_audit.py 提供实际注册清单
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 
 from __future__ import annotations

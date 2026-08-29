@@ -349,46 +349,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
         ],
         icon="bi-arrow-repeat",
     ),
-    _section(
-        "Notification",
-        "系统通知",
-        "xxtui 推送（短标题 + 纯文本正文）。更完整模板编辑也可在“通知设置”页完成。",
-        [
-            _field("enabled", "启用通知", "boolean"),
-            _field("token", "xxtui Token / API Key", "password", secret=True),
-            _field(
-                "channel",
-                "通知渠道",
-                "select",
-                options=[
-                    _option("wechat", "微信公众号"),
-                    _option("sms", "短信"),
-                    _option("mail", "邮件"),
-                    _option("webhook", "Webhook"),
-                    _option("cp", "企业微信"),
-                    _option("ding", "钉钉"),
-                    _option("bark", "Bark"),
-                ],
-            ),
-            _field("template", "模板类型", "text", advanced=True, placeholder="text"),
-            _field("topic", "群组编码", "text", description="不填仅发送给自己。"),
-            _field("heartbeatThreshold", "心跳失败阈值", "number", min_value=1),
-            _field("triggers.offline", "离线通知", "boolean"),
-            _field("triggers.reconnect", "重连通知", "boolean"),
-            _field("triggers.restart", "重启通知", "boolean"),
-            _field("triggers.error", "错误通知", "boolean"),
-            _field("triggers.login_qrcode", "登录二维码通知", "boolean"),
-            _field("triggers.adapter_retry", "适配器断线重试", "boolean"),
-            _field("triggers.adapter_error", "适配器错误通知", "boolean"),
-            _field("templates.offlineTitle", "离线通知标题", "text", advanced=True),
-            _field("templates.offlineContent", "离线通知内容", "textarea", advanced=True),
-            _field("templates.reconnectTitle", "重连通知标题", "text", advanced=True),
-            _field("templates.reconnectContent", "重连通知内容", "textarea", advanced=True),
-            _field("templates.restartTitle", "重启通知标题", "text", advanced=True),
-            _field("templates.restartContent", "重启通知内容", "textarea", advanced=True),
-        ],
-        icon="bi-bell",
-    ),
+
 ]
 
 

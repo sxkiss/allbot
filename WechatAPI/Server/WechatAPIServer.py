@@ -1,3 +1,10 @@
+"""
+@input: xywechatpad 二进制（拷贝自 core/ 目录）、端口/模式/Redis 连接参数
+@output: 协议服务端进程管理 `WechatAPIServer`（拷贝二进制、以子进程 start()/stop() 底层协议网关）
+@position: WechatAPI/Server 协议服务端包装（启动/停止底层协议网关进程）
+@auto-doc: Update header and folder INDEX.md when this file changes
+"""
+
 import os
 import pathlib
 import subprocess

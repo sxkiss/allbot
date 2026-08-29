@@ -1,3 +1,10 @@
+"""
+@input: login_stat.json（登录状态文件，自动创建于 Client 目录）
+@output: 单例风控保护器 `Protect`（登录时间/设备 ID 检测与持久化），导出全局 `protector` 实例
+@position: WechatAPI/Client 风控保护层
+@auto-doc: Update header and folder INDEX.md when this file changes
+"""
+
 import json
 import os
 from datetime import datetime

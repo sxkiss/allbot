@@ -1,3 +1,10 @@
+/**
+ * @input: admin API（/api/plugins、/api/plugin_market、/api/plugin_config 等）、Bootstrap 弹窗、DOM
+ * @output: 插件管理页交互（列表/启用禁用/删除/配置弹窗/安装/市场筛选排序）
+ * @position: 管理后台插件管理页前端控制器
+ * @auto-doc: Update header and folder INDEX.md when this file changes
+ */
+
 // 全局变量
 let plugins = [];
 let currentPluginId = null;
@@ -221,18 +228,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 监听模态框关闭事件
     const configModal = document.getElementById('plugin-config-modal');
-    configModal.addEventListener('hidden.bs.modal', function() {
-        currentConfigPluginId = null;
-        const root = document.getElementById('plugin-config-form-root');
-        if (root) root.innerHTML = '';
-        const editor = document.getElementById('plugin-config-editor');
-        if (editor) editor.value = '';
-        const errorEl = document.getElementById('plugin-config-error');
-        if (errorEl) {
-            errorEl.classList.add('d-none');
-            errorEl.style.display = 'none';
-        }
-    });
+    if (configModal) {
+        configModal.addEventListener('hidden.bs.modal', function() {
+            currentConfigPluginId = null;
+            const root = document.getElementById('plugin-config-form-root');
+            if (root) root.innerHTML = '';
+            const editor = document.getElementById('plugin-config-editor');
+            if (editor) editor.value = '';
+            const errorEl = document.getElementById('plugin-config-error');
+            if (errorEl) {
+                errorEl.classList.add('d-none');
+                errorEl.style.display = 'none';
+            }
+        });
+    }
 
     // 框架选择按钮的事件监听器现在已经合并到过滤按钮的事件处理中
 });
@@ -467,16 +476,25 @@ function renderPluginList(pluginsList) {
             frameworkBadge = `<span class="badge bg-${badgeColor} me-2" title="来自${frameworkName}">${frameworkName}</span>`;
         }
 
+        const isAdapter = plugin.type === 'adapter';
+
         // 生成卡片HTML
+        const safePluginName = escapeHtml(plugin.name || '');
+        const safePluginVersion = escapeHtml(plugin.version || '1.0.0');
+        const safePluginDescription = escapeHtml(plugin.description || '暂无描述');
+        const safePluginAuthor = escapeHtml(plugin.author || '未知作者');
+        const safePluginId = escapeHtml(String(plugin.id));
+        const safeMarketVersion = escapeHtml(String(marketVersion || ''));
+
         cardElement.innerHTML = `
             <div class="card-header p-3 pt-4 pb-4 bg-gradient-light border-0 position-relative" style="background: linear-gradient(135deg, #f8f9fa, #e9ecef);">
                 <div class="plugin-status-container">
                     ${frameworkBadge}
-                    ${hasUpdate ? `<i class="bi bi-arrow-up-circle-fill text-warning status-icon me-2" title="可更新到: v${marketVersion}"></i>` : ''}
+                    ${hasUpdate ? `<i class="bi bi-arrow-up-circle-fill text-warning status-icon me-2" title="可更新到: v${safeMarketVersion}"></i>` : ''}
                     ${statusIcon}
                     <div class="form-check form-switch plugin-switch ms-2">
-                        <input class="form-check-input plugin-toggle" type="checkbox" id="toggle-${plugin.id}" ${plugin.enabled ? 'checked' : ''} data-plugin-id="${plugin.id}">
-                        <label class="form-check-label visually-hidden" for="toggle-${plugin.id}">启用/禁用</label>
+                        <input class="form-check-input plugin-toggle" type="checkbox" id="toggle-${safePluginId}" ${plugin.enabled ? 'checked' : ''} data-plugin-id="${safePluginId}">
+                        <label class="form-check-label visually-hidden" for="toggle-${safePluginId}">启用/禁用</label>
                     </div>
                 </div>
                 <div class="d-flex align-items-center">
@@ -484,31 +502,31 @@ function renderPluginList(pluginsList) {
                         <i class="bi ${isAdapter ? 'bi-plug' : 'bi-puzzle'}"></i>
                     </div>
                     <div class="ms-3" style="min-width: 0; flex: 1;">
-                        <h5 class="card-title mb-0 fw-bold text-truncate" title="${plugin.name}">${plugin.name}</h5>
-                        <div class="text-muted small">v${plugin.version || '1.0.0'}</div>
+                        <h5 class="card-title mb-0 fw-bold text-truncate" title="${safePluginName}">${safePluginName}</h5>
+                        <div class="text-muted small">v${safePluginVersion}</div>
                     </div>
                 </div>
             </div>
             <div class="card-body p-3 d-flex flex-column">
-                <p class="card-text text-truncate-2" title="${plugin.description}">${plugin.description || '暂无描述'}</p>
+                <p class="card-text text-truncate-2" title="${safePluginDescription}">${safePluginDescription}</p>
                 <div class="mt-auto pt-3">
-                    <div class="text-muted small text-truncate mb-2" title="${plugin.author || '未知作者'}">
-                        <i class="bi bi-person me-1"></i>${plugin.author || '未知作者'}
+                    <div class="text-muted small text-truncate mb-2" title="${safePluginAuthor}">
+                        <i class="bi bi-person me-1"></i>${safePluginAuthor}
                     </div>
                     <div class="d-flex flex-wrap gap-2 justify-content-start align-items-center">
                         <div class="d-flex gap-1">
-                            <button class="btn btn-sm btn-outline-secondary rounded-pill btn-readme" data-plugin-id="${plugin.id}">
+                            <button class="btn btn-sm btn-outline-secondary rounded-pill btn-readme" data-plugin-id="${safePluginId}">
                                 <i class="bi bi-book me-1"></i>说明
                             </button>
-                            <button class="btn btn-sm btn-outline-primary rounded-pill btn-config" data-plugin-id="${plugin.id}">
+                            <button class="btn btn-sm btn-outline-primary rounded-pill btn-config" data-plugin-id="${safePluginId}">
                                 <i class="bi bi-gear-fill me-1"></i>配置
                             </button>
                             ${hasUpdate ? `
-                            <button class="btn btn-sm btn-outline-warning rounded-pill btn-update" data-plugin-id="${plugin.id}" data-plugin-name="${plugin.name}" data-market-version="${marketVersion}">
+                            <button class="btn btn-sm btn-outline-warning rounded-pill btn-update" data-plugin-id="${safePluginId}" data-plugin-name="${safePluginName}" data-market-version="${safeMarketVersion}">
                                 <i class="bi bi-arrow-up-circle me-1"></i>更新
                             </button>` : ''}
                             ${plugin.id !== 'ManagePlugin' ? `
-                            <button class="btn btn-sm btn-outline-danger rounded-pill btn-delete" data-plugin-id="${plugin.id}">
+                            <button class="btn btn-sm btn-outline-danger rounded-pill btn-delete" data-plugin-id="${safePluginId}">
                                 <i class="bi bi-trash me-1"></i>删除
                             </button>` : ''}
                         </div>
@@ -798,8 +816,8 @@ async function openReadmeModal(pluginId) {
 
         if (data.success) {
             console.log(`成功获取插件 ${pluginId} 的README.md内容，长度: ${data.readme.length}`);
-            // 使用marked将Markdown渲染为HTML
-            const readmeHtml = marked.parse(data.readme);
+            // 使用marked将Markdown渲染为HTML，经 sanitizeMarkupHtml 清洗
+            const readmeHtml = sanitizeMarkupHtml(marked.parse(data.readme));
             document.getElementById('plugin-readme-content').innerHTML = readmeHtml;
         } else {
             console.error(`获取插件 ${pluginId} 的README.md失败:`, data.message || data.error);
@@ -993,11 +1011,12 @@ function showToast(message, type = 'info') {
 
     // 创建toast
     const id = 'toast-' + Date.now();
+    const safeMessage = escapeHtml(message);
     const html = `
         <div id="${id}" class="toast align-items-center text-white bg-${type}" role="alert" aria-live="assertive" aria-atomic="true">
             <div class="d-flex">
                 <div class="toast-body">
-                    ${message}
+                    ${safeMessage}
                 </div>
                 <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
@@ -1036,17 +1055,20 @@ function createUpdateNotification(updateCount, updatablePlugins) {
     // 生成插件更新列表HTML
     let pluginsListHtml = '';
     updatablePlugins.forEach(plugin => {
+        const safeName = escapeHtml(plugin.name);
+        const safeCurrent = escapeHtml(String(plugin.currentVersion || ''));
+        const safeNew = escapeHtml(String(plugin.newVersion || ''));
         pluginsListHtml += `
             <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-2">
                 <div>
-                    <strong>${plugin.name}</strong>
-                    <div class="small text-muted">${plugin.currentVersion} → ${plugin.newVersion}</div>
+                    <strong>${safeName}</strong>
+                    <div class="small text-muted">${safeCurrent} \u2192 ${safeNew}</div>
                 </div>
                 <button class="btn btn-sm btn-outline-warning rounded-pill btn-update-plugin"
-                        data-plugin-name="${plugin.name}"
-                        data-current-version="${plugin.currentVersion}"
-                        data-new-version="${plugin.newVersion}">
-                    <i class="bi bi-arrow-up-circle me-1"></i>更新
+                        data-plugin-name="${safeName}"
+                        data-current-version="${safeCurrent}"
+                        data-new-version="${safeNew}">
+                    <i class="bi bi-arrow-up-circle me-1"></i>\u66f4\u65b0
                 </button>
             </div>
         `;
@@ -1401,7 +1423,7 @@ async function loadPluginMarket() {
                 <div class="col">
                     <div class="alert alert-danger">
                         <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        加载插件市场失败: ${error.message}
+                        加载插件市场失败: ${escapeHtml(error.message)}
                     </div>
                 </div>
             `;
@@ -1475,7 +1497,7 @@ function loadCachedPluginMarket() {
             <div class="col">
                 <div class="alert alert-danger">
                     <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                    缓存数据加载失败: ${error.message}
+                        缓存数据加载失败: ${escapeHtml(error.message)}
                 </div>
             </div>
         `;
@@ -1537,7 +1559,7 @@ function renderMarketPlugins(marketPluginsList) {
             tagsHtml = '<div class="plugin-tags mb-2 d-flex flex-wrap">';
             tags.forEach(tag => {
                 if (tag.trim()) {
-                    tagsHtml += `<span class="badge bg-light text-dark me-1 mb-1">${tag.trim()}</span>`;
+                    tagsHtml += `<span class="badge bg-light text-dark me-1 mb-1">${escapeHtml(tag.trim())}</span>`;
                 }
             });
             tagsHtml += '</div>';
@@ -1559,11 +1581,13 @@ function renderMarketPlugins(marketPluginsList) {
         }
 
         // 生成状态图标HTML
-        const statusIcons = isInstalled ? 
-            (hasUpdate ? 
-                `<i class="bi bi-arrow-up-circle-fill text-warning status-icon me-2" title="可更新到: v${plugin.version}，当前版本: v${installedVersion}"></i>
-                 <i class="bi bi-check-circle-fill text-success status-icon" title="已安装"></i>` : 
-                `<i class="bi bi-check-circle-fill text-success status-icon" title="已安装"></i>`) 
+        const safeVersion = escapeHtml(String(plugin.version || ''));
+        const safeInstalledVersion = escapeHtml(String(installedVersion || ''));
+        const statusIcons = isInstalled ?
+            (hasUpdate ?
+                `<i class="bi bi-arrow-up-circle-fill text-warning status-icon me-2" title="可更新到: v${safeVersion}，当前版本: v${safeInstalledVersion}"></i>
+                 <i class="bi bi-check-circle-fill text-success status-icon" title="已安装"></i>` :
+                `<i class="bi bi-check-circle-fill text-success status-icon" title="已安装"></i>`)
             : '';
 
         // 添加特殊标记 - 更新提示
@@ -1595,7 +1619,11 @@ function renderMarketPlugins(marketPluginsList) {
             cardElement.classList.add('has-update');
         }
 
-        // 生成卡片HTML
+        // 生成卡片HTML（escapeHtml 外部数据防止 XSS）
+        const safeCardName = escapeHtml(plugin.name || '');
+        const safeCardVersion = escapeHtml(plugin.version || '');
+        const safeCardDesc = escapeHtml(plugin.description || '');
+        const safeCardAuthor = escapeHtml(plugin.author || '');
         cardElement.innerHTML = `
             <div class="card h-100 shadow border-0 rounded-4 overflow-hidden ${hasUpdate ? 'border border-warning' : ''}">
                 <div class="card-header p-3 bg-gradient-light border-0 position-relative" style="background: linear-gradient(135deg, #f8f9fa, #e9ecef);">
@@ -1606,21 +1634,21 @@ function renderMarketPlugins(marketPluginsList) {
                             <i class="bi bi-puzzle"></i>
                         </div>
                         <div class="ms-3" style="min-width: 0; flex: 1;">
-                            <h5 class="card-title mb-0 fw-bold text-truncate" title="${plugin.name}">${plugin.name}</h5>
-                            <div class="text-muted small">v${plugin.version}</div>
+                            <h5 class="card-title mb-0 fw-bold text-truncate" title="${safeCardName}">${safeCardName}</h5>
+                            <div class="text-muted small">v${safeCardVersion}</div>
                         </div>
                     </div>
                 </div>
                 <div class="card-body p-3 d-flex flex-column">
-                    <p class="card-text text-truncate-2" title="${plugin.description}">${plugin.description}</p>
+                    <p class="card-text text-truncate-2" title="${safeCardDesc}">${safeCardDesc}</p>
                     ${tagsHtml}
                     <div class="mt-auto pt-3">
-                        <div class="text-muted small text-truncate mb-2" title="${plugin.author}">
-                            <i class="bi bi-person me-1"></i>${plugin.author}
+                        <div class="text-muted small text-truncate mb-2" title="${safeCardAuthor}">
+                            <i class="bi bi-person me-1"></i>${safeCardAuthor}
                         </div>
                         <div class="d-flex justify-content-end">
                             ${plugin.github_url ? `
-                            <a href="${plugin.github_url}" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill me-2" title="访问GitHub仓库">
+                            <a href="${escapeHtml(plugin.github_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary rounded-pill me-2" title="访问GitHub仓库">
                                 <i class="bi bi-github me-1"></i>GitHub
                             </a>` : ''}
                             <button class="btn ${isInstalled ? (hasUpdate ? 'btn-outline-warning' : 'btn-outline-primary') : 'btn-primary'} btn-sm rounded-pill btn-install-plugin" data-plugin-index="${index}">

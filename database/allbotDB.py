@@ -1,3 +1,12 @@
+"""
+@input: main_config.toml[AllBot].AllBotDB-url；用户/群聊的积分、签到、白名单、LLM 会话线程等读写请求
+@output: 持久化到 SQLAlchemy SQLite 主库的 user / chatroom 表
+@position: 数据持久化层主库 — 用户积分/签到/白名单/群成员/LLM 线程 ID 的 ORM 单例
+@auto-doc: Update header and folder INDEX.md when this file changes
+
+AllBot 主数据库：用户与群聊的积分、签到、白名单、LLM 线程 ID 管理（线程池串行化写入）。
+"""
+
 import datetime
 import tomllib
 from concurrent.futures import ThreadPoolExecutor

@@ -1,4 +1,9 @@
 """
+@input: 入站/出站消息事件（平台标识、日期、小时）
+@output: 消息统计：总量、今日/昨日、按日/按时段、增长率
+@position: 数据持久化层 — 基于 SQLite 的消息计数器，提供总量与按时段/按日统计
+@auto-doc: Update header and folder INDEX.md when this file changes
+
 消息计数器模块
 用于统计消息数量和相关指标
 """
@@ -195,22 +200,9 @@ class MessageCounter:
                     "count": count
                 })
 
-            # 如果没有数据，生成模拟数据
+            # 如果没有数据，返回空列表
             if not stats:
-                import random
-                current_date = start_date
-                while current_date <= end_date:
-                    date_str = current_date.strftime("%Y-%m-%d")
-                    # 生成随机消息数量，周末消息量略少
-                    is_weekend = current_date.weekday() >= 5
-                    count = random.randint(50, 150) if is_weekend else random.randint(100, 300)
-
-                    stats.append({
-                        "date": date_str,
-                        "count": count
-                    })
-
-                    current_date += timedelta(days=1)
+                return []
 
             return stats
         except Exception as e:

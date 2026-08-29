@@ -1,7 +1,8 @@
 """
-其他功能路由模块（重构后）
-
-职责：统一注册所有杂项路由，并保留依赖管理功能
+@input: FastAPI app、templates、bot_instance、config、app.state 依赖
+@output: 注册杂项路由（auth/ws/qrcode/notification/terminal）与 /api/dependency_manager/install
+@position: 管理后台杂项路由聚合层
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 from fastapi import Request
 from fastapi.responses import JSONResponse

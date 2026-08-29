@@ -1,3 +1,10 @@
+"""
+@input: main_config.toml（AllBot.disabled-plugins）、plugins/<dir>/main.py 模块、WechatAPIClient 实例、PluginBase 派生类
+@output: 插件加载/卸载/重载与全局插件信息（plugin_info）；禁用列表持久化回写 main_config.toml；AI 平台插件互斥
+@position: 插件生命周期管理核心，扫描目录、实例化、绑定事件处理器、暴露插件查询接口
+@auto-doc: Update header and folder INDEX.md when this file changes
+"""
+
 import ast
 import importlib
 import inspect
@@ -148,7 +155,9 @@ class PluginManager:
                 "has_global_priority"
             ] = has_global_priority  # 更新全局优先级标志
             return True
-        except:
+        except Exception as exc:
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
             logger.error(f"加载插件时发生错误: {traceback.format_exc()}")
             return False
 
@@ -187,7 +196,9 @@ class PluginManager:
                 logger.info(f"将插件 {plugin_name} 添加到禁用列表并保存到配置文件")
 
             return True
-        except:
+        except Exception as exc:
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
             logger.error(f"卸载插件 {plugin_name} 时发生错误: {traceback.format_exc()}")
             return False
 

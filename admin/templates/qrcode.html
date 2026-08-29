@@ -736,8 +736,8 @@
         document.getElementById('qrcode-img').src = url;
 
         // 方法2：使用二维码生成API
-        // const qrcodeApiUrl = `/api/qrcode?data=${encodeURIComponent(url)}`;
-        // document.getElementById('qrcode-img').src = qrcodeApiUrl;
+        const qrcodeApiUrl = `/api/qrcode?data=${encodeURIComponent(url)}`;
+        document.getElementById('qrcode-img').src = qrcodeApiUrl;
 
         // 隐藏加载动画
         document.getElementById('qrcode-loading').style.display = 'none';

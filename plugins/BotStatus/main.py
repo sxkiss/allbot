@@ -8,6 +8,8 @@
 import re
 import tomllib
 
+from loguru import logger
+
 from WechatAPI import WechatAPIClient
 from utils.decorators import *
 from utils.plugin_base import PluginBase
@@ -21,19 +23,29 @@ class BotStatus(PluginBase):
     def __init__(self):
         super().__init__()
 
-        with open("plugins/BotStatus/config.toml", "rb") as f:
-            plugin_config = tomllib.load(f)
+        try:
+            with open("plugins/BotStatus/config.toml", "rb") as f:
+                plugin_config = tomllib.load(f)
+        except Exception as exc:
+            logger.warning("[BotStatus] 读取插件配置失败: {}", exc)
+            plugin_config = {}
 
-        with open("main_config.toml", "rb") as f:
-            main_config = tomllib.load(f)
+        try:
+            with open("main_config.toml", "rb") as f:
+                main_config = tomllib.load(f)
+        except Exception as exc:
+            logger.warning("[BotStatus] 读取主配置失败: {}", exc)
+            main_config = {}
 
-        config = plugin_config["BotStatus"]
-        main_config = main_config["AllBot"]
+        config = plugin_config.get("BotStatus", {})
+        main_config_allbot = main_config.get("AllBot", {})
 
-        self.enable = config["enable"]
-        self.command = config["command"]
-        self.version = main_config["version"]
-        self.status_message = config["status-message"]
+        self.enable = bool(config.get("enable", True))
+        self.command = config.get("command", ["状态"])
+        if isinstance(self.command, str):
+            self.command = [self.command]
+        self.version = str(main_config_allbot.get("version", ""))
+        self.status_message = config.get("status-message", "机器人状态")
 
     @on_text_message(priority=60)
     async def handle_text(self, bot: WechatAPIClient, message: dict):

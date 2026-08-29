@@ -1,3 +1,10 @@
+"""
+@input: FastAPI app、check_auth、进程/系统重启能力
+@output: 重启 API（/api/restart、/api/system/restart）
+@position: 管理后台重启入口，经 registry._register_external_apis 注册
+@auto-doc: Update header and folder INDEX.md when this file changes
+"""
+
 import os
 import asyncio
 import sys

@@ -1,4 +1,12 @@
+"""
+@input: 插件实例（bind_instance，从装饰器 _event_type/_priority 读取方法优先级）、事件类型字符串、emit(*args, callback)
+@output: 按优先级排序的类级事件处理器表（_handlers）；emit 顺序调用 handler，True 短路、False 中断，返回最终非 None 结果
+@position: 发布订阅事件总线（类级单例，所有插件通过 bind_instance 注册，插件卸载时 unbind_instance 清理）
+@auto-doc: Update header and folder INDEX.md when this file changes
+"""
+
 import copy
+import logging
 from typing import Callable, Dict, List
 
 
@@ -88,7 +96,17 @@ class EventManager:
             handler_args = (api_client, copy.deepcopy(message))
             new_kwargs = {k: copy.deepcopy(v) for k, v in kwargs.items()}
 
-            result = await handler(*handler_args, **new_kwargs)
+            try:
+                result = await handler(*handler_args, **new_kwargs)
+            except Exception as exc:
+                logging.getLogger("EventManager").exception(
+                    "事件处理器执行异常(event=%s, handler=%s.%s): %s",
+                    event_type,
+                    getattr(instance, "__class__", type(instance)).__name__,
+                    getattr(handler, "__name__", repr(handler)),
+                    exc,
+                )
+                continue
 
             # 记录最后一个非 None 的结果
             if result is not None:

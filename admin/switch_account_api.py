@@ -1,6 +1,8 @@
 """
-切换账号API模块
-提供切换微信账号的API路由和功能
+@input: FastAPI app、check_auth、accounts 资源目录、切换脚本
+@output: 微信账号切换 API（/api/switch_account）
+@position: 管理后台多账号切换入口，经 registry._register_external_apis 注册
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 
 import os

@@ -109,7 +109,8 @@ def register_page_routes(app, templates, bot_instance, get_version_info, get_sys
             "latest_version": version_info.get("latest_version", ""),
             "update_url": version_info.get("update_url", ""),
             "update_description": version_info.get("update_description", ""),
-            "current_time": datetime.now().strftime("%H:%M:%S")
+            "current_time": datetime.now().strftime("%H:%M:%S"),
+            "bot_status": "",  # 占位，实际状态由 /api/bot/status 接口通过 JS 获取
         }
 
         # 如果提供了系统信息函数，添加系统信息

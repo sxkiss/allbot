@@ -1,5 +1,8 @@
 """
-路由注册模块：用于注册所有模块化的路由
+@input: FastAPI app、各模块化路由注册函数
+@output: register_all_routes() 旧版模块化路由聚合注册
+@position: 管理后台遗留路由注册兼容层
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 import logging
 

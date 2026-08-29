@@ -1,7 +1,8 @@
 """
-WebSocket 路由模块
-
-职责：处理 WebSocket 连接和实时数据推送
+@input: FastAPI app、app.state 注入的实时推送依赖（如 update_progress_manager）
+@output: 通用 WebSocket（/ws）与更新进度推送（/ws/update-progress）
+@position: 管理后台实时数据通道（无显式 Depends，依赖部署网络边界）
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 import json
 import asyncio

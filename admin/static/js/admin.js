@@ -1,5 +1,8 @@
 /**
- * XYBotV2 管理后台主要JavaScript文件
+ * @input: WebSocket、DOM、/api/bot/status 与 /api/auth/status 等后台接口
+ * @output: 全局仪表盘交互（侧边栏、WS 实时推送、状态/登录轮询、重新登录）
+ * @position: 管理后台全局前端入口
+ * @auto-doc: Update header and folder INDEX.md when this file changes
  */
 
 // 全局变量
@@ -265,14 +268,16 @@ function showNotification(title, message, level = 'info') {
     if (level === 'error') bgClass = 'bg-danger';
     
     // 通知内容
+    const safeTitle = escapeHtml(title);
+    const safeMessage = escapeHtml(message);
     notification.innerHTML = `
         <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
             <div class="toast-header ${bgClass} text-white">
-                <strong class="me-auto">${title}</strong>
+                <strong class="me-auto">${safeTitle}</strong>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
             <div class="toast-body">
-                ${message}
+                ${safeMessage}
             </div>
         </div>
     `;
@@ -454,15 +459,56 @@ function formatFileSize(bytes) {
 
 /**
  * 转义HTML特殊字符
+ * 兼容非字符串输入（数字、null、undefined 等）
  */
 function escapeHtml(unsafe) {
-    return unsafe
+    if (unsafe == null) return '';
+    return String(unsafe)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+// 挂到 window 以便 IIFE / 独立脚本也能使用
+window.escapeHtml = escapeHtml;
+
+/**
+ * 清洗由 marked.parse() 等渲染的 HTML：去除 <script> 标签和 on* 事件属性。
+ * 适用于注入 innerHTML 前的安全防护。
+ */
+function sanitizeMarkupHtml(html) {
+    if (typeof html !== 'string') return '';
+    // 移除 <script>...</script> 标签及其内容
+    let clean = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+    // 移除 <iframe>、<object>、<embed>、<applet> 标签
+    clean = clean.replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '');
+    clean = clean.replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '');
+    clean = clean.replace(/<embed\b[^>]*>[\s\S]*?\/?>/gi, '');
+    clean = clean.replace(/<applet\b[^>]*>[\s\S]*?<\/applet>/gi, '');
+    // 移除所有 on* 事件处理器属性
+    clean = clean.replace(/\son[a-z][a-z0-9_-]*\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    // 移除 javascript: 协议
+    clean = clean.replace(/(?:href|src|action)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, ' data-blocked=');
+    // 移除 data:text/html 协议
+    clean = clean.replace(/(?:href|src|action)\s*=\s*(?:"data:text\/html[^"]*"|'data:text\/html[^']*')/gi, ' data-blocked=');
+    return clean;
+}
+window.sanitizeMarkupHtml = sanitizeMarkupHtml;
+
+/**
+ * 获取 CSRF token（若存在）。
+ * 支持从 meta 标签或 cookie 读取。
+ */
+function getCsrfToken() {
+    // 尝试从 <meta> 标签获取
+    const metaEl = document.querySelector('meta[name="X-CSRF-Token"]');
+    if (metaEl) return metaEl.getAttribute('content') || '';
+    // 尝试从 cookie 读取常见的 csrf token 名
+    const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : '';
+}
+window.getCsrfToken = getCsrfToken;
 
 // 检查bot状态
 function checkBotStatus() {

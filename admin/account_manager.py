@@ -1,6 +1,8 @@
 """
-账号管理模块
-提供多微信账号管理的功能
+@input: FastAPI app、check_auth、update_bot_status、restart_system、accounts 资源目录
+@output: 多账号 API（/api/accounts/*）与 /accounts 管理页
+@position: 管理后台账号管理入口，经 registry._register_external_apis 注册
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 
 import os

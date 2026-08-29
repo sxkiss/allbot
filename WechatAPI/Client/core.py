@@ -9,6 +9,7 @@ import asyncio
 import base64
 import hashlib
 import io
+import json
 import os
 import re
 import string
@@ -1968,7 +1969,7 @@ class WechatAPIClient(WechatAPIClientBase):
         }
         data = await self.call_path("/message/SendTextMessage", body=payload)
         result = self._extract_send_tuple(data)
-        self._record_outbound(
+        await self._record_outbound(
             to_wxid=wxid,
             content=content,
             success=self._looks_like_send_ack(data),

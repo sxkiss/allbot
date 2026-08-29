@@ -48,13 +48,15 @@ class DependencyManager(PluginBase):
         # 获取配置文件路径
         self.plugin_dir = os.path.dirname(os.path.abspath(__file__))
         self.config_path = os.path.join(self.plugin_dir, "config.toml")
-        
-        # 获取主项目根目录 - 使用相对路径 - _data/plugins
-        self.root_dir = os.path.dirname(self.plugin_dir)  # 指向_data/plugins目录
-        logger.critical(f"[DependencyManager] 根目录设置为: {self.root_dir}")
-            
-        # 插件目录就是根目录本身
-        self.plugins_dir = self.root_dir
+
+        # 获取项目根目录和插件目录
+        # 通过向上查找含 main.py / pyproject.toml 的目录来定位项目根目录
+        self.plugins_dir = os.path.dirname(self.plugin_dir)  # plugins/ 目录
+        self.root_dir = self.plugins_dir  # 向上两级到项目根目录（容错：若 plugins/ 本身无 marker 则回退）
+        _candidate = os.path.dirname(self.plugins_dir)
+        if os.path.isfile(os.path.join(_candidate, "main.py")) or os.path.isfile(os.path.join(_candidate, "pyproject.toml")):
+            self.root_dir = _candidate
+        logger.critical(f"[DependencyManager] 项目根目录设置为: {self.root_dir}")
         logger.critical(f"[DependencyManager] 插件目录设置为: {self.plugins_dir}")
 
         # 插件市场配置（默认值，可被 config.toml 覆盖）

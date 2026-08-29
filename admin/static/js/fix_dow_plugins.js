@@ -185,14 +185,20 @@
                 }
 
                 // 生成卡片HTML
+                const safePluginId = escapeHtml(String(plugin.id));
+                const safePluginName = escapeHtml(plugin.name || '');
+                const safePluginVersion = escapeHtml(plugin.version || '1.0.0');
+                const safePluginDescription = escapeHtml(plugin.description || '暂无描述');
+                const safePluginAuthor = escapeHtml(plugin.author || '未知作者');
+
                 cardElement.innerHTML = `
                     <div class="card-header p-3 bg-gradient-light border-0 position-relative" style="background: linear-gradient(135deg, #f8f9fa, #e9ecef);">
                         <div class="plugin-status-container">
                             <span class="badge bg-primary me-2" title="来自DOW框架">DOW框架</span>
                             <span class="badge bg-${statusClass} status-badge">${statusText}</span>
                             <div class="form-check form-switch plugin-switch ms-2">
-                                <input class="form-check-input dow-plugin-toggle" type="checkbox" id="toggle-${plugin.id}" ${plugin.enabled ? 'checked' : ''} data-plugin-id="${plugin.id}">
-                                <label class="form-check-label visually-hidden" for="toggle-${plugin.id}">启用/禁用</label>
+                                <input class="form-check-input dow-plugin-toggle" type="checkbox" id="toggle-${safePluginId}" ${plugin.enabled ? 'checked' : ''} data-plugin-id="${safePluginId}">
+                                <label class="form-check-label visually-hidden" for="toggle-${safePluginId}">启用/禁用</label>
                             </div>
                         </div>
                         <div class="d-flex align-items-center">
@@ -200,26 +206,26 @@
                                 <i class="bi bi-puzzle"></i>
                             </div>
                             <div class="ms-3" style="min-width: 0; flex: 1;">
-                                <h5 class="card-title mb-0 fw-bold text-truncate" title="${plugin.name}">${plugin.name}</h5>
-                                <div class="text-muted small">v${plugin.version || '1.0.0'}</div>
+                                <h5 class="card-title mb-0 fw-bold text-truncate" title="${safePluginName}">${safePluginName}</h5>
+                                <div class="text-muted small">v${safePluginVersion}</div>
                             </div>
                         </div>
                     </div>
                     <div class="card-body p-3 d-flex flex-column">
-                        <p class="card-text text-truncate-2" title="${plugin.description}">${plugin.description || '暂无描述'}</p>
+                        <p class="card-text text-truncate-2" title="${safePluginDescription}">${safePluginDescription}</p>
                         <div class="mt-auto pt-3">
-                            <div class="text-muted small text-truncate mb-2" title="${plugin.author || '未知作者'}">
-                                <i class="bi bi-person me-1"></i>${plugin.author || '未知作者'}
+                            <div class="text-muted small text-truncate mb-2" title="${safePluginAuthor}">
+                                <i class="bi bi-person me-1"></i>${safePluginAuthor}
                             </div>
                             <div class="d-flex flex-wrap gap-2 justify-content-start align-items-center">
                                 <div class="d-flex gap-1">
-                                    <button class="btn btn-sm btn-outline-secondary rounded-pill btn-readme" data-plugin-id="${plugin.id}">
+                                    <button class="btn btn-sm btn-outline-secondary rounded-pill btn-readme" data-plugin-id="${safePluginId}">
                                         <i class="bi bi-book me-1"></i>说明
                                     </button>
-                                    <button class="btn btn-sm btn-outline-primary rounded-pill btn-config" data-plugin-id="${plugin.id}">
+                                    <button class="btn btn-sm btn-outline-primary rounded-pill btn-config" data-plugin-id="${safePluginId}">
                                         <i class="bi bi-gear-fill me-1"></i>配置
                                     </button>
-                                    <button class="btn btn-sm btn-outline-danger rounded-pill btn-delete" data-plugin-id="${plugin.id}">
+                                    <button class="btn btn-sm btn-outline-danger rounded-pill btn-delete" data-plugin-id="${safePluginId}">
                                         <i class="bi bi-trash me-1"></i>删除
                                     </button>
                                 </div>
@@ -295,8 +301,8 @@
             document.getElementById('plugin-readme-loading').style.display = 'none';
 
             if (data.success) {
-                // 使用marked将Markdown渲染为HTML
-                const readmeHtml = marked.parse(data.readme);
+                // 使用marked将Markdown渲染为HTML，经 sanitizeMarkupHtml 清洗
+                const readmeHtml = sanitizeMarkupHtml(marked.parse(data.readme));
                 document.getElementById('plugin-readme-content').innerHTML = readmeHtml;
             } else {
                 // 显示错误信息

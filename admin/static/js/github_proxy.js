@@ -1,3 +1,10 @@
+/**
+ * @input: GitHub 代理设置页 DOM、/api/github-proxy/* 接口
+ * @output: 当前代理展示、节点刷新、批量检测、应用配置交互
+ * @position: 管理后台 GitHub 代理设置页前端控制器
+ * @auto-doc: Update header and folder INDEX.md when this file changes
+ */
+
 (function () {
     const currentProxyEl = document.getElementById("current-proxy");
     const lastUpdatedEl = document.getElementById("last-updated");
@@ -94,19 +101,28 @@
                         : `<span class="badge bg-danger">FAIL</span>`)
                     : `<span class="badge bg-secondary">未检测</span>`);
 
+            const _e = window.escapeHtml || function(s) {
+                if (s == null) return '';
+                return String(s)
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            };
             tr.innerHTML = `
                 <td>
                     <input class="form-check-input" type="radio" name="proxy-node" ${isSelected ? "checked" : ""} />
                 </td>
                 <td>
                     <div class="d-flex flex-column">
-                        <div class="fw-semibold">${proxyUrl}${isCurrent ? " <span class=\"badge bg-primary ms-1\">当前</span>" : ""}</div>
+                        <div class="fw-semibold">${_e(proxyUrl)}${isCurrent ? " <span class=\"badge bg-primary ms-1\">当前</span>" : ""}</div>
                     </div>
                 </td>
-                <td>${upstreamLatency}</td>
+                <td>${_e(upstreamLatency)}</td>
                 <td>${checkBadge}</td>
-                <td>${location}</td>
-                <td>${tag}</td>
+                <td>${_e(location)}</td>
+                <td>${_e(tag)}</td>
                 <td>
                     <button type="button" class="btn btn-sm btn-outline-primary node-check-btn" ${isChecking ? "disabled" : ""}>
                         ${isChecking ? "检测中" : "检测"}

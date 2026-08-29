@@ -1,7 +1,8 @@
 """
-终端代理路由模块
-
-职责：处理 WeTTy 终端服务的代理和 WebSocket 连接
+@input: FastAPI app、httpx、WeTTy 终端服务地址
+@output: WeTTy 终端代理路由（/wetty、/admin/wetty 及其带路径变体）
+@position: 管理后台终端访问代理层（无显式 Depends，依赖部署网络边界）
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 import httpx
 from fastapi import Request, Response

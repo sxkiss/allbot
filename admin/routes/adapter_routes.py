@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-适配器管理路由
-
-提供适配器列表查询和状态切换的API接口。
+@input: FastAPI APIRouter、adapter_manager（适配器注册表）
+@output: 适配器列表/配置/启停/说明文档 API（/api/adapters/*）
+@position: 管理后台适配器管理入口（无显式 Depends，依赖部署网络边界）
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 
 from fastapi import APIRouter, HTTPException

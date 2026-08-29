@@ -1,5 +1,4 @@
-/**
- * 适配器管理页面 JavaScript
+// 适配器管理页面 JavaScript
  *
  * 功能:
  * - 加载适配器列表
@@ -149,6 +148,7 @@ function renderAdapters(adapters) {
 
         // 填充数据
         const cardElement = card.querySelector('.adapter-card');
+        if (!cardElement) return;
         cardElement.dataset.adapterName = adapter.name;
 
         // 设置卡片状态样式
@@ -159,30 +159,35 @@ function renderAdapters(adapters) {
         }
 
         // 适配器名称
-        card.querySelector('.adapter-name').textContent = adapter.name;
+        const adapterNameEl = card.querySelector('.adapter-name');
+        if (adapterNameEl) adapterNameEl.textContent = adapter.name;
 
         // 状态徽章
         const statusBadge = card.querySelector('.adapter-status-badge');
-        if (adapter.enabled) {
-            statusBadge.textContent = '已启用';
-            statusBadge.classList.add('bg-success');
-        } else {
-            statusBadge.textContent = '已禁用';
-            statusBadge.classList.add('bg-secondary');
+        if (statusBadge) {
+            if (adapter.enabled) {
+                statusBadge.textContent = '已启用';
+                statusBadge.classList.add('bg-success');
+            } else {
+                statusBadge.textContent = '已禁用';
+                statusBadge.classList.add('bg-secondary');
+            }
         }
 
         // 平台名称
-        card.querySelector('.adapter-platform').textContent = adapter.platform || adapter.name;
+        const platformEl = card.querySelector('.adapter-platform');
+        if (platformEl) platformEl.textContent = adapter.platform || adapter.name;
 
         // 配置文件路径
         const configPath = adapter.config_path || '';
         const shortPath = configPath.split('/').slice(-3).join('/');
-        card.querySelector('.adapter-config-path').textContent = shortPath;
+        const configPathEl = card.querySelector('.adapter-config-path');
+        if (configPathEl) configPathEl.textContent = shortPath;
 
         // 说明文档
         const descSpan = card.querySelector('.adapter-desc');
         const docButton = card.querySelector('.btn-view-doc');
-        if (adapter.description) {
+        if (adapter.description && descSpan) {
             descSpan.textContent = adapter.description;
             descSpan.title = adapter.description;
         }
@@ -197,6 +202,7 @@ function renderAdapters(adapters) {
 
         // 开关按钮
         const switchInput = card.querySelector('.adapter-switch');
+        if (!switchInput) return;
         switchInput.id = `adapter-switch-${adapter.name}`;
         switchInput.checked = adapter.enabled;
         switchInput.dataset.adapterName = adapter.name;
@@ -218,7 +224,7 @@ function renderAdapters(adapters) {
 
         // 更新label的for属性
         const label = card.querySelector('.form-check-label');
-        label.setAttribute('for', switchInput.id);
+        if (label) label.setAttribute('for', switchInput.id);
 
         container.appendChild(card);
     });
@@ -244,17 +250,17 @@ async function viewAdapterDoc(adapterName) {
             return;
         }
 
-        // 使用 marked 渲染 Markdown
+        // 使用 marked 渲染 Markdown，经 sanitizeMarkupHtml 清洗
         const htmlContent = window.marked
-            ? `<div class="markdown-body">${marked.parse(content)}</div>`
-            : `<pre class="mb-0" style="white-space: pre-wrap;">${content}</pre>`;
+            ? `<div class="markdown-body">${sanitizeMarkupHtml(marked.parse(content))}</div>`
+            : `<pre class="mb-0" style="white-space: pre-wrap;">${escapeHtml(content)}</pre>`;
 
         const modalHtml = `
             <div class="modal fade" id="adapter-doc-modal" tabindex="-1" aria-hidden="true">
                 <div class="modal-dialog modal-dialog-centered modal-lg">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title">${adapterName} 适配器说明</h5>
+                            <h5 class="modal-title">${escapeHtml(adapterName)} 适配器说明</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
                         </div>
                         <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
@@ -609,14 +615,5 @@ async function saveAdapterConfig(adapterName) {
 
 // 添加脉冲动画样式
 const style = document.createElement('style');
-style.textContent = `
-    @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-    }
-
-    .pulse-animation {
-        animation: pulse 1.5s ease-in-out infinite;
-    }
-`;
+style.textContent = `\n    @keyframes pulse {\n        0%, 100% { transform: scale(1); }\n        50% { transform: scale(1.05); }\n    }\n\n    .pulse-animation {\n        animation: pulse 1.5s ease-in-out infinite;\n    }\n`;
 document.head.appendChild(style);

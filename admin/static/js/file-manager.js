@@ -3,6 +3,19 @@
  * 实现文件浏览、创建、编辑、删除等功能
  */
 
+// 兜底 escapeHtml 函数（防止该页面未加载 admin.js 时报错）
+if (typeof escapeHtml !== 'function') {
+    function escapeHtml(unsafe) {
+        if (unsafe == null) return '';
+        return String(unsafe)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+}
+
 // 当前路径
 let currentPath = '/';
 // 当前选中的文件/文件夹
@@ -622,7 +635,7 @@ function displayFiles(files) {
         itemEl.innerHTML = `
             <div class="file-info">
                 <i class="bi ${iconClass}"></i>
-                <div class="file-name">${file.name}</div>
+                <div class="file-name">${escapeHtml(file.name)}</div>
                 <div class="file-size">${formatFileSize(file.size)}</div>
                 <div class="file-date">${formatDate(file.modified)}</div>
             </div>
@@ -781,7 +794,7 @@ function loadFolderTree() {
             elements.folderTree.innerHTML = `
                 <div class="text-danger">
                     <i class="bi bi-exclamation-triangle me-1"></i>
-                    加载文件夹失败: ${error.message}
+                    加载文件夹失败: ${escapeHtml(error.message)}
                 </div>
             `;
         });
@@ -799,7 +812,7 @@ function createFolderTreeItem(folder) {
     itemContent.innerHTML = `
         <span class="folder-toggle"><i class="bi bi-chevron-down"></i></span>
         <i class="bi bi-folder-fill file-icon-folder"></i>
-        <span>${folder.name}</span>
+        <span>${escapeHtml(folder.name)}</span>
     `;
 
     li.appendChild(itemContent);
@@ -896,7 +909,7 @@ function updateBreadcrumb(path) {
             li.textContent = part;
         } else {
             const targetPath = currentPath; // 保存当前路径供点击回调使用
-            li.innerHTML = `<a href="#" data-path="${targetPath}">${part}</a>`;
+            li.innerHTML = `<a href="#" data-path="${targetPath}">${escapeHtml(part)}</a>`;
             const link = li.querySelector('a');
             link.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -1531,12 +1544,12 @@ function showToast(title, message, type = 'success') {
 
         toastEl.innerHTML = `
             <div class="toast-header">
-                <strong class="me-auto">${title}</strong>
+                <strong class="me-auto">${escapeHtml(title)}</strong>
                 <small class="text-muted">刚刚</small>
                 <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
             </div>
             <div class="toast-body">
-                ${message}
+                ${escapeHtml(message)}
             </div>
         `;
 

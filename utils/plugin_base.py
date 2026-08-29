@@ -1,3 +1,10 @@
+"""
+@input: plugins/<Plugin>/config.toml（[basic].priority 或 [<Plugin>].priority 全局优先级）、装饰器标记 _is_scheduled 的定时任务
+@output: PluginBase 抽象基类；on_enable/on_disable/async_init 生命周期；config.toml 全局优先级自动读取
+@position: 插件基类——所有业务插件必须继承；定义元数据字段与定时任务注册/卸载约定
+@auto-doc: Update header and folder INDEX.md when this file changes
+"""
+
 import os
 import sys
 from abc import ABC

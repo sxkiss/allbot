@@ -121,7 +121,15 @@ class WechatLoginHandler:
         if flow.get("status") == "error":
             return False
 
+        retry_count = 0
+        max_retries = 5
         while flow.get("status") == "waiting_login":
+            if retry_count >= max_retries:
+                logger.error("869 登录轮询超时，达到最大重试次数")
+                flow["status"] = "error"
+                break
+            retry_count += 1
+
             device_name = str(flow.get("device_name") or device_name).strip() or device_name
             device_id = str(flow.get("device_id") or device_id).strip() or device_id
             login_mode = self._normalize_869_login_mode(flow.get("login_mode", ""))
@@ -827,7 +835,13 @@ class WechatLoginHandler:
         device_name: Optional[str],
         device_id: Optional[str],
     ) -> Tuple[str, str]:
+        retry_count = 0
+        max_retries = 5
         while not await self.bot.is_logged_in(wxid):
+            if retry_count >= max_retries:
+                logger.error("登录轮询超时，达到最大重试次数({})", max_retries)
+                break
+            retry_count += 1
             try:
                 get_cached_info = await self.bot.get_cached_info(wxid)
 

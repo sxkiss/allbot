@@ -188,9 +188,15 @@ async def _require_auth(request: Request) -> Optional[str]:
 async def _require_websocket_auth(websocket: WebSocket) -> Optional[str]:
     if _check_auth is None:
         return None
-    from starlette.requests import Request as StarletteRequest
 
-    request = StarletteRequest(websocket.scope)
+    # 注意：WebSocket 的 scope 不能包装成 StarletteRequest（缺少 method 等
+    # HTTP 请求必需字段，会触发 AssertionError）。check_auth 仅使用 cookies，
+    # 因此直接用 websocket.cookies 构造最小请求对象传递即可。
+    class _WSRequest:
+        def __init__(self, cookies: Dict[str, str]):
+            self.cookies = cookies
+
+    request = _WSRequest(getattr(websocket, "cookies", {}) or {})
     username = await _check_auth(request)
     if not username:
         await websocket.close(code=4401, reason="未登录或登录已过期")

@@ -1,10 +1,8 @@
-/*
- * Web 对话悬浮窗口（单会话）
- *
- * 设计目标：
- * - 后台全局悬浮图标
- * - 点击打开悬浮窗口，点击最小化恢复为图标
- * - 使用固定会话ID，与后端单会话模式一致
+/**
+ * @input: /api/webchat/* 接口与 /api/webchat/ws、base.html 悬浮容器
+ * @output: 全局 Web 对话悬浮窗（单会话，固定会话 ID "webchat"）轮询与收发
+ * @position: 管理后台 Web 对话前端悬浮组件
+ * @auto-doc: Update header and folder INDEX.md when this file changes
  */
 
 (function () {

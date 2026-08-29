@@ -1,6 +1,8 @@
 """
-朋友圈API模块
-提供朋友圈相关的API路由和功能
+@input: FastAPI app、check_auth、bot 实例、朋友圈缓存目录（cache/friend_circle）
+@output: 朋友圈 API（/api/friend_circle/sync|detail|list|like|comment）
+@position: 管理后台朋友圈桥接层，经 registry._register_external_apis 注册
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 
 import json

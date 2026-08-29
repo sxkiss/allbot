@@ -1,7 +1,8 @@
-"""AllBot 核心类 - Facade 模式
-
-重构后的 AllBot 类，组合各个功能模块，提供统一接口。
-保持向后兼容，所有公共方法和属性保持不变。
+"""
+@input: WechatAPIClient 实例、utils.config_manager.get_config() 配置
+@output: AllBot Facade 类——组合 ProfileManager/ContactManager/PermissionChecker/WakeupChecker/FriendCircleManager/MessageRouter，对外提供向后兼容接口，消息入口委托给 MessageRouter
+@position: AllBot 核心门面层（重构自 allbot_legacy 单文件 ~2400 行，拆分为 8 个子模块后组合）
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 from typing import Dict, Any
 

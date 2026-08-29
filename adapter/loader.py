@@ -1,3 +1,12 @@
+"""
+@input: adapter/*/config.toml（enabled 开关、module/class 配置）
+@output: 启动各平台适配器线程，返回 AdapterInfo 列表
+@position: 适配器层入口 — 扫描并启动启用状态的平台适配器，内置 web 预实例去重
+@auto-doc: Update header and folder INDEX.md when this file changes
+
+适配器加载器：扫描 adapter 子目录，按 config.toml 启动启用适配器。
+"""
+
 import importlib
 import threading
 import tomllib

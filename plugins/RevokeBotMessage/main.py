@@ -201,12 +201,15 @@ def _install_send_wrappers(bot: Any) -> _RevokeRegistry:
         "send_cdn_video_msg",
     ]
 
+    # 保存原始方法以便恢复
+    original_methods = {}
     for name in method_names:
         if not hasattr(bot, name):
             continue
         original = getattr(bot, name)
         if getattr(original, "_revoke_wrapped", False):
             continue
+        original_methods[name] = original
 
         async def _wrapped(*args: Any, __original=original, __name=name, **kwargs: Any):  # type: ignore[no-redef]
             fallback_create_time = int(time.time())
@@ -236,8 +239,27 @@ def _install_send_wrappers(bot: Any) -> _RevokeRegistry:
         setattr(bot, name, _wrapped)
 
     setattr(bot, "_revoke_send_wrapped", True)
+    setattr(bot, "_revoke_original_methods", original_methods)  # 保存原始方法引用
     logger.info("[RevokeBotMessage] 已安装发送回执拦截器")
     return registry
+
+
+def _restore_send_wrappers(bot: Any) -> None:
+    """恢复原始发送方法"""
+    if not getattr(bot, "_revoke_send_wrapped", False):
+        return
+
+    original_methods = getattr(bot, "_revoke_original_methods", {})
+    for name, original in original_methods.items():
+        if hasattr(bot, name):
+            setattr(bot, name, original)
+
+    # 清除标志和保存的原始方法
+    setattr(bot, "_revoke_send_wrapped", False)
+    if hasattr(bot, "_revoke_original_methods"):
+        delattr(bot, "_revoke_original_methods")
+
+    logger.info("[RevokeBotMessage] 已恢复发送回执拦截器")
 
 
 class RevokeBotMessage(PluginBase):
@@ -259,6 +281,12 @@ class RevokeBotMessage(PluginBase):
         if bot is None:
             return
         _install_send_wrappers(bot)
+
+    async def on_disable(self):
+        """插件禁用时恢复原始发送方法"""
+        if getattr(self, "bot", None) is not None:
+            _restore_send_wrappers(self.bot)
+        await super().on_disable()
 
     def _get_registry(self, bot: Any) -> Optional[_RevokeRegistry]:
         return getattr(bot, "_revoke_registry", None)

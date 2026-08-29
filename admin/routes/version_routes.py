@@ -1,7 +1,8 @@
 """
-版本更新路由模块
-
-职责：处理版本检查、版本更新等 API
+@input: FastAPI app、版本信息函数、更新进度管理器、framework_actions 更新执行器
+@output: 版本检查/更新相关 API（/api/version/check、/api/version/update、/api/check_update、/api/update_bot）
+@position: 管理后台版本与更新入口，统一委托 utils/framework_actions.py 并推送进度
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 import os
 import json

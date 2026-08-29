@@ -20,10 +20,10 @@ class RandomPicture(PluginBase):
         with open("plugins/RandomPicture/config.toml", "rb") as f:
             plugin_config = tomllib.load(f)
 
-        config = plugin_config["RandomPicture"]
+        config = plugin_config.get("RandomPicture", {})
 
-        self.enable = config["enable"]
-        self.command = config["command"]
+        self.enable = bool(config.get("enable", True))
+        self.command = config.get("command", ["随机图片"])
 
     @on_text_message
     async def handle_text(self, bot: WechatAPIClient, message: dict):

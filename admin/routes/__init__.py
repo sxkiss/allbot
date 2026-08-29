@@ -1,7 +1,8 @@
 """
-路由模块初始化文件
-
-提供统一的路由注册接口
+@input: FastAPI app、templates、bot_instance、版本/系统状态/统计函数
+@output: register_refactored_routes() 旧版模块化路由注册入口（与 registry.register_all 并存）
+@position: 管理后台路由包初始化与向后兼容导出
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 from loguru import logger
 

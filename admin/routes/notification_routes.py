@@ -1,7 +1,8 @@
 """
-通知管理路由模块
-
-职责：处理 xxtui 通知设置、测试和历史记录
+@input: FastAPI app、require_auth/require_auth_page、notification_service 通知服务
+@output: 通知设置/测试/历史 API 与 /notification 设置页
+@position: 管理后台通知配置入口（xxtui 推送通道）
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 from typing import Optional
 from pathlib import Path

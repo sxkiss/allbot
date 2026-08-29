@@ -35,6 +35,26 @@
 
 ---
 
+## 🗂️ 代码目录 INDEX 索引（auto-doc Tier 1）
+
+AllBot 采用 auto-doc 三层文档规范：**根 `CLAUDE.md`（架构概览）** + **各代码目录 `INDEX.md`（文件职责表）** + **核心文件头注释 `@auto-doc`**。各含代码子目录均已生成 `INDEX.md`，导航入口如下：
+
+| 目录 | 职责 | INDEX.md |
+|------|------|----------|
+| `bot_core/` | 核心调度引擎：启动编排 / 消息路由 / 事件分发 | [INDEX.md](./bot_core/INDEX.md) |
+| `WechatAPI/` | 微信协议客户端封装（好友/群聊/朋友圈/登录） | [INDEX.md](./WechatAPI/INDEX.md) |
+| `adapter/` | 多平台适配器：QQ / TG / Web / Win / wx / observatory / wecom | [INDEX.md](./adapter/INDEX.md) |
+| `database/` | 数据持久化：主库 / 键值 / 消息 / 联系人 / 群成员 / 计数 | [INDEX.md](./database/INDEX.md) |
+| `admin/` | Web 管理后台：FastAPI 路由 / 服务 / 模板 / 静态 | [INDEX.md](./admin/INDEX.md) |
+| `utils/` | 工具库：装饰器 / 插件管理 / 配置 / 日志 / 性能监控 | [INDEX.md](./utils/INDEX.md) |
+| `plugins/` | 内置插件系统（可通过插件市场扩展） | [INDEX.md](./plugins/INDEX.md) |
+| `tests/` | 项目级回归测试（适配器/配置/运行修复） | [INDEX.md](./tests/INDEX.md) |
+| `tools/` | 开发辅助工具（路由契约静态审计） | [INDEX.md](./tools/INDEX.md) |
+
+> 适配器和插件子目录（如 `adapter/wx/`、`plugins/BotStatus/`）也各自维护 `INDEX.md`，可从上述父级索引继续下钻。
+
+---
+
 ## 📋 变更记录 (Changelog)
 
 ### 2026-01-22 18:38:56 - 文档同步：路由契约与统计对齐

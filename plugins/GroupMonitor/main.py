@@ -23,6 +23,7 @@ class GroupMonitorPlugin(PluginBase):
 
     def __init__(self):
         super().__init__()
+        self._monitor_task = None
 
         # 读取配置文件
         config_path = os.path.join(os.path.dirname(__file__), "config.toml")
@@ -274,4 +275,17 @@ class GroupMonitorPlugin(PluginBase):
 
         # 启动监控循环
         logger.info("启动群成员监控循环，每 {} 秒检查一次".format(self.check_interval))
-        asyncio.create_task(self.monitor_loop())
+        self._monitor_task = asyncio.create_task(self.monitor_loop())
+
+    async def on_disable(self):
+        """插件禁用时取消后台监控任务"""
+        if getattr(self, "_monitor_task", None) and not self._monitor_task.done():
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                logger.warning("停止群成员监控任务时出现异常: {}", exc)
+        self._monitor_task = None
+        await super().on_disable()

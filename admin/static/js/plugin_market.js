@@ -307,7 +307,7 @@ function processPluginTags(plugin) {
                 if (tagText && !tagText.includes('[object Object]') && tagText.length > 0) {
                     // 根据标签内容自动分类
                     const tagClass = getTagClass(tagText);
-                    tagsHtml += `<span class="plugin-tag ${tagClass}" data-tag="${tagText.toLowerCase()}">${tagText}</span>`;
+                    tagsHtml += `<span class="plugin-tag ${tagClass}" data-tag="${escapeHtml(tagText.toLowerCase())}">${escapeHtml(tagText)}</span>`;
                 }
             });
         }
@@ -821,7 +821,7 @@ function updateRecommendedPlugins(plugins) {
                 }
 
                 if (tagText && !tagText.includes('[object Object]') && tagText.length > 0) {
-                    tagsHtml += `<span class="plugin-card-tag">${tagText}</span>`;
+                    tagsHtml += `<span class="plugin-card-tag">${escapeHtml(tagText)}</span>`;
                 }
             });
         }
@@ -849,23 +849,29 @@ function updateRecommendedPlugins(plugins) {
             name = name.substring(0, 15) + '...';
         }
 
+        const safePluginName = escapeHtml(plugin.name || '');
+        const safePluginDesc = escapeHtml(plugin.description || '');
+        const safePluginAuthor = escapeHtml(plugin.author || '');
+        const safePluginVersion = escapeHtml(plugin.version || '');
+        const safeTagsHtml = tagsHtml.replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&quot;/g, '"').replace(/&#039;/g, "'");
+
         // 创建卡片HTML
         const cardHtml = `
             <div class="col-md-4 mb-4">
                 <div class="plugin-card position-relative">
                     <span class="recommended-badge">推荐</span>
                     <div class="plugin-card-header">
-                        <h5 class="plugin-card-title" title="${plugin.name}">${name}</h5>
-                        <span class="plugin-card-version">v${plugin.version}</span>
+                        <h5 class="plugin-card-title" title="${safePluginName}">${escapeHtml(name)}</h5>
+                        <span class="plugin-card-version">v${escapeHtml(plugin.version)}</span>
                     </div>
                     <div class="plugin-card-body">
-                        <p class="plugin-card-description" title="${plugin.description}">${description}</p>
+                        <p class="plugin-card-description" title="${safePluginDesc}">${escapeHtml(description)}</p>
                         <div class="plugin-card-tags">
-                            ${tagsHtml}
+                            ${safeTagsHtml}
                         </div>
                     </div>
                     <div class="plugin-card-footer">
-                        <span class="plugin-card-author" title="来自: ${plugin.author}">来自: ${author}</span>
+                        <span class="plugin-card-author" title="来自: ${safePluginAuthor}">来自: ${escapeHtml(author)}</span>
                         <div class="plugin-actions">
                             <button class="btn btn-sm btn-gold">
                                 <i class="bi bi-download me-1"></i>安装
@@ -1131,26 +1137,33 @@ function renderMarketPlugins(plugins) {
 
                 // 创建状态标识
                 let statusBadges = '';
+                const safeLocalVersion = escapeHtml(String(status.localVersion || ''));
+                const safeBtnVersion = escapeHtml(String(version || ''));
                 if (status.installed) {
-                    statusBadges += `<span class="badge bg-success me-1" title="已安装版本: v${status.localVersion}">已安装</span>`;
+                    statusBadges += `<span class="badge bg-success me-1" title="已安装版本: v${safeLocalVersion}">已安装</span>`;
                     if (status.hasUpdate) {
-                        statusBadges += `<span class="badge bg-warning me-1" title="可更新到: v${version}">可更新</span>`;
+                        statusBadges += `<span class="badge bg-warning me-1" title="可更新到: v${safeBtnVersion}">可更新</span>`;
                     }
                 }
+
+                const safeName = escapeHtml(name);
+                const safeDescription = escapeHtml(description);
+                const safeAuthor = escapeHtml(author);
+                const safeVersion = escapeHtml(version);
 
                 row.innerHTML = `
                     <td>
                         <div class="plugin-name d-flex align-items-center">
-                            ${name}
+                            ${safeName}
                             ${statusBadges ? `<div class="ms-2">${statusBadges}</div>` : ''}
                         </div>
                     </td>
                     <td>
-                        <div class="plugin-description">${description}</div>
+                        <div class="plugin-description">${safeDescription}</div>
                     </td>
-                    <td>${author}</td>
-                    <td>v${version}${status.installed ? `<br><small class="text-muted">(已安装: v${status.localVersion})</small>` : ''}</td>
-                    <td>${updateDateStr}</td>
+                    <td>${safeAuthor}</td>
+                    <td>v${safeVersion}${status.installed ? `<br><small class="text-muted">(已安装: v${escapeHtml(status.localVersion)})</small>` : ''}</td>
+                    <td>${escapeHtml(updateDateStr)}</td>
                     <td>
                         ${tagsHtml}
                     </td>
@@ -1158,10 +1171,10 @@ function renderMarketPlugins(plugins) {
                         <div class="plugin-actions">
                             ${status.installed ?
                                 (status.hasUpdate ?
-                                    `<button class="btn-update" data-plugin-id="${plugin.id}" title="从 v${status.localVersion} 更新到 v${version}">
+                                    `<button class="btn-update" data-plugin-id="${plugin.id}" title="从 v${safeLocalVersion} 更新到 v${safeBtnVersion}">
                                         <i class="bi bi-arrow-repeat"></i> 更新
                                     </button>` :
-                                    `<button class="btn-install" data-plugin-id="${plugin.id}" title="重新安装 v${status.localVersion}">
+                                    `<button class="btn-install" data-plugin-id="${plugin.id}" title="重新安装 v${safeLocalVersion}">
                                         <i class="bi bi-arrow-repeat"></i> 重新安装
                                     </button>`) :
                                 `<button class="btn-install" data-plugin-id="${plugin.id}">
@@ -1585,7 +1598,7 @@ function showToast(message, type = 'info') {
         <div class="d-flex">
             <div class="toast-body">
                 <i class="bi ${getToastIcon(type)} me-2"></i>
-                ${message}
+                ${escapeHtml(message)}
             </div>
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
         </div>

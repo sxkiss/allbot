@@ -409,9 +409,9 @@ class Reminder(PluginBase):
                 return False
 
         elif content in self.query_command:
-            print("收到了查询记录的命令")
+            logger.info("[Reminder] 收到了查询记录的命令")
             reminders = await self.query_reminders(wxid)
-            print(f"查询到的记录: {reminders}")
+            logger.debug("[Reminder] 查询到的记录: {}", reminders)
             if reminders:
                 output = "📝-----XXXBOT-----📝\n您的记录：\n"
                 for id, content, reminder_type, reminder_time, _ in reminders:

@@ -153,6 +153,10 @@ def register_plugins_routes(app, current_dir, plugin_manager=None):
             import shutil
             import os
 
+            # 白名单校验：拒绝含路径分隔符等危险字符的输入，防止目录穿越
+            if not re.fullmatch(r'^[A-Za-z0-9_.-]+$', plugin_name):
+                return {"success": False, "error": f"无效的插件名称: {plugin_name}"}
+
             # 首先确保插件已经被卸载
             if plugin_name in plugin_manager.plugins:
                 await plugin_manager.unload_plugin(plugin_name)
@@ -198,8 +202,18 @@ def register_plugins_routes(app, current_dir, plugin_manager=None):
             import shutil
             import os
 
+            # 目录穿越防护：拒绝包含路径分隔符或..的适配器名称
+            if ".." in adapter_name or "/" in adapter_name or "\\" in adapter_name:
+                return {"success": False, "error": "无效的适配器名称"}
+
+            # 使用白名单路径校验：只允许删除 adapter/ 目录下的直接子目录
+            base_dir = os.path.abspath("adapter")
+            adapter_dir = os.path.abspath(os.path.join(base_dir, adapter_name))
+            # 确保解析后的路径仍在 base_dir 内（防止符号链接等绕过）
+            if not adapter_dir.startswith(base_dir + os.sep):
+                return {"success": False, "error": "无效的适配器名称"}
+
             # 检查适配器目录是否存在
-            adapter_dir = os.path.join("adapter", adapter_name)
             if not os.path.exists(adapter_dir) or not os.path.isdir(adapter_dir):
                 return {"success": False, "error": f"找不到适配器 {adapter_name} 的目录"}
 
@@ -304,6 +318,10 @@ def register_plugins_routes(app, current_dir, plugin_manager=None):
             if not plugin_name:
                 return {"success": False, "error": "缺少插件ID参数"}
 
+            # 白名单校验：拒绝含路径分隔符等危险字符的输入，防止目录穿越
+            if not re.fullmatch(r'^[A-Za-z0-9_.-]+$', plugin_name):
+                return {"success": False, "error": f"无效的插件名称: {plugin_name}"}
+
             from utils.plugin_manager import plugin_manager
             import shutil
             import os
@@ -333,8 +351,14 @@ def register_plugins_routes(app, current_dir, plugin_manager=None):
             if plugin_name == "ManagePlugin":
                 return {"success": False, "error": "不能删除核心插件 ManagePlugin"}
 
+            # 目录穿越防护：确认目标路径位于 plugins 目录内
+            base_dir = os.path.abspath("plugins")
+            real_plugin_dir = os.path.abspath(plugin_dir)
+            if not real_plugin_dir.startswith(base_dir + os.sep):
+                return {"success": False, "error": "无效的插件路径"}
+
             # 删除插件目录
-            shutil.rmtree(plugin_dir)
+            shutil.rmtree(real_plugin_dir)
 
             # 从插件信息中移除
             if plugin_name in plugin_manager.plugin_info:

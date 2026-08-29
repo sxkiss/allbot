@@ -1,6 +1,8 @@
-"""状态管理模块
-
-负责管理bot状态和管理后台集成
+"""
+@input: status 字符串、details、extra_data；admin.server.set_bot_instance
+@output: 写入 admin/bot_status.json 与根 bot_status.json、同步 bot 实例到管理后台（保留登录态）
+@position: bot_core 全局运行状态管理层（管理后台状态文件与实例桥接）
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 import json
 import sys
@@ -94,8 +96,24 @@ def set_bot_instance(bot):
     # 先调用admin模块的设置函数
     admin_set_bot_instance(bot)
 
-    # 更新状态
-    update_bot_status("initialized", "机器人实例已设置")
+    # 更新状态：不要覆盖登录成功后写入的 online / 等待登录时的 waiting_login 等真实登录态。
+    # 启动时 set_bot_instance 与后台 869 登录任务并发执行，若登录已先完成并写入 online，
+    # 此处若再写 initialized 会把在线态覆盖成“未登录”，导致后台误报离线。
+    current_status = ""
+    try:
+        sf = Path(admin_path) / "admin" / "bot_status.json"
+        if sf.exists():
+            with open(sf, "r", encoding="utf-8") as f:
+                current_status = str(json.load(f).get("status", "") or "").strip().lower()
+    except Exception:
+        current_status = ""
+
+    if current_status in {"online", "ready", "success", "waiting_login", "scanning", "adapter_mode"}:
+        # 保留真实登录态，仅刷新时间戳
+        update_bot_status(current_status, "机器人实例已设置（保留登录态）")
+    else:
+        update_bot_status("initialized", "机器人实例已设置")
+
     logger.success("成功设置bot实例并更新状态")
 
     return bot

@@ -1,5 +1,8 @@
 """
-插件管理相关的API路由
+@input: FastAPI app、require_auth、DOW 插件管理函数
+@output: DOW 插件列表/启停/配置读取 API（兼容旧前端）
+@position: 管理后台 DOW 插件兼容路由层
+@auto-doc: Update header and folder INDEX.md when this file changes
 """
 import os
 import sys
