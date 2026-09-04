@@ -12,7 +12,7 @@ model-name = "auto"
 stream-enable = true
 max-reply-chars = 1800
 session-prefix = "allbot-hermes"
-group-history-count = 15
+group-history-count = 0
 
 auto-trigger-enable = true
 trigger-words = ["hermes", "opencode"]
@@ -39,5 +39,5 @@ image-public-base-url = "http://l.sxkiss.top:9090"
 image-public-route-prefix = "/media/files"
 system-prompt = ""
 session-reset-commands = ["/new", "/reset"]
-pseudo-stream-enable = true
+pseudo-stream-enable = false
 pseudo-stream-chunk-size = 230

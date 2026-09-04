@@ -516,7 +516,12 @@ def _patch_framework_downloaders() -> None:
     if _PATCHED_DOWNLOADERS:
         return
 
-    from WechatAPI.Client.tool import ToolMixin
+    try:
+        from WechatAPI.Client.tool import ToolMixin
+    except (ImportError, ModuleNotFoundError):
+        _PATCHED_DOWNLOADERS = True
+        return
+
     from WechatAPI.Client import WechatAPIClient as _Client
 
     original_tool_download_voice = ToolMixin.download_voice

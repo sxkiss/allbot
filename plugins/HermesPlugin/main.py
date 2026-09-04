@@ -607,6 +607,7 @@ class HermesPlugin(PluginBase):
             history_block = await self._build_group_history_context(
                 group_id=route.to_wxid,
                 current_msg_id=_safe_text(message.get("MsgId")).strip(),
+                current_text=prompt,
                 limit=self.group_history_count,
             )
 
@@ -618,6 +619,7 @@ class HermesPlugin(PluginBase):
         *,
         group_id: str,
         current_msg_id: str = "",
+        current_text: str = "",
         limit: int = 15,
     ) -> str:
         """从 message.db 取最近 limit 条群文本消息，格式化为 [Recent group messages]。"""
@@ -642,6 +644,12 @@ class HermesPlugin(PluginBase):
 
         if not rows:
             return ""
+
+        # 当前消息的正文（含 @前缀与触发词剥离后的形态），用于内容级去重
+        current_text = _safe_text(current_text).strip()
+        current_body = current_text
+        if ":\n" in current_body:
+            current_body = current_body.split(":\n", 1)[1].strip()
 
         lines: list[str] = []
         seen_keys: set[str] = set()
@@ -672,6 +680,10 @@ class HermesPlugin(PluginBase):
                 continue
             if sender.endswith("@chatroom") or sender == group_id:
                 # 反向入库脏数据，跳过
+                continue
+
+            # 内容级去重：正文与当前 prompt 相同（含带 @/触发词变体）时跳过
+            if current_body and (content == current_body or content == current_text):
                 continue
 
             dedup_key = f"{sender}|{content}"
