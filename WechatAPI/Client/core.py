@@ -1871,6 +1871,10 @@ class WechatAPIClient(WechatAPIClientBase):
 
         if isinstance(data, dict):
             candidates.append(data.get("isSendSuccess"))
+            # 网关协议响应 Data 为列表，元素含 isSendSuccess（Success 顶层为 false 的 quirk）
+            payload_data = data.get("Data")
+            if isinstance(payload_data, list) and payload_data and isinstance(payload_data[0], dict):
+                candidates.append(payload_data[0].get("isSendSuccess"))
             list_data = data.get("List")
             if isinstance(list_data, list) and list_data and isinstance(list_data[0], dict):
                 candidates.append(list_data[0].get("isSendSuccess"))
@@ -1916,7 +1920,11 @@ class WechatAPIClient(WechatAPIClientBase):
             return 0, now, 0
 
         candidate = data
-        if isinstance(data.get("List"), list) and data.get("List"):
+        # 网关协议 Data 列表结构（Success=false 但 Data[0] 含实际回执）
+        payload_data = data.get("Data")
+        if isinstance(payload_data, list) and payload_data and isinstance(payload_data[0], dict):
+            candidate = payload_data[0]
+        elif isinstance(data.get("List"), list) and data.get("List"):
             candidate = data["List"][0]
 
         # 兼容 resp.chat_send_ret_list 结构

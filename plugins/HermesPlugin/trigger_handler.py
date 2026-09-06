@@ -94,15 +94,18 @@ class TriggerHandler:
     # -- Dedup --
 
     def _dedup_key(self, event_name: str, message: dict) -> str:
+        # 去重键不含 event_name：同一条消息可能同时触发 text_message 与
+        # at_message 两个事件（群聊 @机器人 场景），必须跨事件统一去重，
+        # 否则同一 MsgId 会被两个 handler 各转发一次，导致重复回复。
         msg_id = _safe_text(message.get("MsgId")).strip()
         if msg_id:
-            return f"{event_name}:{msg_id}"
+            return f"msg:{msg_id}"
         route_id = _safe_text(message.get("FromWxid")).strip()
         sender = _safe_text(message.get("SenderWxid")).strip()
         content = _safe_text(message.get("Content")).strip()
         created = _safe_text(message.get("Createtime")).strip()
         digest = hashlib.sha1(f"{route_id}|{sender}|{created}|{content}".encode()).hexdigest()[:16]
-        return f"{event_name}:h:{digest}"
+        return f"h:{digest}"
 
     def _should_skip_duplicate(self, event_name: str, message: dict) -> bool:
         if not self.dedup_enable:
