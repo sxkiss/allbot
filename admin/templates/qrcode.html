@@ -375,6 +375,25 @@
                                             <i class="bi bi-phone me-1"></i>无验证码，切换MAC登录
                                         </button>
                                     </div>
+                                    <hr class="my-3">
+                                    <label class="form-label mb-1"><i class="bi bi-device-hdd me-1"></i>切换登录端</label>
+                                    <div class="input-group">
+                                        <select class="form-select form-select-sm" id="device-type-select">
+                                            <option value="ipad" selected>iPad（默认）</option>
+                                            <option value="mac">Mac</option>
+                                            <option value="pad">安卓 Pad</option>
+                                            <option value="win">Windows</option>
+                                            <option value="winuwp">Win UWP（绕验证码）</option>
+                                            <option value="winunified">Win 统一版</option>
+                                            <option value="car">车载</option>
+                                            <option value="notcode">过识别通道(2)</option>
+                                            <option value="notcodepush">过识别通道(1)</option>
+                                        </select>
+                                        <button class="btn btn-sm btn-outline-primary" type="button" id="btn-switch-device">
+                                            <i class="bi bi-arrow-repeat me-1"></i>切换
+                                        </button>
+                                    </div>
+                                    <small class="text-muted mt-1 d-block">869 仅支持 iPad/Mac；874 支持全部登录端。</small>
                                 </div>
                             </div>
                         </div>
@@ -609,6 +628,45 @@
                 }
             } catch (e) {
                 alert('切换 mac 拉码失败: ' + (e && e.message ? e.message : e));
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        });
+
+        // 切换登录端（874 多端 / 869 双端）
+        document.getElementById('btn-switch-device').addEventListener('click', async function() {
+            const btn = document.getElementById('btn-switch-device');
+            const select = document.getElementById('device-type-select');
+            const deviceType = select.value;
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 切换中...';
+            try {
+                const response = await fetch('/api/login/switch_device_qrcode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_type: deviceType, login_challenge: loginChallenge })
+                });
+                const data = await response.json();
+                if (data && data.success && data.data && data.data.status === 'online') {
+                    updateQRCodeStatus(data.message || '已在线，无需切换');
+                    showLoginSuccess();
+                } else if (data && data.success && data.data && data.data.qrcode_url) {
+                    qrcodeUrl = data.data.qrcode_url;
+                    currentQRCodeUuid = data.data.uuid || currentQRCodeUuid;
+                    currentLoginMode = deviceType;
+                    document.getElementById('login-mode-badge').textContent = '模式: ' + deviceType;
+                    setQRCodeImage(qrcodeUrl);
+                    initialCountdown = data.data.expires_in || 240;
+                    resetCountdown();
+                    updateQRCodeStatus('已切换到 ' + deviceType + ' 登录端，请重新扫码');
+                } else {
+                    const message = (data && (data.error || data.message)) ? (data.error || data.message) : '切换失败';
+                    alert('切换登录端失败: ' + message);
+                }
+            } catch (e) {
+                alert('切换登录端失败: ' + (e && e.message ? e.message : e));
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = original;

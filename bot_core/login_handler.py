@@ -214,9 +214,18 @@ class WechatLoginHandler:
                 return text
         return ""
 
+    # 874 协议支持的登录端（device_type → 874 拉码接口路由）
+    _874_LOGIN_MODES = (
+        "ipad", "mac", "pad", "androidpad", "win", "winuwp",
+        "winunified", "car", "notcode", "notcodepush",
+    )
+
     @staticmethod
     def _normalize_869_login_mode(device_type: Any) -> str:
-        return "mac" if str(device_type or "").strip().lower() == "mac" else "ipad"
+        text = str(device_type or "").strip().lower()
+        if text in WechatLoginHandler._874_LOGIN_MODES:
+            return text
+        return "mac" if text == "mac" else "ipad"
 
     def _normalize_869_auth_keys(self, *sources: Any, exclude: Optional[Iterable[str]] = None) -> list[str]:
         excluded = {str(item or "").strip() for item in (exclude or []) if str(item or "").strip()}
