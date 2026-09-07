@@ -1137,7 +1137,8 @@ class WechatAPIClient(WechatAPIClientBase):
             if qr_endpoint:
                 # 直接用 874 端点（绕过 ROUTE_MAP_874 的默认 Pad 映射）
                 qr_path = qr_endpoint
-                payload = {"DeviceName": login_device, "DeviceID": device_id, "LoginType": ""}
+                raw_device = str(device_name or "").strip().lower()
+                payload = {"DeviceName": raw_device, "DeviceID": device_id, "LoginType": ""}
                 if proxy_value:
                     # 874 ProxyInfo: {ProxyIp, ProxyUser, ProxyPassword}
                     clean = proxy_value.replace("socks5://", "").replace("http://", "")

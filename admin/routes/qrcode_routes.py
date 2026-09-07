@@ -443,6 +443,62 @@ def register_qrcode_routes(app, templates):
             logger.error(f"切换 mac 拉码失败: {e}")
             return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
+    @app.post("/api/login/switch_device_qrcode", response_class=JSONResponse)
+    async def api_login_switch_device_qrcode(request: Request):
+        """切换登录端拉取二维码（874 支持 10 种：ipad/mac/pad/win/car 等；869 仅 ipad/mac）。"""
+        auth_error = await _require_login_challenge(request)
+        if auth_error is not None:
+            return auth_error
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        device_type = str((payload or {}).get("device_type", "") or "").strip().lower()
+        if not device_type:
+            return JSONResponse(status_code=400, content={"success": False, "error": "缺少 device_type"})
+
+        try:
+            from admin.core.app_setup import get_bot_instance
+
+            wrapper = get_bot_instance()
+            wxapi = getattr(wrapper, "bot", wrapper)
+            if wxapi is None:
+                return JSONResponse(status_code=503, content={"success": False, "error": "机器人实例未初始化"})
+
+            protocol_version = str(getattr(wxapi, "protocol_version", "")).lower()
+
+            if protocol_version == "874":
+                valid_874 = {
+                    "ipad", "mac", "pad", "androidpad", "win", "winuwp",
+                    "winunified", "car", "notcode", "notcodepush",
+                }
+                if device_type not in valid_874:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"success": False, "error": f"874 不支持的登录端: {device_type}"},
+                    )
+            else:
+                if device_type not in ("ipad", "mac"):
+                    return JSONResponse(
+                        status_code=400,
+                        content={"success": False, "error": f"869 仅支持 ipad/mac: {device_type}"},
+                    )
+
+            result = await _run_869_login_flow(
+                wxapi,
+                preferred_device_type=device_type,
+                online_detail="当前已在线，无需切换登录端",
+            )
+            if result.get("success"):
+                return result
+            return JSONResponse(
+                status_code=400 if result.get("needs_auth_key") else 500,
+                content=result,
+            )
+        except Exception as e:
+            logger.error(f"切换登录端失败: {e}")
+            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
     @app.post("/api/login/restart_869_flow", response_class=JSONResponse)
     async def api_login_restart_869_flow(request: Request):
         """869 专属：提交卡密 key/拉码代理，并重新拉取二维码进入流程。"""
