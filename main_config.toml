@@ -9,7 +9,7 @@ type = "wechat"
 host = "127.0.0.1"         # wxserver 本地地址（容器内 127.0.0.1:5253）
 port = 5253                # wxserver 端口
 mode = "debug"             # 运行模式：release(生产环境)，debug(调试模式)
-admin-key = ""             # 869 管理密钥，部署时填写
+
 login-qrcode-proxy = ""     # 869 拉取登录二维码代理（可选）：socks5://user:pass@ip:port
 
 # Redis 设置
@@ -62,7 +62,7 @@ memory_low_threshold_mb = 500 # 可用内存警告阈值（MB）
 # AllBot 核心设置
 [AllBot]
 version = "v2.0.0"                    # 版本号，请勿修改
-enable-wechat-login = false            # 869 需要启用登录以获取 token_key 并更新 wxid/profile
+enable-wechat-login = true            # 869 需要启用登录以获取 token_key 并更新 wxid/profile
 ignore-protection = false             # 是否忽略风控保护机制，建议保持false
 enable-group-wakeup = false
 group-wakeup-words = [
