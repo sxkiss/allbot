@@ -345,7 +345,7 @@ class RevokeBotMessage(PluginBase):
             logger.warning(f"[RevokeBotMessage] 撤回调用异常: {exc}")
             ok = False
         if ok:
-            return False
+            return True
 
         await bot.send_text(to_wxid, FAIL_MSG)
         return False
