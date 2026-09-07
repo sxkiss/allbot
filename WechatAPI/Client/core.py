@@ -1895,6 +1895,18 @@ class WechatAPIClient(WechatAPIClientBase):
         success = cls._extract_send_success_flag(data)
         if success is True:
             return True
+        # CDN 上传回执（CdnUploadVideo/CdnUploadImage）：Data 为 dict，RetCode=0 且含 FileID/FileKey
+        if isinstance(data, dict):
+            payload_data = data.get("Data")
+            if isinstance(payload_data, dict):
+                ret_code = _safe_int(payload_data.get("RetCode"), -1)
+                has_file = bool(
+                    payload_data.get("FileID")
+                    or payload_data.get("FileKey")
+                    or payload_data.get("FileMd5")
+                )
+                if ret_code == 0 and has_file:
+                    return True
         client_msg_id, _create_time, new_msg_id = cls._extract_send_tuple(data)
         return bool(client_msg_id or new_msg_id)
 
