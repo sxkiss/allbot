@@ -1,0 +1,45 @@
+{
+  "debug": false,
+  "host": "0.0.0.0",
+  "port":"7006",
+  "apiVersion": "",
+  "ghWxid": "",
+  "adminKey": "df704bd7012548049e68db25aff0507f",
+  "mac2ipad": true,
+  "version": "1.0.1",
+
+  "workerpoolsize": 500,
+  "maxworkertasklen": 1000,
+  "redisConfig": {
+    "Host":            "127.0.0.1",
+    "Port":            6379,
+    "Db":              1,
+    "Pass":           "",
+    "MaxIdle":         10,
+    "MaxActive":       20,
+    "IdleTimeout":     5000,
+    "MaxConnLifetime": 30,
+    "ConnectTimeout":  0
+  },
+
+  "mySqlConnectStr": "root:123456@tcp(127.0.0.1:3306)/wechat_mmtls?charset=utf8mb4&parseTime=true&loc=Local",
+
+  "disabledCmdList": ["A000"],
+
+  "newsSynWxId":false,
+  "dt": true,
+
+  "proxyConfig": {
+    "allowDirectOnProxyFail": true,
+    "longConnTimeout": 15,
+    "longConnReadTimeout": 210,
+    "longConnRetryTimes": 30,
+    "longConnRetryInterval": 500,
+    "shortConnTimeout": 15,
+    "maxLongRetryTimes": 10,
+    "longRetryInterval": 60
+  },
+
+  "authServer": "http://v.sxkiss.top"
+
+}
