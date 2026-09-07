@@ -50,6 +50,10 @@ jobs:
         id: vars
         run: echo "GIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
+      - name: 获取分支名
+        id: branch
+        run: echo "BRANCH=$(echo ${{ github.ref_name }} | tr '/' '-')" >> $GITHUB_ENV
+
       - name: 构建并推送多架构镜像
         uses: docker/build-push-action@v4
         with:
@@ -58,7 +62,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/allbot:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/allbot:${{ env.BRANCH }}
             ${{ secrets.DOCKERHUB_USERNAME }}/allbot:${{ env.GIT_SHA }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/allbot:latest
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/allbot:latest
           cache-to: type=inline,mode=max
