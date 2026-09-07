@@ -357,7 +357,21 @@
                                     <h5 class="mb-0">
                                         <i class="bi bi-shield-lock me-2"></i>验证码登录（869）
                                     </h5>
-                                    <span class="badge bg-secondary" id="login-mode-badge">模式: -</span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-secondary" id="login-mode-badge">模式: -</span>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                                <i class="bi bi-cpu me-1"></i><span id="protocol-badge-text">869</span>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px">
+                                                <li><h6 class="dropdown-header">切换协议版本</h6></li>
+                                                <li><a class="dropdown-item" href="#" onclick="switchProtocol('869');return false;">869（默认）</a></li>
+                                                <li><a class="dropdown-item" href="#" onclick="switchProtocol('874');return false;">874（多登录端）</a></li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li><small class="dropdown-item-text text-muted">切换后需重启服务生效</small></li>
+                                            </ul>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="card-body">
                                     <p class="text-muted mb-3">
@@ -447,6 +461,17 @@
     document.addEventListener('DOMContentLoaded', function() {
         // 获取二维码
         loadQRCode();
+
+        // 初始化协议徽章显示
+        (async function() {
+            try {
+                const resp = await fetch('/api/login/qrcode');
+                const d = await resp.json();
+                const proto = (d && d.data && d.data.protocol) || '869';
+                const el = document.getElementById('protocol-badge-text');
+                if (el && proto) el.textContent = proto;
+            } catch (e) { /* 静默 */ }
+        })();
 
         // 刷新二维码按钮
         document.getElementById('btn-refresh-qrcode').addEventListener('click', function() {
@@ -672,6 +697,31 @@
                 btn.innerHTML = original;
             }
         });
+
+        // 热切换协议版本（869↔874，两服务常驻，无需重启）
+        async function switchProtocol(protocol) {
+            if (!confirm('切换到 ' + protocol + ' 协议？当前登录态将失效，需重新扫码。')) return;
+            try {
+                const response = await fetch('/api/login/switch_protocol', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ protocol: protocol, login_challenge: loginChallenge })
+                });
+                const data = await response.json();
+                if (data && data.success) {
+                    document.getElementById('protocol-badge-text').textContent = protocol;
+                    updateQRCodeStatus(data.message || '已切换到 ' + protocol);
+                    // 自动重新拉码
+                    if (typeof resetQRCode === 'function') {
+                        resetQRCode();
+                    }
+                } else {
+                    alert('切换协议失败: ' + (data && (data.error || data.message) || '未知错误'));
+                }
+            } catch (e) {
+                alert('切换协议失败: ' + (e && e.message ? e.message : e));
+            }
+        }
 
         // 重试按钮
         document.getElementById('btn-retry').addEventListener('click', function() {

@@ -360,8 +360,17 @@ def register_qrcode_routes(app, templates):
                 "timestamp": data.get("timestamp") or time.time(),
                 "uuid": uuid or "",
                 "login_mode": data.get("login_mode") or data.get("device_type") or "",
+                "protocol": "",
             },
         }
+        try:
+            from admin.core.app_setup import get_bot_instance
+            wrapper = get_bot_instance()
+            wxapi = getattr(wrapper, "bot", wrapper)
+            if wxapi is not None:
+                response["data"]["protocol"] = str(getattr(wxapi, "protocol_version", "") or "869").lower()
+        except Exception:
+            pass
         challenge = _issue_login_challenge()
         response["data"]["login_challenge"] = challenge["token"]
         response["data"]["challenge_expires_at"] = challenge["expires_at"]
@@ -497,6 +506,65 @@ def register_qrcode_routes(app, templates):
             )
         except Exception as e:
             logger.error(f"切换登录端失败: {e}")
+            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+    @app.post("/api/login/switch_protocol", response_class=JSONResponse)
+    async def api_login_switch_protocol(request: Request):
+        """热切换微信协议版本（869↔874），两个服务常驻运行，无需重启。"""
+        auth_error = await _require_login_challenge(request)
+        if auth_error is not None:
+            return auth_error
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        protocol = str((payload or {}).get("protocol", "") or "").strip().lower()
+        if protocol not in ("869", "874"):
+            return JSONResponse(status_code=400, content={"success": False, "error": "仅支持 869/874"})
+
+        try:
+            import tomllib
+            import tomli_w
+        except ImportError:
+            return JSONResponse(status_code=500, content={"success": False, "error": "缺少 toml 依赖"})
+
+        config_path = Path("main_config.toml")
+        if not config_path.exists():
+            return JSONResponse(status_code=500, content={"success": False, "error": "未找到 main_config.toml"})
+
+        try:
+            with open(config_path, "rb") as f:
+                config = tomllib.load(f)
+            config.setdefault("Protocol", {})["version"] = protocol
+            with open(config_path, "wb") as f:
+                tomli_w.dump(config, f)
+
+            # 热切换运行时 bot：协议版本 + 服务端口（869→5253 / 874→8062）
+            port = 5253 if protocol == "869" else 8062
+            switched = False
+            try:
+                from admin.core.app_setup import get_bot_instance
+                wrapper = get_bot_instance()
+                wxapi = getattr(wrapper, "bot", wrapper)
+                if wxapi is not None:
+                    wxapi.protocol_version = protocol
+                    wxapi.port = port
+                    # 切换协议后登录态不通用，清理会话缓存（卡密 key 保留）
+                    if hasattr(wxapi, "clear_login_session_cache"):
+                        wxapi.clear_login_session_cache()
+                    switched = True
+            except Exception as runtime_err:
+                logger.warning(f"热切换运行时协议失败（已写配置，重启后生效）: {runtime_err}")
+
+            port_note = f"869 服务 5253" if protocol == "869" else f"874 服务 8062"
+            return {
+                "success": True,
+                "protocol": protocol,
+                "switched": switched,
+                "message": f"已切换到 {protocol} 协议（{port_note}），请重新扫码登录",
+            }
+        except Exception as e:
+            logger.error(f"切换协议失败: {e}")
             return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
     @app.post("/api/login/restart_869_flow", response_class=JSONResponse)
