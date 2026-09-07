@@ -114,6 +114,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
                 description="不同协议兼容不同客户端环境。",
                 options=[
                     _option("869", "869（推荐）"),
+                    _option("874", "874（多登录端）"),
                     _option("ipad", "iPad"),
                     _option("pad", "Pad"),
                     _option("mac", "Mac"),
