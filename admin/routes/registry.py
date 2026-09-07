@@ -282,4 +282,13 @@ def _register_external_apis(app) -> None:
         register_account_manager_routes(app, check_auth, update_bot_status, restart_system_func)
         logger.info("✓ account_manager 已注册")
     except Exception as e:
+        logger.warning(f"account_manager 注册失败: {e}")
+
+    # 874 消息回调（syncmessagebusinessuri 目标端点）
+    try:
+        from admin.routes.wx874_callback import router as wx874_callback_router
+        app.include_router(wx874_callback_router)
+        logger.info("✓ wx874_callback 已注册")
+    except Exception as e:
+        logger.error(f"✗ wx874_callback 注册失败: {e}")
         logger.error(f"account_manager 注册失败: {e}")

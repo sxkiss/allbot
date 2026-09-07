@@ -232,6 +232,97 @@ class WechatAPIClient(WechatAPIClientBase):
         ("ws", "getsyncmsg"),
     }
 
+    # 874 协议路径映射（869 路径 → 874 路径）
+    # protocol_version="874" 时 request() 前先查此表做路径替换
+    ROUTE_MAP_874 = {
+        # login
+        "/login/GetLoginQrCodeNewDirect": "/api/Login/LoginGetQRPad",
+        "/login/CheckLoginStatus": "/api/Login/LoginCheckQR",
+        "/login/GetLoginStatus": "/api/Login/GetLoginStatus",
+        "/login/LogOut": "/api/Login/LogOut",
+        "/login/VerifyCode": "/api/Login/YPayVerificationcode",
+        "/login/WakeUpLogin": "/api/Login/LoginAwaken",
+        "/login/DeviceLogin": "/api/Login/Data62Login",
+        "/login/A16Login": "/api/Login/A16Data",
+        # message
+        "/message/SendTextMessage": "/api/Msg/SendTxt",
+        "/message/UploadImageToCDN": "/api/Msg/UploadImg",
+        "/message/SendImageMessage": "/api/Msg/UploadImg",
+        "/message/SendImageNewMessage": "/api/Msg/UploadImg",
+        "/message/ForwardImageMessage": "/api/Msg/SendCDNImg",
+        "/message/SendVoice": "/api/Msg/SendVoice",
+        "/message/CdnUploadVideo": "/api/Msg/SendVideo",
+        "/message/ForwardVideoMessage": "/api/Msg/SendCDNVideo",
+        "/message/SendAppMessage": "/api/Msg/SendApp",
+        "/message/ShareCardMessage": "/api/Msg/ShareCard",
+        "/message/SendEmojiMessage": "/api/Msg/SendEmoji",
+        "/message/RevokeMsg": "/api/Msg/Revoke",
+        "/message/RevokeMsgNew": "/api/Msg/Revoke",
+        "/message/HttpSyncMsg": "/api/Msg/Sync",
+        "/message/GetMsgVoice": "/api/Tools/DownloadVoice",
+        "/message/GetMsgVideo": "/api/Tools/DownloadVideo",
+        "/message/GetMsgBigImg": "/api/Tools/DownloadImg",
+        "/message/SendCdnDownload": "/api/Tools/CdnDownloadImage",
+        "/message/GroupMassMsgText": "/api/Msg/SendGroupMassMsgText",
+        "/message/DownloadEmojiGif": "/api/Msg/SendEmoji",
+        # group
+        "/group/GetChatroomMemberDetail": "/api/Group/GetChatRoomMemberDetail",
+        "/group/GetChatRoomInfo": "/api/Group/GetChatRoomInfo",
+        "/group/GetChatroomQrCode": "/api/Group/GetQRCode",
+        "/group/AddChatRoomMembers": "/api/Group/AddChatRoomMember",
+        "/group/InviteChatroomMembers": "/api/Group/InviteChatRoomMember",
+        "/group/GetChatRoomInfoDetail": "/api/Group/GetChatRoomInfoDetail",
+        "/group/SetChatroomAnnouncement": "/api/Group/SetChatRoomAnnouncement",
+        "/group/CreateChatRoom": "/api/Group/CreateChatRoom",
+        "/group/QuitChatroom": "/api/Group/Quit",
+        "/group/SendPat": "/api/Group/SendPat",
+        "/group/DelChatRoomMember": "/api/Group/DelChatRoomMember",
+        "/group/GetChatRoomInfoDetail": "/api/Group/GetChatRoomInfoDetail",
+        "/group/AddChatroomAdmin": "/api/Group/OperateChatRoomAdmin",
+        "/group/DelChatroomAdmin": "/api/Group/OperateChatRoomAdmin",
+        "/group/SetChatRoomName": "/api/Group/SetChatRoomName",
+        "/group/GetGroupList": "/api/Group/GetChatRoomInfo",
+        # friend
+        "/friend/GetContactList": "/api/Friend/GetContractList",
+        "/friend/GetContactDetailsList": "/api/Friend/GetContractDetail",
+        "/friend/VerifyUser": "/api/Friend/SendRequest",
+        "/friend/AgreeAdd": "/api/Friend/PassVerify",
+        "/friend/DelContact": "/api/Friend/Delete",
+        "/friend/GetFriendRelation": "/api/Friend/GetFriendRelation",
+        "/friend/SearchContact": "/api/Friend/Search",
+        "/friend/GetMFriend": "/api/Friend/GetMFriend",
+        "/friend/UploadMContact": "/api/Friend/Upload",
+        # user
+        "/user/GetProfile": "/api/User/GetContractProfile",
+        "/user/GetMyQrCode": "/api/User/GetQRCode",
+        "/user/ModifyRemark": "/api/Friend/SetRemarks",
+        # label
+        "/label/GetContactLabelList": "/api/Label/GetList",
+        "/label/AddContactLabel": "/api/Label/Add",
+        "/label/DelContactLabel": "/api/Label/Delete",
+        # tools / download
+        "/tools/DownloadVoice": "/api/Tools/DownloadVoice",
+        "/tools/DownloadFile": "/api/Tools/DownloadFile",
+        "/tools/DownloadVideo": "/api/Tools/DownloadVideo",
+        "/tools/DownloadImg": "/api/Tools/DownloadImg",
+        "/other/UpdateStepNumber": "/api/Tools/UpdateStepNumberApi",
+        "/other/UploadAppAttach": "/api/Tools/UploadAppAttachApi",
+        "/api/Tools/DownloadVoice": "/api/Tools/DownloadVoice",
+        "/api/Tools/DownloadFile": "/api/Tools/DownloadFile",
+        # pay
+        "/pay/GetBandCardList": "/api/Tools/GetBandCardList",
+        "/pay/GeneratePayQCode": "/api/Tools/GeneratePayQCode",
+        "/pay/Collectmoney": "/api/TenPay/Collectmoney",
+        # sns
+        "/sns/GetSnsSync": "/api/FriendCircle/MmSnsSync",
+        "/sns/SendSnsUserPage": "/api/FriendCircle/GetIdDetail",
+        "/sns/SendSnsComment": "/api/FriendCircle/Comment",
+        # favor
+        "/favor/FavSync": "/api/Favor/Sync",
+        "/favor/GetFavList": "/api/Favor/GetFavInfo",
+        "/favor/GetFavItemId": "/api/Favor/GetFavItem",
+    }
+
     def __init__(
         self,
         ip: str,
@@ -380,6 +471,12 @@ class WechatAPIClient(WechatAPIClientBase):
             return f"/{path}"
         return path
 
+    def _resolve_request_path(self, path: str) -> str:
+        """874 协议时做路径映射替换，其余原样返回"""
+        if self.protocol_version != "874":
+            return path
+        return self.ROUTE_MAP_874.get(path, path)
+
     async def _ensure_operation_map(self):
         if self._operation_map_loaded:
             return
@@ -456,7 +553,11 @@ class WechatAPIClient(WechatAPIClientBase):
         raise_for_api_error: bool = True,
     ) -> Any:
         request_method = method.upper().strip()
-        request_path = self._coerce_path(path)
+        # 874 协议时用映射表替换路径
+        if self.protocol_version == "874":
+            request_path = self._resolve_request_path(path)
+        else:
+            request_path = self._coerce_path(path)
         query: Dict[str, Any] = dict(params or {})
 
         active_key = self._resolve_request_key(path, key)
