@@ -1119,9 +1119,41 @@ class WechatAPIClient(WechatAPIClientBase):
         if proxy_value:
             payload["Proxy"] = proxy_value
 
+        # 874：按设备类型路由到对应登录端接口（874 是接口区分，不是参数区分）
+        qr_path = "/login/GetLoginQrCodeNewDirect"
+        if self.protocol_version == "874":
+            qr_endpoint = {
+                "ipad": "/api/Login/LoginGetQR",
+                "mac": "/api/Login/LoginGetQRMac",
+                "pad": "/api/Login/LoginGetQRPad",
+                "androidpad": "/api/Login/LoginGetQRPad",
+                "win": "/api/Login/LoginGetQRWin",
+                "winuwp": "/api/Login/LoginGetQRWinUwp",
+                "winunified": "/api/Login/LoginGetQRWinUnified",
+                "car": "/api/Login/LoginGetQRCar",
+                "notcode": "/api/Login/LoginGetQRNotCode",
+                "notcodepush": "/api/Login/LoginGetQRNotCodePush",
+            }.get(str(device_name or "").strip().lower())
+            if qr_endpoint:
+                # 直接用 874 端点（绕过 ROUTE_MAP_874 的默认 Pad 映射）
+                qr_path = qr_endpoint
+                payload = {"DeviceName": login_device, "DeviceID": device_id, "LoginType": ""}
+                if proxy_value:
+                    # 874 ProxyInfo: {ProxyIp, ProxyUser, ProxyPassword}
+                    clean = proxy_value.replace("socks5://", "").replace("http://", "")
+                    parts = clean.rsplit("@", 1)
+                    if len(parts) == 2:
+                        user_pass, host_port = parts
+                        user, _, pwd = user_pass.partition(":")
+                    else:
+                        host_port = parts[0]
+                        user, pwd = "", ""
+                    ip, _, port = host_port.partition(":")
+                    payload["Proxy"] = {"ProxyIp": ip + ":" + port, "ProxyUser": user, "ProxyPassword": pwd}
+
         try:
             response = await self.request(
-                "/login/GetLoginQrCodeNewDirect",
+                qr_path,
                 method="POST",
                 body=payload,
                 key=request_key,
