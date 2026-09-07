@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - feat/wxserver-license
     paths:
       - "Dockerfile"
       - "docker-compose.yml"
+      - "wxserver"
       - "**.py"
       - "requirements.txt"
       - "**.conf"
