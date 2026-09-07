@@ -52,6 +52,7 @@ services:
       - ./logs:/app/logs
     environment:
       - WX_HOST=127.0.0.1
+      - WX_PORT=5253
       - WX_AUTH_SERVER=http://v.sxkiss.top
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
