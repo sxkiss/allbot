@@ -1,33 +1,65 @@
 services:
-  allbot:
-    image: sxkiss/allbot:latest
-    pull_policy: always
-    container_name: allbot
+  mysql:
+    image: mysql:8.0
+    container_name: allbot-license-mysql
     restart: unless-stopped
-    ports:
-      - "9090:9090"  # 管理后台
+    environment:
+      MYSQL_ROOT_PASSWORD: wxserver_2026
+      MYSQL_DATABASE: weixin
+      MYSQL_USER: weixin
+      MYSQL_PASSWORD: wxserver_2026
     volumes:
-      - redis_data:/data/redis
-      # 宿主机机器码（设备码绑定）
+      - ./data/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pwxserver_2026"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: allbot-license-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  allbot:
+    image: sxkiss/allbot:feat-wxserver-license
+    pull_policy: always
+    container_name: allbot-license
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "9091:9090"
+    volumes:
       - /etc/machine-id:/etc/machine-id:ro
-      # 配置
       - ./main_config.toml:/app/main_config.toml
-      # 插件（含各插件的 config.toml）
       - ./plugins:/app/plugins
-      # 适配器（含各适配器的 config.toml）
       - ./adapter:/app/adapter
-      # 运行时数据（accounts、头像、robot_stat 等）
       - ./resource:/app/resource
-      # SQLite 数据库
       - ./database:/app/database
-      # redis 缓存目录
-      - ./data:/app/data
-      # 日志
+      - ./data/allbot:/app/data
       - ./logs:/app/logs
     environment:
       - WX_HOST=127.0.0.1
       - WX_AUTH_SERVER=http://v.sxkiss.top
-
-volumes:
-  redis_data:
-    name: redis_data
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=weixin
+      - MYSQL_PASSWORD=wxserver_2026
+      - MYSQL_DATABASE=weixin
+      - MYSQL_PARAMS=charset=utf8mb4&parseTime=true&loc=Local
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=2
+      - WX_ADMIN_KEY=sk-allbot
