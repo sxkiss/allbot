@@ -8,6 +8,8 @@ services:
       - "9090:9090"  # 管理后台
     volumes:
       - redis_data:/data/redis
+      # 宿主机机器码（设备码绑定）
+      - /etc/machine-id:/etc/machine-id:ro
       # 配置
       - ./main_config.toml:/app/main_config.toml
       # 插件（含各插件的 config.toml）
@@ -22,6 +24,9 @@ services:
       - ./data:/app/data
       # 日志
       - ./logs:/app/logs
+    environment:
+      - WX_HOST=127.0.0.1
+      - WX_AUTH_SERVER=http://v.sxkiss.top
 
 volumes:
   redis_data:

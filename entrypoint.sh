@@ -36,5 +36,12 @@ redis-server /etc/redis/redis.conf --daemonize yes --dir /data/redis
 echo "等待系统Redis服务可用..."
 sleep 2
 
+# 启动 wxserver（后台，监听 127.0.0.1:5253）
+if [ -x /app/wxserver ]; then
+    echo "启动 wxserver..."
+    /app/wxserver &
+    sleep 3
+fi
+
 echo "启动XXXBot主应用..."
 exec python3 ./main.py

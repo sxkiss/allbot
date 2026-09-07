@@ -6,8 +6,8 @@ version = "869"            # 协议版本，可选值: "869", "ipad", "pad", "ma
 type = "wechat"
 
 [WechatAPIServer]
-host = "127.0.0.1"         # WechatAPI服务器地址，默认127.0.0.1，部署时按实际环境修改
-port = 9000                # WechatAPI服务器端口，默认9000，部署时按实际环境修改
+host = "127.0.0.1"         # wxserver 本地地址（容器内 127.0.0.1:5253）
+port = 5253                # wxserver 端口
 mode = "debug"             # 运行模式：release(生产环境)，debug(调试模式)
 admin-key = ""             # 869 管理密钥，部署时填写
 login-qrcode-proxy = ""     # 869 拉取登录二维码代理（可选）：socks5://user:pass@ip:port
@@ -21,7 +21,7 @@ message-consumer-workers = 8  # allbot 入站并发消费 worker 数（>1 避免
 
 # WebSocket 设置
 enable-websocket = false     # 是否启用 WebSocket 消息接收
-ws-url = "ws://127.0.0.1:9000/ws/GetSyncMsg"  # 869 建议使用 /ws/GetSyncMsg，部署时按实际环境修改，key 由程序自动追加
+ws-url = "ws://127.0.0.1:5253/ws/GetSyncMsg"  # 869 建议使用 /ws/GetSyncMsg，部署时按实际环境修改，key 由程序自动追加
 
 # RabbitMQ 设置
 enable-rabbitmq = true      # 是否启用 RabbitMQ 消息接收，默认开启
