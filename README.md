@@ -70,38 +70,6 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 
 ## 🚀 快速开始
 
-### 分支说明
-
-| 分支 | 说明 |
-|------|------|
-| `main` | 纯 allbot 框架（不含 wxserver/874 二进制） |
-| `feat/wxserver-license` | 含 wxserver + 874 协议服务 + 远程卡密授权 + 十端登录支持 |
-
-> **需要微信协议服务（869/874）+ 卡密授权的用户**：请使用 `feat/wxserver-license` 分支，见下方说明。
-
-### feat/wxserver-license 分支（含 869/874 协议 + 卡密授权）
-
-```bash
-# 克隆项目并切换到 feat 分支
-git clone -b feat/wxserver-license https://github.com/sxkiss/allbot.git
-cd allbot
-
-# 编辑 main_config.toml（协议版本、管理员账号等）
-
-# 一键启动
-docker compose up -d
-
-# 查看日志
-docker compose logs -f
-```
-
-**特性：**
-- **双协议**：支持 869 与 874 协议，页面一键切换
-- **多端登录**：iPad / Mac / 安卓 Pad / Windows / 车载 等多种设备类型
-- **授权管理**：基于卡密使用授权，绑定设备
-
-### main 分支（纯 allbot 框架）
-
 <table>
   <tr>
     <td width="50%">
@@ -127,7 +95,7 @@ docker compose logs -f
   </tr>
 </table>
 
-#### Docker 部署（推荐）
+### Docker 部署（推荐）
 
 ```bash
 # 克隆项目

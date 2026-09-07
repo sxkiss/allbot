@@ -48,6 +48,10 @@ RUN mkdir -p /app/logs && chmod 777 /app/logs
 COPY entrypoint.sh .
 RUN chmod +x entrypoint.sh
 
+# wxserver（混淆后的 Go 二进制，由 build.sh 构建并复制到此目录）
+COPY wxserver /app/wxserver
+RUN chmod +x /app/wxserver
+
 # 暴露端口（仅后台管理端口）
 EXPOSE 9090
 
