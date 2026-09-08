@@ -624,7 +624,7 @@ class ConfigManager:
             raise ConfigurationException("配置对象未初始化")
 
         # 验证协议版本
-        valid_protocols = ["849", "855", "869", "pad", "ipad", "ipad2", "mac", "car", "win"]
+        valid_protocols = ["849", "855", "869", "874", "pad", "ipad", "ipad2", "mac", "car", "win"]
         protocol_version = str(self._config.protocol.version).lower().strip()
         if protocol_version not in valid_protocols:
             raise ConfigurationException(
