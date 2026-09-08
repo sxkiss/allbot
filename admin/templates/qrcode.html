@@ -345,8 +345,20 @@ async function switchProtocol(protocol) {
         const data = await response.json();
         if (data && data.success) {
             document.getElementById('protocol-badge-text').textContent = protocol;
-            updateQRCodeStatus(data.message || '已切换到 ' + protocol);
+            // 切换成功后立即重拉码（带已填卡密）
             resetQRCode();
+            // 拿新 challenge，带着卡密自动重拉
+            const authKey = document.getElementById('authkey-input').value.trim();
+            const proxy = document.getElementById('proxy-input').value.trim();
+            if (authKey) {
+                try {
+                    await fetch('/api/login/restart_869_flow', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ auth_key: authKey, qrcode_proxy: proxy, login_challenge: loginChallenge })
+                    });
+                } catch (e) { /* 静默，resetQRCode 已触发拉码 */ }
+            }
         } else { alert('切换失败: ' + (data && (data.error || data.message) || '未知错误')); }
     } catch (e) { alert('切换失败: ' + (e.message || e)); }
 }
@@ -466,6 +478,8 @@ function resetQRCode() {
     document.getElementById('qrcode-loading').style.display = 'flex';
     document.getElementById('qrcode-img').src = '';
     updateQRCodeStatus('正在获取二维码...');
+    fetchQRCodeUrl();
+    startStatusChecking();
 }
 
 function startStatusChecking() {
