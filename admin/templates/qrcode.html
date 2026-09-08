@@ -302,6 +302,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('btn-switch-device').addEventListener('click', async function() {
         const btn = this;
         const deviceType = document.getElementById('device-type-select').value;
+        const authKey = document.getElementById('authkey-input').value.trim();
+        const proxy = document.getElementById('proxy-input').value.trim();
         const original = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
@@ -309,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch('/api/login/switch_device_qrcode', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ device_type: deviceType, login_challenge: loginChallenge })
+                body: JSON.stringify({ device_type: deviceType, auth_key: authKey, qrcode_proxy: proxy, login_challenge: loginChallenge })
             });
             const data = await response.json();
             if (data && data.success && data.data && data.data.status === 'online') {
