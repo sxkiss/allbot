@@ -465,6 +465,8 @@ def register_qrcode_routes(app, templates):
         device_type = str((payload or {}).get("device_type", "") or "").strip().lower()
         if not device_type:
             return JSONResponse(status_code=400, content={"success": False, "error": "缺少 device_type"})
+        auth_key = str((payload or {}).get("auth_key", "") or "").strip()
+        qrcode_proxy = str((payload or {}).get("qrcode_proxy", "") or "").strip()
 
         try:
             from admin.core.app_setup import get_bot_instance
@@ -496,6 +498,8 @@ def register_qrcode_routes(app, templates):
             result = await _run_869_login_flow(
                 wxapi,
                 preferred_device_type=device_type,
+                auth_key=auth_key,
+                qrcode_proxy=qrcode_proxy,
                 online_detail="当前已在线，无需切换登录端",
             )
             if result.get("success"):
@@ -590,8 +594,8 @@ def register_qrcode_routes(app, templates):
                 return JSONResponse(status_code=503, content={"success": False, "error": "机器人实例未初始化"})
 
             protocol_version = str(getattr(wxapi, "protocol_version", "") or "").lower()
-            if protocol_version != "869":
-                return JSONResponse(status_code=400, content={"success": False, "error": "仅 869 客户端支持该接口"})
+            if protocol_version not in ("869", "874"):
+                return JSONResponse(status_code=400, content={"success": False, "error": "仅 869/874 支持该接口"})
 
             result = await _run_869_login_flow(
                 wxapi,
