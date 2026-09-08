@@ -70,6 +70,42 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 
 ## 🚀 快速开始
 
+### 本分支 feat/wxserver-license（含 869/874 协议 + 卡密授权）
+
+```bash
+# 克隆本分支
+git clone -b feat/wxserver-license https://github.com/sxkiss/allbot.git
+cd allbot
+
+# 编辑 main_config.toml（协议版本、管理员账号等）
+
+# 一键启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+```
+
+**分支说明：**
+| 分支 | 说明 |
+|------|------|
+| `main` | 纯 allbot 框架（不含协议服务） |
+| `feat/wxserver-license` | 含协议服务 + 卡密授权（本分支） |
+
+**使用：**
+1. 访问管理后台二维码页面
+2. 卡密输入框填入卡密 → 提交拉码
+3. 页面可切换协议版本（869/874）与登录端（iPad / Mac / Pad / Windows / 车载 等）
+
+### main 分支（纯 allbot 框架）
+
+```bash
+git clone https://github.com/sxkiss/allbot.git
+cd allbot
+cp main_config.template.toml main_config.toml
+docker compose up -d
+```
+
 <table>
   <tr>
     <td width="50%">
