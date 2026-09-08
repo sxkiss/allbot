@@ -63,12 +63,18 @@ DEFAULT_VIDEO_THUMB_BASE64 = (
 )
 
 INVALID_AUTH_TEXT_MARKERS = (
-    "该链接不存在",
     "该 key 无效",
     "该key无效",
-    "链接不存在",
     "key 无效",
     "key无效",
+)
+
+# "该链接不存在/链接不存在" 仅表示无登录会话（未扫码过），不是卡密无效
+# wxserver 的 checkLicense 拒绝时返回 "该 key 无效! 请 检查正确性"，与此区分
+NO_SESSION_TEXT_MARKERS = (
+    "该链接不存在",
+    "链接不存在",
+    "数据库UserInfo表未找到",
 )
 
 ONLINE_LOGIN_TEXT_MARKERS = (
