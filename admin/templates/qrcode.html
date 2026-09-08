@@ -1,232 +1,84 @@
 {#
-@input: /api/login/qrcode、/api/bot/status、/api/login/verify_code、/api/login/force_mac_qrcode、/api/login/restart_869_flow
-@output: 未登录二维码页面（扫码登录/自动刷新/验证码提交/卡密与代理重入）
+@input: /api/login/qrcode、/api/bot/status、/api/login/restart_869_flow、/api/login/switch_device_qrcode、/api/login/switch_protocol
+@output: 未登录二维码页面（扫码登录/自动刷新/卡密与代理重入/协议切换/登录端切换）
 @position: admin/templates 登录入口页面
-@auto-doc: Update header and folder INDEX.md when this file changes
 #}
 {% extends "base.html" %}
 
 {% block title %}微信登录 - AllBot管理后台{% endblock %}
-
 {% block page_title %}微信登录{% endblock %}
 
 {% block extra_css %}
 <style>
-    /* 确保版本信息正确显示 */
-    #version-info {
-        display: flex !important;
-    }
-
-    #current-version {
-        display: inline-block !important;
-    }
-
-    /* 确保导航栏中的容器有正确的边距 */
-    .navbar .container-fluid {
-        padding: 0.5rem 1rem !important;
-    }
+    #version-info { display: flex !important; }
+    #current-version { display: inline-block !important; }
+    .navbar .container-fluid { padding: 0.5rem 1rem !important; }
 
     .qrcode-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 2rem;
-        max-width: 500px;
-        margin: 0 auto;
+        display: flex; flex-direction: column; align-items: center;
+        padding: 1.5rem; max-width: 460px; margin: 0 auto;
     }
-
     .qrcode-box {
-        background-color: white;
-        border-radius: 12px;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-        padding: 2rem;
-        margin-bottom: 2rem;
-        position: relative;
-        overflow: hidden;
-        transition: all 0.3s ease;
-        width: 100%;
+        background: white; border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08); padding: 1.5rem;
+        width: 100%; position: relative; overflow: hidden;
     }
-
-    .qrcode-box:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
-    }
-
     .qrcode-box::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: 5px;
-        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        content: ''; position: absolute; bottom: 0; left: 0;
+        width: 100%; height: 4px;
+        background: linear-gradient(90deg, var(--primary-color, #0d6efd), var(--secondary-color, #6610f2));
     }
-
-    .qrcode-header {
-        text-align: center;
-        margin-bottom: 1.5rem;
-    }
-
+    .qrcode-header { text-align: center; margin-bottom: 1rem; }
+    .qrcode-header h4 { font-size: 1.1rem; margin-bottom: 0.2rem; }
     .qrcode-img-container {
-        width: 230px;
-        height: 230px;
-        margin: 0 auto;
-        padding: 10px;
-        border: 1px dashed var(--border-color);
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: #fff;
-        position: relative;
+        width: 220px; height: 220px; margin: 0 auto; padding: 8px;
+        border: 1px dashed #dee2e6; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        background: #fff; position: relative;
     }
-
-    .qrcode-img {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-    }
-
+    .qrcode-img { width: 100%; height: 100%; object-fit: contain; }
     .qrcode-loading {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        background-color: rgba(255, 255, 255, 0.9);
-        border-radius: 8px;
+        position: absolute; inset: 0; display: flex;
+        flex-direction: column; align-items: center; justify-content: center;
+        background: rgba(255,255,255,0.9); border-radius: 8px;
     }
+    .qrcode-loading .spinner-border { width: 36px; height: 36px; margin-bottom: 0.5rem; }
 
-    .qrcode-loading-spinner {
-        width: 40px;
-        height: 40px;
-        margin-bottom: 1rem;
-    }
-
-    .status-dot {
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        margin-right: 5px;
-    }
-
-    .status-dot.online {
-        background-color: var(--success-color);
-        box-shadow: 0 0 0 4px rgba(46, 204, 113, 0.2);
-        animation: pulse 2s infinite;
-    }
-
-    .status-dot.offline {
-        background-color: var(--danger-color);
-    }
-
-    .status-dot.waiting {
-        background-color: var(--warning-color);
-    }
-
+    .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+    .status-dot.online { background: #2ecc71; box-shadow: 0 0 0 3px rgba(46,204,113,0.2); animation: pulse 2s infinite; }
+    .status-dot.offline { background: #e74c3c; }
+    .status-dot.waiting { background: #f39c12; }
     @keyframes pulse {
-        0% {
-            box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4);
-        }
-        70% {
-            box-shadow: 0 0 0 8px rgba(46, 204, 113, 0);
-        }
-        100% {
-            box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
-        }
+        0% { box-shadow: 0 0 0 0 rgba(46,204,113,0.4); }
+        70% { box-shadow: 0 0 0 6px rgba(46,204,113,0); }
+        100% { box-shadow: 0 0 0 0 rgba(46,204,113,0); }
     }
 
-    .qrcode-timer {
-        text-align: center;
-        margin-top: 1rem;
-        font-size: 0.9rem;
-        color: var(--text-muted);
-    }
-
-    .timer-progress {
-        height: 6px;
-        margin-top: 0.5rem;
-        border-radius: 3px;
-        overflow: hidden;
-    }
-
+    .qrcode-timer { text-align: center; margin-top: 0.75rem; font-size: 0.85rem; color: #6c757d; }
+    .timer-progress { height: 4px; margin-top: 0.4rem; border-radius: 2px; overflow: hidden; }
     .timer-bar {
-        height: 100%;
-        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-        width: 100%;
-        border-radius: 3px;
+        height: 100%; border-radius: 2px; width: 100%;
+        background: linear-gradient(90deg, #0d6efd, #6610f2);
         transition: width 1s linear;
     }
+    .qrcode-status { text-align: center; margin-top: 0.75rem; padding: 0.5rem; border-radius: 8px; background: rgba(13,110,253,0.08); font-size: 0.9rem; }
 
-    .qrcode-status {
-        text-align: center;
-        margin-top: 1.5rem;
-        padding: 0.75rem;
-        border-radius: 8px;
-        background-color: rgba(var(--bs-primary-rgb), 0.1);
-    }
+    .login-success { text-align: center; padding: 2rem; }
+    .login-success-icon { font-size: 3.5rem; color: #2ecc71; margin-bottom: 0.75rem; }
+    .login-error { text-align: center; padding: 2rem; }
+    .login-error-icon { font-size: 3.5rem; color: #e74c3c; margin-bottom: 0.75rem; }
 
-    .qrcode-instructions {
-        margin-top: 1.5rem;
-    }
+    .qrcode-instructions { margin-top: 1.25rem; }
+    .qrcode-instructions ol { padding-left: 1.25rem; }
+    .qrcode-instructions li { margin-bottom: 0.4rem; }
 
-    .qrcode-instructions ol {
-        padding-left: 1.5rem;
-    }
+    .config-panel { width: 100%; margin-top: 1rem; }
+    .config-panel .card { border: 1px solid #e9ecef; }
+    .config-panel .card-header { padding: 0.6rem 1rem; font-size: 0.85rem; }
+    .config-panel .card-body { padding: 0.75rem 1rem; }
 
-    .qrcode-instructions li {
-        margin-bottom: 0.5rem;
-    }
-
-    .manual-input-container {
-        margin-top: 1.5rem;
-        width: 100%;
-    }
-
-    .manual-input-container .input-group {
-        margin-bottom: 1rem;
-    }
-
-    .login-success {
-        text-align: center;
-        padding: 2rem;
-    }
-
-    .login-success-icon {
-        font-size: 4rem;
-        color: var(--success-color);
-        margin-bottom: 1rem;
-    }
-
-    .login-error {
-        text-align: center;
-        padding: 2rem;
-    }
-
-    .login-error-icon {
-        font-size: 4rem;
-        color: var(--danger-color);
-        margin-bottom: 1rem;
-    }
-
-    .btn-qrcode-action {
-        margin-top: 1rem;
-        width: 100%;
-        border-radius: 50px;
-        padding: 0.75rem 1.5rem;
-        transition: all 0.3s ease;
-    }
-
-    .btn-qrcode-action:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(var(--bs-primary-rgb), 0.2);
-    }
+    .btn-qrcode-action { margin-top: 1rem; width: 100%; border-radius: 50px; padding: 0.7rem 1.5rem; }
+    .btn-qrcode-action:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(13,110,253,0.2); }
 </style>
 {% endblock %}
 
@@ -245,194 +97,129 @@
         <div class="col-12 col-md-8 offset-md-2">
             <div class="card dashboard-card mb-4" data-aos="fade-up">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">
-                        <i class="bi bi-qr-code me-2 text-primary"></i>微信登录
-                    </h5>
-                    <div class="d-flex align-items-center">
-                        <div class="status-dot" id="status-dot"></div>
-                        <span id="status-text" class="me-2">获取中...</span>
-                        <span class="badge bg-secondary" id="status-detail">-</span>
+                    <h5 class="mb-0"><i class="bi bi-qr-code me-2 text-primary"></i>微信登录</h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="d-flex align-items-center">
+                            <div class="status-dot" id="status-dot"></div>
+                            <span id="status-text" class="me-1">获取中...</span>
+                            <span class="badge bg-secondary" id="status-detail">-</span>
+                        </div>
+                        <span class="badge bg-secondary" id="login-mode-badge">-</span>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="bi bi-cpu me-1"></i><span id="protocol-badge-text">869</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px">
+                                <li><h6 class="dropdown-header">协议版本</h6></li>
+                                <li><a class="dropdown-item" href="#" onclick="switchProtocol('869');return false;">869（默认）</a></li>
+                                <li><a class="dropdown-item" href="#" onclick="switchProtocol('874');return false;">874（多登录端）</a></li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
                 <div class="card-body">
-                    <div class="qrcode-container">
-                        <!-- 二维码显示区域 -->
-                        <div class="qrcode-box" id="qrcode-box">
-                            <div class="qrcode-header">
-                                <h4>请使用微信扫码登录</h4>
-                                <p class="text-muted">扫描二维码，登录并授权机器人</p>
+                    <!-- 卡密 + 代理 + 拉码 -->
+                    <div class="config-panel mb-3">
+                        <div class="card">
+                            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-key me-1"></i>登录配置</span>
                             </div>
-
-                            <div class="qrcode-img-container">
-                                <img src="" alt="微信登录二维码" class="qrcode-img" id="qrcode-img">
-                                <div class="qrcode-loading" id="qrcode-loading">
-                                    <div class="spinner-border text-primary qrcode-loading-spinner" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </div>
-                                    <div>正在获取二维码...</div>
+                            <div class="card-body">
+                                <div class="mb-2">
+                                    <label class="form-label mb-1" for="authkey-input">卡密 key</label>
+                                    <input type="text" class="form-control form-control-sm" id="authkey-input" placeholder="请输入卡密 key">
                                 </div>
-                            </div>
-
-                            <div class="qrcode-timer" id="qrcode-timer">
-                                <span>二维码有效期: <span id="countdown">300</span>秒</span>
-                                <div class="timer-progress">
-                                    <div class="timer-bar" id="timer-bar"></div>
+                                <div class="mb-2">
+                                    <label class="form-label mb-1" for="proxy-input">拉码代理（可选）</label>
+                                    <input type="text" class="form-control form-control-sm" id="proxy-input" placeholder="socks5://user:pass@ip:port">
                                 </div>
-                            </div>
-
-                            <div class="qrcode-status" id="qrcode-status">
-                                等待扫描二维码
+                                <button class="btn btn-outline-primary w-100" type="button" id="btn-submit-flow">
+                                    <i class="bi bi-play-circle me-1"></i>提交并拉码
+                                </button>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- 登录成功显示 -->
-                        <div class="login-success" id="login-success" style="display: none;">
-                            <div class="login-success-icon">
-                                <i class="bi bi-check-circle"></i>
-                            </div>
-                            <h4>登录成功!</h4>
-                            <p class="text-muted">微信已成功授权，机器人正在启动中...</p>
-                            <button class="btn btn-primary btn-qrcode-action" id="btn-to-dashboard">
-                                <i class="bi bi-speedometer2 me-1"></i>进入管理后台
-                            </button>
+                    <!-- 二维码区域 -->
+                    <div class="qrcode-box" id="qrcode-box">
+                        <div class="qrcode-header">
+                            <h4>请使用微信扫码登录</h4>
+                            <p class="text-muted mb-0" style="font-size:0.85rem">扫描二维码，登录并授权机器人</p>
                         </div>
-
-                        <!-- 登录错误显示 -->
-                        <div class="login-error" id="login-error" style="display: none;">
-                            <div class="login-error-icon">
-                                <i class="bi bi-exclamation-circle"></i>
-                            </div>
-                            <h4>登录失败</h4>
-                            <p class="text-muted" id="error-message">二维码已失效，请点击刷新按钮重试</p>
-                            <button class="btn btn-primary btn-qrcode-action" id="btn-retry">
-                                <i class="bi bi-arrow-clockwise me-1"></i>重新获取二维码
-                            </button>
-                        </div>
-
-                        <!-- 手动输入 -->
-                        <div class="manual-input-container" id="manual-qrcode-container" style="display: none;">
-                            <div class="card">
-                                <div class="card-header bg-light">
-                                    <h5 class="mb-0">
-                                        <i class="bi bi-pencil-square me-2"></i>手动输入二维码URL
-                                    </h5>
+                        <div class="qrcode-img-container">
+                            <img src="" alt="微信登录二维码" class="qrcode-img" id="qrcode-img">
+                            <div class="qrcode-loading" id="qrcode-loading">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
                                 </div>
-                                <div class="card-body">
-                                    <p class="text-muted mb-3">
-                                        如果二维码无法自动获取，可以从日志中复制URL并手动输入
-                                    </p>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="manual-qrcode-input" placeholder="https://login.weixin.qq.com/l/...">
-                                        <button class="btn btn-primary" type="button" id="btn-set-qrcode">
-                                            <i class="bi bi-check2 me-1"></i>确认
-                                        </button>
-                                    </div>
-                                    <div class="form-text text-muted">
-                                        格式: https://login.weixin.qq.com/l/[UUID]
-                                    </div>
+                                <div style="font-size:0.85rem">正在获取二维码...</div>
+                            </div>
+                        </div>
+                        <div class="qrcode-timer">
+                            <span>二维码有效期: <strong id="countdown">300</strong>秒</span>
+                            <div class="timer-progress"><div class="timer-bar" id="timer-bar"></div></div>
+                        </div>
+                        <div class="qrcode-status" id="qrcode-status">等待扫描二维码</div>
+                    </div>
 
-                                    <hr class="my-3" />
+                    <!-- 登录成功 -->
+                    <div class="login-success" id="login-success" style="display:none">
+                        <div class="login-success-icon"><i class="bi bi-check-circle"></i></div>
+                        <h4>登录成功!</h4>
+                        <p class="text-muted">微信已授权，机器人启动中...</p>
+                        <button class="btn btn-primary btn-qrcode-action" id="btn-to-dashboard">
+                            <i class="bi bi-speedometer2 me-1"></i>进入管理后台
+                        </button>
+                    </div>
 
-                                    <div class="mb-2">
-                                        <label class="form-label mb-1" for="manual-authkey-input">卡密 key（869）</label>
-                                        <input type="text" class="form-control" id="manual-authkey-input" placeholder="请输入 AuthKey / 卡密 key">
-                                        <div class="form-text text-muted">当无 admin-key 且无缓存登录 key 时，需要手动提供卡密。</div>
-                                    </div>
+                    <!-- 登录错误 -->
+                    <div class="login-error" id="login-error" style="display:none">
+                        <div class="login-error-icon"><i class="bi bi-exclamation-circle"></i></div>
+                        <h4>登录失败</h4>
+                        <p class="text-muted" id="error-message">二维码已失效，请刷新重试</p>
+                        <button class="btn btn-primary btn-qrcode-action" id="btn-retry">
+                            <i class="bi bi-arrow-clockwise me-1"></i>重新获取二维码
+                        </button>
+                    </div>
 
-                                    <div class="mb-2">
-                                        <label class="form-label mb-1" for="manual-qrcode-proxy-input">拉码代理（可选）</label>
-                                        <input type="text" class="form-control" id="manual-qrcode-proxy-input" placeholder="socks5://user:pass@ip:port">
-                                    </div>
-
-                                    <button class="btn btn-outline-primary w-100" type="button" id="btn-restart-869-flow">
-                                        <i class="bi bi-play-circle me-1"></i>提交卡密/代理并重新拉码
+                    <!-- 登录端切换（874） -->
+                    <div class="config-panel mt-3">
+                        <div class="card">
+                            <div class="card-header bg-light">
+                                <span><i class="bi bi-device-hdd me-1"></i>切换登录端</span>
+                            </div>
+                            <div class="card-body py-2">
+                                <div class="input-group input-group-sm">
+                                    <select class="form-select" id="device-type-select">
+                                        <option value="ipad" selected>iPad（默认）</option>
+                                        <option value="mac">Mac</option>
+                                        <option value="pad">安卓 Pad</option>
+                                        <option value="win">Windows</option>
+                                        <option value="winuwp">Win UWP（绕验证码）</option>
+                                        <option value="winunified">Win 统一版</option>
+                                        <option value="car">车载</option>
+                                        <option value="notcode">过识别通道(2)</option>
+                                        <option value="notcodepush">过识别通道(1)</option>
+                                    </select>
+                                    <button class="btn btn-outline-primary" type="button" id="btn-switch-device">
+                                        <i class="bi bi-arrow-repeat me-1"></i>切换
                                     </button>
                                 </div>
+                                <small class="text-muted mt-1 d-block">869 仅支持 iPad/Mac；874 支持全部登录端。</small>
                             </div>
-                        </div>
-
-                        <div class="manual-input-container" id="manual-verifycode-container">
-                            <div class="card">
-                                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                                    <h5 class="mb-0">
-                                        <i class="bi bi-shield-lock me-2"></i>验证码登录（869）
-                                    </h5>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <span class="badge bg-secondary" id="login-mode-badge">模式: -</span>
-                                        <div class="dropdown">
-                                            <button class="btn btn-sm btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                                <i class="bi bi-cpu me-1"></i><span id="protocol-badge-text">869</span>
-                                            </button>
-                                            <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px">
-                                                <li><h6 class="dropdown-header">切换协议版本</h6></li>
-                                                <li><a class="dropdown-item" href="#" onclick="switchProtocol('869');return false;">869（默认）</a></li>
-                                                <li><a class="dropdown-item" href="#" onclick="switchProtocol('874');return false;">874（多登录端）</a></li>
-                                                <li><hr class="dropdown-divider"></li>
-                                                <li><small class="dropdown-item-text text-muted">切换后需重启服务生效</small></li>
-                                            </ul>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <p class="text-muted mb-3">
-                                        手机出现数字验证码时，输入验证码提交。若没有验证码提示，可切换为 mac 登录并自动刷新二维码。
-                                    </p>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control" id="verify-code-input" placeholder="请输入手机显示的数字验证码">
-                                        <button class="btn btn-primary" type="button" id="btn-submit-verify-code">
-                                            <i class="bi bi-check2-circle me-1"></i>提交验证码
-                                        </button>
-                                    </div>
-                                    <div class="d-flex justify-content-between align-items-center mt-2">
-                                        <small class="text-muted" id="verify-code-hint"></small>
-                                        <button class="btn btn-sm btn-outline-warning" type="button" id="btn-force-mac-login">
-                                            <i class="bi bi-phone me-1"></i>无验证码，切换MAC登录
-                                        </button>
-                                    </div>
-                                    <hr class="my-3">
-                                    <label class="form-label mb-1"><i class="bi bi-device-hdd me-1"></i>切换登录端</label>
-                                    <div class="input-group">
-                                        <select class="form-select form-select-sm" id="device-type-select">
-                                            <option value="ipad" selected>iPad（默认）</option>
-                                            <option value="mac">Mac</option>
-                                            <option value="pad">安卓 Pad</option>
-                                            <option value="win">Windows</option>
-                                            <option value="winuwp">Win UWP（绕验证码）</option>
-                                            <option value="winunified">Win 统一版</option>
-                                            <option value="car">车载</option>
-                                            <option value="notcode">过识别通道(2)</option>
-                                            <option value="notcodepush">过识别通道(1)</option>
-                                        </select>
-                                        <button class="btn btn-sm btn-outline-primary" type="button" id="btn-switch-device">
-                                            <i class="bi bi-arrow-repeat me-1"></i>切换
-                                        </button>
-                                    </div>
-                                    <small class="text-muted mt-1 d-block">869 仅支持 iPad/Mac；874 支持全部登录端。</small>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 操作按钮 -->
-                        <div class="d-flex justify-content-between w-100 mt-3">
-                            <button class="btn btn-outline-secondary" id="btn-toggle-manual">
-                                <i class="bi bi-pencil me-1"></i><span id="manual-btn-text">手动输入</span>
-                            </button>
-                            <button class="btn btn-outline-primary" id="btn-open-qrcode">
-                                <i class="bi bi-box-arrow-up-right me-1"></i>浏览器中打开
-                            </button>
                         </div>
                     </div>
 
                     <!-- 登录说明 -->
                     <div class="qrcode-instructions">
-                        <h5><i class="bi bi-info-circle me-2 text-primary"></i>登录说明</h5>
+                        <h6 class="mt-3"><i class="bi bi-info-circle me-2 text-primary"></i>登录说明</h6>
                         <ol>
-                            <li>打开手机微信，扫描上方二维码</li>
+                            <li>填写卡密 key，点击"提交并拉码"</li>
+                            <li>打开微信扫描上方二维码</li>
                             <li>在手机上确认登录授权</li>
-                            <li>登录成功后，机器人将开始工作</li>
-                            <li>请勿将此二维码分享给他人，以免账号被盗用</li>
+                            <li>登录成功后，机器人自动开始工作</li>
                         </ol>
-                        <div class="alert alert-warning">
+                        <div class="alert alert-warning py-2 mb-0" style="font-size:0.85rem">
                             <i class="bi bi-exclamation-triangle me-2"></i>
                             为保障账号安全，建议定期退出并重新登录，避免授权时间过长
                         </div>
@@ -446,604 +233,288 @@
 
 {% block extra_js %}
 <script>
-    let qrcodeUrl = '';
-    let loginChallenge = '';
-    let currentQRCodeUuid = '';
-    let currentLoginMode = '';
-    let countdownTimer = null;
-    let initialCountdown = 300; // 5分钟倒计时
-    let currentCountdown = initialCountdown;
-    let statusCheckInterval = null;
-    let lastStatusData62 = '';
-    let lastStatusTicket = '';
+let qrcodeUrl = '';
+let loginChallenge = '';
+let currentQRCodeUuid = '';
+let currentLoginMode = '';
+let countdownTimer = null;
+let initialCountdown = 300;
+let currentCountdown = initialCountdown;
+let statusCheckInterval = null;
 
-    // 初始化页面
-    document.addEventListener('DOMContentLoaded', function() {
-        // 获取二维码
-        loadQRCode();
+document.addEventListener('DOMContentLoaded', function() {
+    loadQRCode();
 
-        // 初始化协议徽章显示
-        (async function() {
-            try {
-                const resp = await fetch('/api/login/qrcode');
-                const d = await resp.json();
-                const proto = (d && d.data && d.data.protocol) || '869';
-                const el = document.getElementById('protocol-badge-text');
-                if (el && proto) el.textContent = proto;
-            } catch (e) { /* 静默 */ }
-        })();
-
-        // 刷新二维码按钮
-        document.getElementById('btn-refresh-qrcode').addEventListener('click', function() {
-            resetQRCode();
-            loadQRCode();
-        });
-
-        // 返回首页按钮
-        document.getElementById('btn-back-to-home').addEventListener('click', function() {
-            window.location.href = '/index';
-        });
-
-        // 切换手动输入按钮
-        document.getElementById('btn-toggle-manual').addEventListener('click', function() {
-            const manualContainer = document.getElementById('manual-qrcode-container');
-            const btnText = document.getElementById('manual-btn-text');
-
-            if (manualContainer.style.display === 'none') {
-                manualContainer.style.display = 'block';
-                btnText.textContent = '隐藏输入';
-            } else {
-                manualContainer.style.display = 'none';
-                btnText.textContent = '手动输入';
-            }
-        });
-
-        // 浏览器中打开按钮
-        document.getElementById('btn-open-qrcode').addEventListener('click', function() {
-            if (qrcodeUrl) {
-                window.open(qrcodeUrl, '_blank');
-            } else {
-                alert('二维码URL尚未获取，请稍后再试');
-            }
-        });
-
-        // 设置手动输入的二维码
-        document.getElementById('btn-set-qrcode').addEventListener('click', function() {
-            const input = document.getElementById('manual-qrcode-input');
-            const url = input.value.trim();
-
-            if (url && url.startsWith('https://login.weixin.qq.com/l/')) {
-                setQRCodeImage(url);
-                qrcodeUrl = url;
-
-                // 重置倒计时
-                resetCountdown();
-
-                // 隐藏手动输入
-                document.getElementById('manual-qrcode-container').style.display = 'none';
-                document.getElementById('manual-btn-text').textContent = '手动输入';
-
-                // 更新状态
-                updateQRCodeStatus('扫描二维码登录');
-            } else {
-                alert('请输入有效的微信登录二维码URL');
-            }
-        });
-
-        // 869：提交卡密 key / 拉码代理并重新进入流程
-        document.getElementById('btn-restart-869-flow').addEventListener('click', async function() {
-            const btn = document.getElementById('btn-restart-869-flow');
-            const original = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 处理中...';
-
-            try {
-                const authKey = (document.getElementById('manual-authkey-input') || {}).value || '';
-                const proxy = (document.getElementById('manual-qrcode-proxy-input') || {}).value || '';
-
-                const response = await fetch('/api/login/restart_869_flow', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        auth_key: authKey,
-                        qrcode_proxy: proxy,
-                        login_challenge: loginChallenge
-                    })
-                });
-                const data = await response.json();
-                if (data && data.success && data.data && data.data.status === 'online') {
-                    resetQRCode();
-                    document.getElementById('manual-qrcode-container').style.display = 'none';
-                    updateQRCodeStatus(data.message || '已从缓存恢复登录');
-                    showLoginSuccess();
-                } else if (data && data.success && data.data && data.data.qrcode_url) {
-                    resetQRCode();
-                    document.getElementById('manual-qrcode-container').style.display = 'none';
-                    qrcodeUrl = data.data.qrcode_url;
-                    currentQRCodeUuid = data.data.uuid || currentQRCodeUuid;
-                    currentLoginMode = (data.data.login_mode || '').toString().toLowerCase() || currentLoginMode;
-                    if (currentLoginMode) {
-                        document.getElementById('login-mode-badge').textContent = '模式: ' + currentLoginMode;
-                    }
-                    setQRCodeImage(qrcodeUrl);
-                    initialCountdown = data.data.expires_in || 240;
-                    resetCountdown();
-                    startStatusChecking();
-                } else {
-                    const message = (data && (data.error || data.message)) ? (data.error || data.message) : '提交失败';
-                    alert('重新拉码失败: ' + message);
-                }
-            } catch (e) {
-                alert('重新拉码失败: ' + (e && e.message ? e.message : e));
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = original;
-            }
-        });
-
-        // 提交验证码（869）
-        document.getElementById('btn-submit-verify-code').addEventListener('click', async function() {
-            const input = document.getElementById('verify-code-input');
-            const code = (input.value || '').trim();
-            if (!code) {
-                alert('请输入手机上显示的数字验证码');
-                return;
-            }
-
-            const btn = document.getElementById('btn-submit-verify-code');
-            const original = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 提交中...';
-
-            try {
-                const response = await fetch('/api/login/verify_code', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        code: code,
-                        data62: lastStatusData62 || '',
-                        ticket: lastStatusTicket || '',
-                        login_challenge: loginChallenge
-                    })
-                });
-                const data = await response.json();
-                if (data && data.success) {
-                    document.getElementById('verify-code-hint').textContent = '验证码已提交，等待登录完成...';
-                    input.value = '';
-                } else {
-                    const message = (data && (data.error || data.message)) ? (data.error || data.message) : '提交失败';
-                    alert('验证码提交失败: ' + message);
-                }
-            } catch (e) {
-                alert('验证码提交失败: ' + (e && e.message ? e.message : e));
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = original;
-            }
-        });
-
-        // 强制切换 mac 拉码（无验证码场景）
-        document.getElementById('btn-force-mac-login').addEventListener('click', async function() {
-            const btn = document.getElementById('btn-force-mac-login');
-            const original = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 切换中...';
-            try {
-                const response = await fetch('/api/login/force_mac_qrcode', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ login_challenge: loginChallenge })
-                });
-                const data = await response.json();
-                if (data && data.success && data.data && data.data.status === 'online') {
-                    updateQRCodeStatus(data.message || '已在线，无需切换');
-                    showLoginSuccess();
-                } else if (data && data.success && data.data && data.data.qrcode_url) {
-                    qrcodeUrl = data.data.qrcode_url;
-                    currentQRCodeUuid = data.data.uuid || currentQRCodeUuid;
-                    currentLoginMode = 'mac';
-                    document.getElementById('login-mode-badge').textContent = '模式: mac';
-                    setQRCodeImage(qrcodeUrl);
-                    initialCountdown = data.data.expires_in || 240;
-                    resetCountdown();
-                    updateQRCodeStatus('已切换到 mac 二维码，请重新扫码');
-                } else {
-                    const message = (data && (data.error || data.message)) ? (data.error || data.message) : '切换失败';
-                    alert('切换 mac 拉码失败: ' + message);
-                }
-            } catch (e) {
-                alert('切换 mac 拉码失败: ' + (e && e.message ? e.message : e));
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = original;
-            }
-        });
-
-        // 切换登录端（874 多端 / 869 双端）
-        document.getElementById('btn-switch-device').addEventListener('click', async function() {
-            const btn = document.getElementById('btn-switch-device');
-            const select = document.getElementById('device-type-select');
-            const deviceType = select.value;
-            const original = btn.innerHTML;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 切换中...';
-            try {
-                const response = await fetch('/api/login/switch_device_qrcode', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ device_type: deviceType, login_challenge: loginChallenge })
-                });
-                const data = await response.json();
-                if (data && data.success && data.data && data.data.status === 'online') {
-                    updateQRCodeStatus(data.message || '已在线，无需切换');
-                    showLoginSuccess();
-                } else if (data && data.success && data.data && data.data.qrcode_url) {
-                    qrcodeUrl = data.data.qrcode_url;
-                    currentQRCodeUuid = data.data.uuid || currentQRCodeUuid;
-                    currentLoginMode = deviceType;
-                    document.getElementById('login-mode-badge').textContent = '模式: ' + deviceType;
-                    setQRCodeImage(qrcodeUrl);
-                    initialCountdown = data.data.expires_in || 240;
-                    resetCountdown();
-                    updateQRCodeStatus('已切换到 ' + deviceType + ' 登录端，请重新扫码');
-                } else {
-                    const message = (data && (data.error || data.message)) ? (data.error || data.message) : '切换失败';
-                    alert('切换登录端失败: ' + message);
-                }
-            } catch (e) {
-                alert('切换登录端失败: ' + (e && e.message ? e.message : e));
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = original;
-            }
-        });
-
-        // 热切换协议版本（869↔874，两服务常驻，无需重启）
-        async function switchProtocol(protocol) {
-            if (!confirm('切换到 ' + protocol + ' 协议？当前登录态将失效，需重新扫码。')) return;
-            try {
-                const response = await fetch('/api/login/switch_protocol', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ protocol: protocol, login_challenge: loginChallenge })
-                });
-                const data = await response.json();
-                if (data && data.success) {
-                    document.getElementById('protocol-badge-text').textContent = protocol;
-                    updateQRCodeStatus(data.message || '已切换到 ' + protocol);
-                    // 自动重新拉码
-                    if (typeof resetQRCode === 'function') {
-                        resetQRCode();
-                    }
-                } else {
-                    alert('切换协议失败: ' + (data && (data.error || data.message) || '未知错误'));
-                }
-            } catch (e) {
-                alert('切换协议失败: ' + (e && e.message ? e.message : e));
-            }
-        }
-
-        // 重试按钮
-        document.getElementById('btn-retry').addEventListener('click', function() {
-            resetQRCode();
-            loadQRCode();
-        });
-
-        // 进入管理后台按钮
-        document.getElementById('btn-to-dashboard').addEventListener('click', function() {
-            window.location.href = '/index';
-        });
-    });
-
-    // 加载二维码
-    function loadQRCode() {
-        // 显示加载动画
-        document.getElementById('qrcode-loading').style.display = 'flex';
-        document.getElementById('qrcode-img').src = '';
-
-        // 更新状态
-        updateQRCodeStatus('正在获取二维码...');
-
-        // 获取二维码URL
-        fetchQRCodeUrl();
-
-        // 开始定时检查登录状态
-        startStatusChecking();
-    }
-
-    // 获取二维码URL
-    async function fetchQRCodeUrl() {
+    // 初始化协议徽章
+    (async function() {
         try {
-            // 修改为正确的API路径 - 使用/api/login/qrcode来获取二维码
-            const response = await fetch('/api/login/qrcode');
-            const data = await response.json();
+            const resp = await fetch('/api/login/qrcode');
+            const d = await resp.json();
+            const proto = (d && d.data && d.data.protocol) || '869';
+            document.getElementById('protocol-badge-text').textContent = proto;
+        } catch (e) {}
+    })();
 
-            console.log('获取二维码响应:', data);  // 调试日志
+    // 刷新
+    document.getElementById('btn-refresh-qrcode').addEventListener('click', function() { resetQRCode(); loadQRCode(); });
+    document.getElementById('btn-back-to-home').addEventListener('click', function() { window.location.href = '/index'; });
+    document.getElementById('btn-retry').addEventListener('click', function() { resetQRCode(); loadQRCode(); });
+    document.getElementById('btn-to-dashboard').addEventListener('click', function() { window.location.href = '/index'; });
 
-            if (data.success && data.data && data.data.pending) {
-                updateQRCodeStatus(data.data.message || '二维码生成中，请稍候...');
-                document.getElementById('qrcode-loading').style.display = 'flex';
-                setTimeout(fetchQRCodeUrl, 4000);
-                return;
-            }
-
-            // 修复响应数据结构判断逻辑
-            if (data.success && data.data && data.data.qrcode_url) {
-                const nextUrl = data.data.qrcode_url;
-                const nextUuid = data.data.uuid || '';
-                const nextMode = (data.data.login_mode || '').toString().toLowerCase();
-                if (data.data.login_challenge) {
-                    loginChallenge = data.data.login_challenge;
-                }
-
-                if (nextUuid) {
-                    currentQRCodeUuid = nextUuid;
-                }
-                if (nextMode) {
-                    currentLoginMode = nextMode;
-                    document.getElementById('login-mode-badge').textContent = '模式: ' + nextMode;
-                }
-
-                qrcodeUrl = nextUrl;
-                setQRCodeImage(nextUrl);
-
-                // 重置倒计时 - 使用响应中的expires_in (如果有)
-                if (data.data.expires_in) {
-                    initialCountdown = data.data.expires_in;
-                }
-                resetCountdown();
-
-                console.log('成功获取二维码URL:', qrcodeUrl);
-            } else {
-                console.error('获取二维码URL失败:', data.error || '未知错误');
-                updateQRCodeStatus((data && data.error) ? data.error : '二维码暂未就绪，请稍候...');
-            }
-        } catch (error) {
-            console.error('获取二维码URL出错:', error);
-            updateQRCodeStatus('获取二维码失败，请稍候重试');
-        }
-    }
-
-    async function maybeRefreshQRCodeFromServer() {
+    // 提交卡密拉码
+    document.getElementById('btn-submit-flow').addEventListener('click', async function() {
+        const btn = this;
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i> 拉码中...';
         try {
-            const response = await fetch('/api/login/qrcode');
+            const authKey = document.getElementById('authkey-input').value.trim();
+            const proxy = document.getElementById('proxy-input').value.trim();
+            const response = await fetch('/api/login/restart_869_flow', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ auth_key: authKey, qrcode_proxy: proxy, login_challenge: loginChallenge })
+            });
             const data = await response.json();
-            if (!data || !data.success || !data.data) return;
-
-            const nextUrl = data.data.qrcode_url || '';
-            const nextUuid = data.data.uuid || '';
-            const nextMode = (data.data.login_mode || '').toString().toLowerCase();
-            if (data.data.login_challenge) {
-                loginChallenge = data.data.login_challenge;
-            }
-
-            if (nextMode && nextMode !== currentLoginMode) {
-                currentLoginMode = nextMode;
-                document.getElementById('login-mode-badge').textContent = '模式: ' + nextMode;
-            }
-
-            const changed = (nextUuid && nextUuid !== currentQRCodeUuid) || (nextUrl && nextUrl !== qrcodeUrl);
-            if (!changed) return;
-
-            if (nextUuid) currentQRCodeUuid = nextUuid;
-            if (nextUrl) {
-                qrcodeUrl = nextUrl;
-                setQRCodeImage(nextUrl);
-                if (data.data.expires_in) initialCountdown = data.data.expires_in;
+            if (data && data.success && data.data && data.data.status === 'online') {
+                updateQRCodeStatus(data.message || '已从缓存恢复登录');
+                showLoginSuccess();
+            } else if (data && data.success && data.data && data.data.qrcode_url) {
+                resetQRCode();
+                qrcodeUrl = data.data.qrcode_url;
+                currentQRCodeUuid = data.data.uuid || '';
+                currentLoginMode = (data.data.login_mode || '').toLowerCase();
+                if (currentLoginMode) document.getElementById('login-mode-badge').textContent = currentLoginMode;
+                setQRCodeImage(qrcodeUrl);
+                initialCountdown = data.data.expires_in || 240;
                 resetCountdown();
+                startStatusChecking();
+            } else {
+                const msg = (data && (data.error || data.message)) || '提交失败';
+                alert('拉码失败: ' + msg);
             }
         } catch (e) {
-            // ignore
-        }
-    }
+            alert('拉码失败: ' + (e.message || e));
+        } finally { btn.disabled = false; btn.innerHTML = original; }
+    });
 
-    // 设置二维码图片
-    function setQRCodeImage(url) {
-        // 获取微信登录二维码
-        // 方法1：直接使用URL
-        document.getElementById('qrcode-img').src = url;
-
-        // 方法2：使用二维码生成API
-        const qrcodeApiUrl = `/api/qrcode?data=${encodeURIComponent(url)}`;
-        document.getElementById('qrcode-img').src = qrcodeApiUrl;
-
-        // 隐藏加载动画
-        document.getElementById('qrcode-loading').style.display = 'none';
-
-        // 更新状态
-        updateQRCodeStatus('等待扫描二维码');
-    }
-
-    // 重置倒计时
-    function resetCountdown() {
-        // 清除现有倒计时
-        if (countdownTimer) {
-            clearInterval(countdownTimer);
-        }
-
-        // 重置倒计时值
-        currentCountdown = initialCountdown;
-        updateCountdown(currentCountdown);
-
-        // 开始新的倒计时
-        countdownTimer = setInterval(function() {
-            currentCountdown--;
-            updateCountdown(currentCountdown);
-
-            if (currentCountdown <= 0) {
-                clearInterval(countdownTimer);
-                showQRCodeError('二维码已过期，请刷新重试');
-            }
-        }, 1000);
-    }
-
-    // 更新倒计时显示
-    function updateCountdown(seconds) {
-        document.getElementById('countdown').textContent = seconds;
-
-        // 更新进度条
-        const percentage = (seconds / initialCountdown) * 100;
-        document.getElementById('timer-bar').style.width = percentage + '%';
-
-        // 根据剩余时间更改颜色
-        if (seconds < 60) {
-            document.getElementById('timer-bar').style.background = 'linear-gradient(90deg, #e74c3c, #c0392b)';
-        } else if (seconds < 120) {
-            document.getElementById('timer-bar').style.background = 'linear-gradient(90deg, #f39c12, #d35400)';
-        }
-    }
-
-    // 更新二维码状态显示
-    function updateQRCodeStatus(message) {
-        document.getElementById('qrcode-status').textContent = message;
-    }
-
-    // 显示二维码错误
-    function showQRCodeError(message) {
-        // 隐藏二维码显示
-        document.getElementById('qrcode-box').style.display = 'none';
-
-        // 显示错误信息
-        document.getElementById('login-error').style.display = 'block';
-        document.getElementById('error-message').textContent = message;
-
-        // 停止状态检查
-        stopStatusChecking();
-    }
-
-    // 显示登录成功
-    function showLoginSuccess() {
-        // 隐藏二维码显示
-        document.getElementById('qrcode-box').style.display = 'none';
-        document.getElementById('login-error').style.display = 'none';
-
-        // 显示成功信息
-        document.getElementById('login-success').style.display = 'block';
-
-        // 停止状态检查
-        stopStatusChecking();
-    }
-
-    // 重置二维码状态
-    function resetQRCode() {
-        // 清除倒计时
-        if (countdownTimer) {
-            clearInterval(countdownTimer);
-        }
-
-        // 重置显示
-        document.getElementById('qrcode-box').style.display = 'block';
-        document.getElementById('login-error').style.display = 'none';
-        document.getElementById('login-success').style.display = 'none';
-        document.getElementById('qrcode-loading').style.display = 'flex';
-        document.getElementById('qrcode-img').src = '';
-
-        // 更新状态
-        updateQRCodeStatus('正在获取二维码...');
-    }
-
-    // 开始检查登录状态
-    function startStatusChecking() {
-        // 清除现有定时器
-        if (statusCheckInterval) {
-            clearInterval(statusCheckInterval);
-        }
-
-        // 立即检查一次
-        checkLoginStatus();
-
-        // 设置定时检查
-        statusCheckInterval = setInterval(checkLoginStatus, 2000);
-    }
-
-    // 停止检查登录状态
-    function stopStatusChecking() {
-        if (statusCheckInterval) {
-            clearInterval(statusCheckInterval);
-            statusCheckInterval = null;
-        }
-    }
-
-    // 检查登录状态
-    async function checkLoginStatus() {
+    // 切换登录端
+    document.getElementById('btn-switch-device').addEventListener('click', async function() {
+        const btn = this;
+        const deviceType = document.getElementById('device-type-select').value;
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
         try {
-            const response = await fetch('/api/bot/status');
+            const response = await fetch('/api/login/switch_device_qrcode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_type: deviceType, login_challenge: loginChallenge })
+            });
             const data = await response.json();
-
-            if (data.success) {
-                const statusData = data.data || data;
-
-                // 更新状态显示
-                updateBotStatus(statusData.status);
-
-                // 检查登录状态
-                // 注意：ready 表示系统就绪，不等于微信已登录；避免误判“登录成功”。
-                if (statusData.status === 'online') {
-                    showLoginSuccess();
-                } else if (statusData.status === 'waiting_login') {
-                    // 等待登录
-                    updateQRCodeStatus('等待扫描二维码登录');
-                    const mode = (statusData.login_mode || statusData.loginMode || statusData.device_type || '').toString().toLowerCase();
-                    if (mode && mode !== currentLoginMode) {
-                        currentLoginMode = mode;
-                        document.getElementById('login-mode-badge').textContent = '模式: ' + mode;
-                    }
-
-                    if (statusData.data62) lastStatusData62 = statusData.data62;
-                    if (statusData.ticket) lastStatusTicket = statusData.ticket;
-                    await maybeRefreshQRCodeFromServer();
-                } else if (statusData.status === 'scanned') {
-                    // 已扫描等待确认
-                    updateQRCodeStatus('已扫描，请在手机上确认登录');
-                } else if (statusData.status === 'error') {
-                    // 登录出错
-                    if (statusData.needs_auth_key) {
-                        showQRCodeError('缺少卡密 key：请填写卡密并提交后重试');
-                        const manualContainer = document.getElementById('manual-qrcode-container');
-                        if (manualContainer) manualContainer.style.display = 'block';
-                    } else {
-                        showQRCodeError(statusData.error_message || statusData.details || '登录失败，请重试');
-                    }
-                }
+            if (data && data.success && data.data && data.data.status === 'online') {
+                updateQRCodeStatus(data.message || '已在线');
+                showLoginSuccess();
+            } else if (data && data.success && data.data && data.data.qrcode_url) {
+                resetQRCode();
+                qrcodeUrl = data.data.qrcode_url;
+                currentQRCodeUuid = data.data.uuid || '';
+                currentLoginMode = deviceType;
+                document.getElementById('login-mode-badge').textContent = deviceType;
+                setQRCodeImage(qrcodeUrl);
+                initialCountdown = data.data.expires_in || 240;
+                resetCountdown();
+                updateQRCodeStatus('已切换到 ' + deviceType + '，请重新扫码');
+            } else {
+                alert('切换失败: ' + (data && (data.error || data.message) || '未知错误'));
             }
-        } catch (error) {
-            console.error('检查登录状态失败:', error);
+        } catch (e) { alert('切换失败: ' + (e.message || e)); }
+        finally { btn.disabled = false; btn.innerHTML = original; }
+    });
+});
+
+// 协议热切换
+async function switchProtocol(protocol) {
+    if (!confirm('切换到 ' + protocol + '？当前登录态将失效，需重新扫码。')) return;
+    try {
+        const response = await fetch('/api/login/switch_protocol', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ protocol: protocol, login_challenge: loginChallenge })
+        });
+        const data = await response.json();
+        if (data && data.success) {
+            document.getElementById('protocol-badge-text').textContent = protocol;
+            updateQRCodeStatus(data.message || '已切换到 ' + protocol);
+            resetQRCode();
+        } else { alert('切换失败: ' + (data && (data.error || data.message) || '未知错误')); }
+    } catch (e) { alert('切换失败: ' + (e.message || e)); }
+}
+
+function loadQRCode() {
+    document.getElementById('qrcode-loading').style.display = 'flex';
+    document.getElementById('qrcode-img').src = '';
+    updateQRCodeStatus('正在获取二维码...');
+    fetchQRCodeUrl();
+    startStatusChecking();
+}
+
+async function fetchQRCodeUrl() {
+    try {
+        const response = await fetch('/api/login/qrcode');
+        const data = await response.json();
+        if (data.success && data.data && data.data.pending) {
+            updateQRCodeStatus(data.data.message || '二维码生成中...');
+            document.getElementById('qrcode-loading').style.display = 'flex';
+            setTimeout(fetchQRCodeUrl, 4000);
+            return;
         }
-    }
-
-    // 更新机器人状态显示
-    function updateBotStatus(status) {
-        const statusDot = document.getElementById('status-dot');
-        const statusText = document.getElementById('status-text');
-        const statusDetail = document.getElementById('status-detail');
-
-        statusDot.className = 'status-dot';
-        if (status === 'online') {
-            statusDot.classList.add('online');
-            statusText.textContent = '在线';
-            statusDetail.textContent = '已登录';
-            statusDetail.className = 'badge bg-success';
-        } else if (status === 'ready') {
-            statusDot.classList.add('waiting');
-            statusText.textContent = '系统就绪';
-            statusDetail.textContent = '等待微信登录结果';
-            statusDetail.className = 'badge bg-info';
-        } else if (status === 'waiting_login') {
-            statusDot.classList.add('waiting');
-            statusText.textContent = '等待登录';
-            statusDetail.textContent = '需要扫码';
-            statusDetail.className = 'badge bg-warning';
-        } else if (status === 'scanned') {
-            statusDot.classList.add('waiting');
-            statusText.textContent = '已扫描';
-            statusDetail.textContent = '等待确认';
-            statusDetail.className = 'badge bg-info';
+        if (data.success && data.data && data.data.qrcode_url) {
+            if (data.data.login_challenge) loginChallenge = data.data.login_challenge;
+            if (data.data.uuid) currentQRCodeUuid = data.data.uuid;
+            if (data.data.login_mode) {
+                currentLoginMode = data.data.login_mode.toLowerCase();
+                document.getElementById('login-mode-badge').textContent = currentLoginMode;
+            }
+            qrcodeUrl = data.data.qrcode_url;
+            setQRCodeImage(qrcodeUrl);
+            if (data.data.expires_in) initialCountdown = data.data.expires_in;
+            resetCountdown();
         } else {
-            statusDot.classList.add('offline');
-            statusText.textContent = '离线';
-            statusDetail.textContent = status || '未知';
-            statusDetail.className = 'badge bg-danger';
+            updateQRCodeStatus(data.error || '二维码暂未就绪，请稍候...');
         }
+    } catch (error) {
+        updateQRCodeStatus('获取二维码失败');
     }
+}
+
+async function maybeRefreshQRCodeFromServer() {
+    try {
+        const response = await fetch('/api/login/qrcode');
+        const data = await response.json();
+        if (!data || !data.success || !data.data) return;
+        if (data.data.login_challenge) loginChallenge = data.data.login_challenge;
+        if (data.data.login_mode) {
+            const m = data.data.login_mode.toLowerCase();
+            if (m !== currentLoginMode) {
+                currentLoginMode = m;
+                document.getElementById('login-mode-badge').textContent = m;
+            }
+        }
+        const nextUrl = data.data.qrcode_url || '';
+        const nextUuid = data.data.uuid || '';
+        const changed = (nextUuid && nextUuid !== currentQRCodeUuid) || (nextUrl && nextUrl !== qrcodeUrl);
+        if (!changed) return;
+        if (nextUuid) currentQRCodeUuid = nextUuid;
+        if (nextUrl) {
+            qrcodeUrl = nextUrl;
+            setQRCodeImage(nextUrl);
+            if (data.data.expires_in) initialCountdown = data.data.expires_in;
+            resetCountdown();
+        }
+    } catch (e) {}
+}
+
+function setQRCodeImage(url) {
+    const qrcodeApiUrl = '/api/qrcode?data=' + encodeURIComponent(url);
+    document.getElementById('qrcode-img').src = qrcodeApiUrl;
+    document.getElementById('qrcode-loading').style.display = 'none';
+    updateQRCodeStatus('等待扫描二维码');
+}
+
+function resetCountdown() {
+    if (countdownTimer) clearInterval(countdownTimer);
+    currentCountdown = initialCountdown;
+    updateCountdown(currentCountdown);
+    countdownTimer = setInterval(function() {
+        currentCountdown--;
+        updateCountdown(currentCountdown);
+        if (currentCountdown <= 0) { clearInterval(countdownTimer); showQRCodeError('二维码已过期，请刷新重试'); }
+    }, 1000);
+}
+
+function updateCountdown(seconds) {
+    document.getElementById('countdown').textContent = seconds;
+    const bar = document.getElementById('timer-bar');
+    bar.style.width = ((seconds / initialCountdown) * 100) + '%';
+    if (seconds < 60) bar.style.background = 'linear-gradient(90deg,#e74c3c,#c0392b)';
+    else if (seconds < 120) bar.style.background = 'linear-gradient(90deg,#f39c12,#d35400)';
+    else bar.style.background = '';
+}
+
+function updateQRCodeStatus(msg) { document.getElementById('qrcode-status').textContent = msg; }
+
+function showQRCodeError(msg) {
+    document.getElementById('qrcode-box').style.display = 'none';
+    document.getElementById('login-error').style.display = 'block';
+    document.getElementById('error-message').textContent = msg;
+    stopStatusChecking();
+}
+
+function showLoginSuccess() {
+    document.getElementById('qrcode-box').style.display = 'none';
+    document.getElementById('login-error').style.display = 'none';
+    document.getElementById('login-success').style.display = 'block';
+    stopStatusChecking();
+}
+
+function resetQRCode() {
+    if (countdownTimer) clearInterval(countdownTimer);
+    document.getElementById('qrcode-box').style.display = 'block';
+    document.getElementById('login-error').style.display = 'none';
+    document.getElementById('login-success').style.display = 'none';
+    document.getElementById('qrcode-loading').style.display = 'flex';
+    document.getElementById('qrcode-img').src = '';
+    updateQRCodeStatus('正在获取二维码...');
+}
+
+function startStatusChecking() {
+    if (statusCheckInterval) clearInterval(statusCheckInterval);
+    checkLoginStatus();
+    statusCheckInterval = setInterval(checkLoginStatus, 2000);
+}
+
+function stopStatusChecking() { if (statusCheckInterval) { clearInterval(statusCheckInterval); statusCheckInterval = null; } }
+
+async function checkLoginStatus() {
+    try {
+        const response = await fetch('/api/bot/status');
+        const data = await response.json();
+        if (!data.success) return;
+        const s = data.data || data;
+        updateBotStatus(s.status);
+        if (s.status === 'online') {
+            showLoginSuccess();
+        } else if (s.status === 'waiting_login') {
+            updateQRCodeStatus('等待扫描二维码');
+            const mode = (s.login_mode || s.loginMode || s.device_type || '').toLowerCase();
+            if (mode && mode !== currentLoginMode) {
+                currentLoginMode = mode;
+                document.getElementById('login-mode-badge').textContent = mode;
+            }
+            await maybeRefreshQRCodeFromServer();
+        } else if (s.status === 'scanned') {
+            updateQRCodeStatus('已扫描，请在手机上确认登录');
+        } else if (s.status === 'error') {
+            if (s.needs_auth_key) {
+                showQRCodeError('缺少卡密 key：请填写卡密并点击提交');
+            } else {
+                showQRCodeError(s.error_message || s.details || '登录失败');
+            }
+        }
+    } catch (e) {}
+}
+
+function updateBotStatus(status) {
+    const dot = document.getElementById('status-dot');
+    const txt = document.getElementById('status-text');
+    const det = document.getElementById('status-detail');
+    dot.className = 'status-dot';
+    if (status === 'online') { dot.classList.add('online'); txt.textContent = '在线'; det.textContent = '已登录'; det.className = 'badge bg-success'; }
+    else if (status === 'ready') { dot.classList.add('waiting'); txt.textContent = '就绪'; det.textContent = '等待登录'; det.className = 'badge bg-info'; }
+    else if (status === 'waiting_login') { dot.classList.add('waiting'); txt.textContent = '等待登录'; det.textContent = '需要扫码'; det.className = 'badge bg-warning'; }
+    else if (status === 'scanned') { dot.classList.add('waiting'); txt.textContent = '已扫描'; det.textContent = '等待确认'; det.className = 'badge bg-info'; }
+    else { dot.classList.add('offline'); txt.textContent = '离线'; det.textContent = status || '未知'; det.className = 'badge bg-danger'; }
+}
 </script>
 {% endblock %}
