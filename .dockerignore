@@ -2,7 +2,6 @@ data/
 logs/
 database/
 resource/
-adapter/
 plugins/
 .git/
 __pycache__/
