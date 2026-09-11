@@ -371,6 +371,13 @@ def register_qrcode_routes(app, templates):
                 response["data"]["protocol"] = str(getattr(wxapi, "protocol_version", "") or "869").lower()
         except Exception:
             pass
+
+        # 874：优先用 uuid 构建微信官方直链，消除二次扫码
+        if response["data"].get("protocol") == "874":
+            _uuid = response["data"].get("uuid", "")
+            _qr = str(response["data"].get("qrcode_url") or "")
+            if _uuid and "weixin.qq.com" not in _qr:
+                response["data"]["qrcode_url"] = f"https://api.pwmqr.com/qrcode/create/?url=http://weixin.qq.com/x/{_uuid}"
         challenge = _issue_login_challenge()
         response["data"]["login_challenge"] = challenge["token"]
         response["data"]["challenge_expires_at"] = challenge["expires_at"]
@@ -543,8 +550,8 @@ def register_qrcode_routes(app, templates):
             with open(config_path, "wb") as f:
                 tomli_w.dump(config, f)
 
-            # 热切换运行时 bot：协议版本 + 服务端口（869→5253 / 874→8062）
-            port = 5253 if protocol == "869" else 8062
+            # 热切换运行时 bot：协议版本 + 服务端口（869→5253 / 874→8063）
+            port = 5253 if protocol == "869" else 8063
             switched = False
             try:
                 from admin.core.app_setup import get_bot_instance
@@ -560,7 +567,14 @@ def register_qrcode_routes(app, templates):
             except Exception as runtime_err:
                 logger.warning(f"热切换运行时协议失败（已写配置，重启后生效）: {runtime_err}")
 
-            port_note = f"869 服务 5253" if protocol == "869" else f"874 服务 8062"
+            # 切换协议后自动触发登录流程，写 bot_status.json 供前端轮询
+            try:
+                if wxapi is not None:
+                    await _run_869_login_flow(wxapi)
+            except Exception as flow_err:
+                logger.warning(f"切换协议后触发登录流程失败: {flow_err}")
+
+            port_note = f"869 服务 5253" if protocol == "869" else f"874 服务 8063"
             return {
                 "success": True,
                 "protocol": protocol,

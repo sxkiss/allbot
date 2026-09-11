@@ -430,8 +430,14 @@ async function maybeRefreshQRCodeFromServer() {
 }
 
 function setQRCodeImage(url) {
-    const qrcodeApiUrl = '/api/qrcode?data=' + encodeURIComponent(url);
-    document.getElementById('qrcode-img').src = qrcodeApiUrl;
+    // 如果已经是二维码图片URL（874的QrUrl），直接使用，不再二次包装
+    if (url && (url.includes('create-qr-code') || url.includes('qrcode') || url.includes('qrserver'))) {
+        document.getElementById('qrcode-img').src = url;
+    } else {
+        // 869协议：通过/api/qrcode代理生成二维码
+        const qrcodeApiUrl = '/api/qrcode?data=' + encodeURIComponent(url);
+        document.getElementById('qrcode-img').src = qrcodeApiUrl;
+    }
     document.getElementById('qrcode-loading').style.display = 'none';
     updateQRCodeStatus('等待扫描二维码');
 }

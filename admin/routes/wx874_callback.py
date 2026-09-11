@@ -69,7 +69,7 @@ async def _post_to_sync(wxid: str, key: str):
         import httpx
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
-                f"http://127.0.0.1:8062/api/Msg/Sync",
+                f"http://127.0.0.1:8063/api/Msg/Sync",
                 params={"key": key, "Wxid": wxid},
                 json={"Wxid": wxid, "Scene": 0, "Synckey": ""},
             )
