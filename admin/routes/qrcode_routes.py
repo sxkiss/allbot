@@ -335,6 +335,7 @@ def register_qrcode_routes(app, templates):
         if not qrcode_url:
             raw_status = str(data.get("status", "") or "").strip().lower()
             if raw_status in {"waiting_login", "scanning", "initialized", "initializing"}:
+                challenge = _issue_login_challenge()
                 return {
                     "success": True,
                     "data": {
@@ -342,6 +343,8 @@ def register_qrcode_routes(app, templates):
                         "status": raw_status or "waiting_login",
                         "message": "二维码生成中，请稍候...",
                         "login_mode": data.get("login_mode") or data.get("device_type") or "",
+                        "login_challenge": challenge["token"],
+                        "challenge_expires_at": challenge["expires_at"],
                     },
                 }
             return {"success": False, "error": "未找到二维码信息，请稍后重试"}
