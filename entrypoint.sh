@@ -37,7 +37,7 @@ echo "等待系统Redis服务可用..."
 sleep 2
 
 # 启动 874 协议服务（监听 0.0.0.0:8062，带卡密验证）
-if [ -x /app/staydd874 ] && [ -f /app/conf/app.conf ]; then
+if [ -x /app/staydd874 ] && [ -f /app/conf874/app.conf ]; then
     echo "启动 874..."
     cd /app && nohup ./staydd874 > /tmp/874.log 2>&1 &
     sleep 3
