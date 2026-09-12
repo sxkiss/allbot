@@ -96,7 +96,7 @@ async def _dispatch(raw_msg: dict, wxid: str, key: str):
         from bot_core.message_listener import MessageListener
         # 直接投递到 in-memory queue（由 consumer 处理）
         import asyncio
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if loop.is_running():
             # 在异步上下文中，直接构造消息对象
             from admin.core.app_setup import get_app
