@@ -291,4 +291,3 @@ def _register_external_apis(app) -> None:
         logger.info("✓ wx874_callback 已注册")
     except Exception as e:
         logger.error(f"✗ wx874_callback 注册失败: {e}")
-        logger.error(f"account_manager 注册失败: {e}")

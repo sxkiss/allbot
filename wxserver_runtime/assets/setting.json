@@ -13,7 +13,7 @@
   "redisConfig": {
     "Host":            "127.0.0.1",
     "Port":            6379,
-    "Db":              1,
+    "Db":              2,
     "Pass":           "",
     "MaxIdle":         10,
     "MaxActive":       20,
