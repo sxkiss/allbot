@@ -1450,7 +1450,6 @@ class AllBot:
                         row = c.fetchone()
                         conn.close()
                         if row and row[0]:
-                            import re
                             m = re.search(r'cdnvideourl="([^"]+)"', row[0])
                             if m:
                                 quote_message["cdnurl"] = m.group(1)
@@ -1920,8 +1919,6 @@ class AllBot:
 
             # 如果没有找到匹配的机器人名称，尝试使用正则表达式移除@部分
             if content == original_content:
-                import re
-
                 # 匹配开头的@xxx部分
                 at_pattern = r"^@[^\s]+"
                 match = re.search(at_pattern, content)
