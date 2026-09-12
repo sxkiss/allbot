@@ -1,8 +1,6 @@
 data/
 logs/
-database/
 resource/
-adapter/
 .git/
 __pycache__/
 *.pyc
