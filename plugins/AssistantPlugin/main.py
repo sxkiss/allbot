@@ -60,10 +60,13 @@ class WatchRoute:
 class SSEClient:
     """轻量 SSE 客户端，按 event 逐条 yield"""
 
-    def __init__(self, base_url: str, api_key: str, connect_timeout: float = 15.0):
+    def __init__(self, base_url: str, api_key: str, connect_timeout: float = 15.0,
+                 max_reconnect: int = 3, reconnect_interval: float = 2.0):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.connect_timeout = connect_timeout
+        self.max_reconnect = max(0, int(max_reconnect))
+        self.reconnect_interval = max(0.0, float(reconnect_interval))
         self.last_job_key = ""
 
     async def stream(self, message: str, session_id: str, base_url: str, model: str,
@@ -108,56 +111,79 @@ class SSEClient:
                     except Exception:
                         pass
 
-                # 2. 订阅事件流（带 job key 精确绑定，带 last_id 支持断线续传）
-                last_id = -1
+                # 2. 订阅事件流（带 job key 精确绑定，带 last_id 断线续传）
+                # 网关侧 chat_events 有 ~900s 空闲超时，超时后会推送 error 事件并关闭连接。
+                # 但后台任务仍在运行，因此这里做的不是"重发消息"，而是重新订阅同一个
+                # job 并带上 last_id，从断点续传，避免重复消费已收到的事件。
                 events_url = f"{self.base_url}/api/chat/events"
-                params: dict[str, Any] = {"session_id": session_id}
-                if job_key:
-                    params["job"] = job_key
-                async with session.get(events_url, params=params) as resp:
-                    if resp.status != 200:
-                        body = await resp.text()
-                        raise RuntimeError(
-                            f"HTTP {resp.status}: {body[:300]}"
+                last_id = -1  # 已消费到的最大事件 ID，跨重连保留
+                attempt = 0
+
+                while attempt <= self.max_reconnect:
+                    req_params: dict[str, Any] = {"session_id": session_id}
+                    if job_key:
+                        req_params["job"] = job_key
+                    if last_id >= 0:
+                        req_params["last_id"] = last_id
+                    if attempt > 0:
+                        logger.warning(
+                            "[Assistant] SSE 重连 attempt={}/{} session={} last_id={}",
+                            attempt, self.max_reconnect, session_id, last_id,
                         )
-                    current_event = None
-                    buf: list[str] = []
-                    line_buf = ""
-                    async for raw_chunk in resp.content:
-                        line_buf += raw_chunk.decode("utf-8", errors="replace")
-                        while "\n" in line_buf:
-                            line, line_buf = line_buf.split("\n", 1)
-                            line = line.rstrip("\r")
-                            # 追踪事件 ID 用于断线续传
-                            if line.startswith("id: "):
-                                try:
-                                    last_id = int(line[4:].strip())
-                                except (ValueError, TypeError):
-                                    pass
-                            if line.startswith("event: "):
-                                if buf and current_event:
-                                    raw = "\n".join(buf).strip()
-                                    if raw:
-                                        yield {"event": current_event, "data": raw}
-                                    buf = []
-                                current_event = line[7:].strip()
-                            elif line.startswith("data: "):
-                                buf.append(line[6:])
-                            elif line == "" and current_event and buf:
+                        await asyncio.sleep(self.reconnect_interval)
+
+                    try:
+                        async with session.get(events_url, params=req_params) as resp:
+                            if resp.status != 200:
+                                body = await resp.text()
+                                raise RuntimeError(f"HTTP {resp.status}: {body[:300]}")
+                            current_event = None
+                            buf: list[str] = []
+                            line_buf = ""
+                            async for raw_chunk in resp.content:
+                                line_buf += raw_chunk.decode("utf-8", errors="replace")
+                                while "\n" in line_buf:
+                                    line, line_buf = line_buf.split("\n", 1)
+                                    line = line.rstrip("\r")
+                                    # 追踪事件 ID 用于断线续传
+                                    if line.startswith("id: "):
+                                        try:
+                                            last_id = int(line[4:].strip())
+                                        except (ValueError, TypeError):
+                                            pass
+                                    if line.startswith("event: "):
+                                        if buf and current_event:
+                                            raw = "\n".join(buf).strip()
+                                            if raw:
+                                                yield {"event": current_event, "data": raw}
+                                            buf = []
+                                        current_event = line[7:].strip()
+                                    elif line.startswith("data: "):
+                                        buf.append(line[6:])
+                                    elif line == "" and current_event and buf:
+                                        raw = "\n".join(buf).strip()
+                                        if raw:
+                                            yield {"event": current_event, "data": raw}
+                                        buf = []
+                                        current_event = None
+                            # 处理残留未换行数据
+                            if line_buf.strip():
+                                line = line_buf.strip()
+                                if line.startswith("data: "):
+                                    buf.append(line[6:])
+                            if buf and current_event:
                                 raw = "\n".join(buf).strip()
                                 if raw:
                                     yield {"event": current_event, "data": raw}
-                                buf = []
-                                current_event = None
-                    # 处理残留未换行数据
-                    if line_buf.strip():
-                        line = line_buf.strip()
-                        if line.startswith("data: "):
-                            buf.append(line[6:])
-                    if buf and current_event:
-                        raw = "\n".join(buf).strip()
-                        if raw:
-                            yield {"event": current_event, "data": raw}
+                            # 连接正常关闭（收到 message_end 后网关收尾）：不再重连
+                            return
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        attempt += 1
+                        if attempt > self.max_reconnect:
+                            raise RuntimeError(f"连接失败(重试{self.max_reconnect}次后仍失败): {e}") from e
+                    except RuntimeError:
+                        # HTTP 非 200：重试无意义，直接抛出
+                        raise
             except aiohttp.ClientError as e:
                 raise RuntimeError(f"连接失败: {e}") from e
             except asyncio.TimeoutError as e:
@@ -213,6 +239,10 @@ class AssistantPlugin(PluginBase):
         self.propagate_to_other_plugins = bool(cfg.get("propagate-to-other-plugins", True))
         self.send_interval = float(cfg.get("send-interval", 0.3))
         self.connect_timeout = float(cfg.get("connect-timeout", 15.0))
+        # SSE 断线后重连次数（网关有 ~900s 空闲超时，任务仍在跑，需带 last_id 续传）
+        self.max_reconnect = max(int(cfg.get("max-reconnect", 3)), 0)
+        # 每次重连前的等待秒数
+        self.reconnect_interval = max(float(cfg.get("reconnect-interval", 2.0) or 0.0), 0.0)
         self.quote_enable = bool(cfg.get("quote-enable", True))
         self.image_public_base_url = _safe_text(cfg.get("image-public-base-url", "http://l.sxkiss.top:9090")).strip()
         self.image_public_route_prefix = _safe_text(cfg.get("image-public-route-prefix", "/media/files")).strip() or "/media/files"
@@ -223,7 +253,10 @@ class AssistantPlugin(PluginBase):
             self.enable = False
             logger.warning("[Assistant] api-base-url 未配置，插件已禁用")
 
-        self._client = SSEClient(self.api_base_url, self.api_key, self.connect_timeout)
+        self._client = SSEClient(
+            self.api_base_url, self.api_key, self.connect_timeout,
+            max_reconnect=self.max_reconnect, reconnect_interval=self.reconnect_interval,
+        )
         self._global_admins = self._load_global_admins()
         logger.info("[Assistant] 加载管理员: {}", self._global_admins)
 
@@ -1042,9 +1075,11 @@ class AssistantPlugin(PluginBase):
                     state["calls"] += 1
 
                 elif ev == "tool_result":
-                    if self.tool_result_enable:
+                    # disable_ai_reply=true 表示不向微信发送 AI 侧内容，
+                    # ✅ 工具反馈属于此类，同样抑制（避免长任务刷屏）
+                    if self.tool_result_enable and not self.disable_ai_reply:
                         # 先 flush 已累积正文，保证 ✅ 反馈时序跟在正文之后
-                        if (not self.disable_ai_reply) and accumulated.strip():
+                        if accumulated.strip():
                             await self._send(route, accumulated)
                             accumulated = ""
                         await self._send(route, f"✅ {self._tool_name(data)}")
@@ -1078,12 +1113,15 @@ class AssistantPlugin(PluginBase):
                         else:
                             err_msg = _safe_text(ed)
                     err_msg = _safe_text(err_msg).strip() or "未知错误"
-                    # 网关 SSE 订阅有 900s 空闲超时，此时任务可能仍在后台运行，
-                    # 不应直接报"失败"，提示用户稍后查看结果
+                    # 网关 SSE 订阅有 ~900s 空闲超时（web_server.py chat_events）。
+                    # 此时后台任务仍在运行，且 SSEClient 会自动带 last_id 重连续传，
+                    # 因此这里不 return、不报错，仅提示一次后继续等待后续事件。
                     if "SSE 订阅超时" in err_msg:
-                        await self._send(route, "⏳ 流式订阅超时，任务仍在后台运行，稍后会继续输出")
-                        logger.warning("[Assistant] sse idle timeout session={}", session_id)
-                        return
+                        if not state.get("timeout_noticed"):
+                            state["timeout_noticed"] = True
+                            logger.warning("[Assistant] sse idle timeout(将重连续传) session={}", session_id)
+                            await self._send(route, "⏳ 仍在运行中，已自动重连续传")
+                        continue
                     await self._send(route, f"❌ 失败: {err_msg[:50]}")
                     logger.warning("[Assistant] error session={}: {}", session_id, err_msg)
                     return
