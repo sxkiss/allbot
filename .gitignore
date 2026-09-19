@@ -74,4 +74,7 @@ plugins/*/
 !plugins/RandomPhoto
 !plugins/Screenshot
 !plugins/HermesPlugin
+!plugins/AssistantPlugin
+# 会话池是运行时状态（wxid→session 映射），含隐私且会频繁变动，不入库
+plugins/AssistantPlugin/wx_session_pool.json
 docs/reports/diagnostic-quote-media-20260816.md

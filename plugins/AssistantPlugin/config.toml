@@ -1,0 +1,27 @@
+[Assistant]
+admin-only = false
+api-base-url = "http://l.sxkiss.top:9876"
+api-key = "aa6811bb9126b87013a580e368b1d7494132fdfd6000bf06546e03c86da31863"
+api-mode = "single"
+at-auto-forward-enable = true
+base-url = ""
+compact-notice-enable = true
+connect-timeout = 15
+disable-ai-reply = true
+enable = true
+model = "auto"
+new-session-commands = ['新对话', '新开对话', '/new', '/reset']
+private-auto-forward-enable = false
+progress-working-seconds = 300
+propagate-to-other-plugins = true
+reply-chunk-chars = 1000
+send-interval = 0.3
+system-prompt = ""
+template = "hermes"
+tool-feedback-enable = true
+tool-result-enable = true
+trigger-match-mode = "contains"
+trigger-strip-word = true
+trigger-words = ['小助手']
+usage-enable = false
+workspace = "/home/sxkiss/.hermes"
