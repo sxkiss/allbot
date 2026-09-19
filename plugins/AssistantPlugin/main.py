@@ -132,6 +132,17 @@ class SSEClient:
                         )
                         await asyncio.sleep(self.reconnect_interval)
 
+                    # 本轮连接内是否收到终态/超时标记
+                    saw_end = False
+                    saw_timeout = False
+
+                    def _note(ev_name: str, raw_data: str) -> None:
+                        nonlocal saw_end, saw_timeout
+                        if ev_name == "message_end":
+                            saw_end = True
+                        elif ev_name == "error" and "SSE 订阅超时" in str(raw_data):
+                            saw_timeout = True
+
                     try:
                         async with session.get(events_url, params=req_params) as resp:
                             if resp.status != 200:
@@ -154,14 +165,20 @@ class SSEClient:
                                     if line.startswith("event: "):
                                         if buf and current_event:
                                             raw = "\n".join(buf).strip()
+                                            # 终态/超时判定须基于事件名，不能受 data 是否为空影响：
+                                            # message_end 常以空 data 送达，若只在 raw 非空时
+                                            # 记录，saw_end 将永远为 False，导致多余重连。
+                                            _note(current_event, raw)
                                             if raw:
                                                 yield {"event": current_event, "data": raw}
                                             buf = []
                                         current_event = line[7:].strip()
                                     elif line.startswith("data: "):
                                         buf.append(line[6:])
-                                    elif line == "" and current_event and buf:
+                                    elif line == "" and current_event:
                                         raw = "\n".join(buf).strip()
+                                        # 同上：基于事件名判定终态/超时，空 data 也算一个完整事件
+                                        _note(current_event, raw)
                                         if raw:
                                             yield {"event": current_event, "data": raw}
                                         buf = []
@@ -174,8 +191,16 @@ class SSEClient:
                             if buf and current_event:
                                 raw = "\n".join(buf).strip()
                                 if raw:
+                                    _note(current_event, raw)
                                     yield {"event": current_event, "data": raw}
-                            # 连接正常关闭（收到 message_end 后网关收尾）：不再重连
+                            # 网关空闲超时是「yield error 后 return」，属正常关闭而非异常，
+                            # 不会抛 ClientError，因此需在此主动判断是否需要续传。
+                            if saw_timeout and not saw_end:
+                                attempt += 1
+                                if attempt > self.max_reconnect:
+                                    return
+                                continue
+                            # 收到 message_end 或任务终态：正常结束，不再重连
                             return
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                         attempt += 1
@@ -740,14 +765,34 @@ class AssistantPlugin(PluginBase):
         route = self.image_public_route_prefix.rstrip("/") or "/media/files"
         return f"{self.image_public_base_url}{route}/{urllib.parse.quote(file_name)}"
 
+    # 网关侧 session_id 校验规则（web_server.py _SESSION_ID_RE）：
+    # 仅允许 [A-Za-z0-9_-]，最长 128。含冒号/@/点的旧格式会被 /api/chat/events 直接拒绝。
+    _GATEWAY_SID_RE = re.compile(r'^[A-Za-z0-9_\-]{1,128}$')
+
+    @staticmethod
+    def _sanitize_sid(raw: str) -> str:
+        """把任意字符串压成网关可接受的 session_id（只保留安全字符）。"""
+        safe = re.sub(r'[^A-Za-z0-9_\-]', '-', str(raw or ""))
+        safe = re.sub(r'-{2,}', '-', safe).strip('-')
+        return safe[:110] or "assistant"
+
     def _session_key(self, route: WatchRoute) -> str:
-        """生成会话池的唯一 key（按模式隔离，opencode/claude 不会互相干扰）。"""
+        """生成会话池的唯一 key（按模式隔离，opencode/claude 不会互相干扰）。
+
+        注意：该 key 会作为 session_id 直接发给网关（/api/chat/start 与
+        /api/chat/events），必须满足网关的 [A-Za-z0-9_-] 校验，否则订阅会被拒，
+        表现为"消息已发出但永远收不到回复"。
+        原始信息（wxid/群ID）含 : 与 @，故用 SHA1 摘要保证唯一性且不泄露 wxid。
+        """
         prefix = "assistant"
         if route.is_group and route.sender_wxid:
-            base = f"{prefix}:{route.sender_wxid}:{route.to_wxid}"
+            raw = f"{prefix}:{route.sender_wxid}:{route.to_wxid}"
         else:
-            base = f"{prefix}:{route.to_wxid}"
-        return f"{self.api_mode}:{base}"
+            raw = f"{prefix}:{route.to_wxid}"
+        raw = f"{self.api_mode}:{raw}"
+        mode = self._sanitize_sid(str(self.api_mode or ""))
+        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+        return f"{prefix}-{mode}-{digest}"
 
     # ---------- 会话池（mode:wxid → ses_xxx / UUID 映射，实现对话延续）--------
     #
@@ -795,9 +840,13 @@ class AssistantPlugin(PluginBase):
         return bool(pool.get(key, ""))
 
     def _is_catchup_needed(self, session_id: str) -> bool:
-        """判断是否需要从历史列表中捕获会话 ID（首次发送后绑定）。"""
+        """判断是否需要从历史列表中捕获会话 ID（首次发送后绑定）。
+
+        session_id 未绑定时为 _session_key() 生成的占位 key（形如
+        assistant-single-<sha1前16位>），据此判断"尚未绑定真实会话"。
+        """
         if self.api_mode in ("claude", "single"):
-            return not session_id.startswith("assistant:") and session_id != ""
+            return not str(session_id).startswith("assistant-") and session_id != ""
         return not str(session_id).startswith("ses_")
 
     async def _catchup_session_id(self, route: WatchRoute, hint: str = "") -> None:
