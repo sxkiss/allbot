@@ -1938,6 +1938,12 @@ class AllBot:
         # 更新消息内容为处理后的内容，以便插件处理
         message["Content"] = content
 
+        # 标记本次是否已调用过某插件的 at_message 处理方法。
+        # 第 6 分支（通用兜底）会无条件直接调用 at_message；若此处不置位，
+        # 函数末尾返回 False 后，process_text_message 会再 emit("at_message")
+        # 导致同一条 @ 消息被同一个插件处理两次（重复回复）。
+        at_handled = False
+
         try:
             # 遍历所有已加载的插件，按优先级排序
             plugins_by_priority = {}
@@ -2299,6 +2305,8 @@ class AllBot:
                         ):
                             # 调用插件的at_message处理方法
                             result = await method(self.bot, message)
+                            # 已实际调用过 at_message：置位，避免调用方重复 emit
+                            at_handled = True
                             # 如果插件返回False，表示它处理了消息并阻止后续处理
                             if result is False:
                                 logger.info(f"插件 {plugin_name} 处理了@消息")
@@ -2308,6 +2316,12 @@ class AllBot:
         finally:
             # 恢复原始消息内容
             message["Content"] = original_message_content
+
+        # 已通过第 6 分支调用过 at_message，返回 True 阻止 process_text_message
+        # 再次 emit("at_message")，避免同一条 @ 消息被重复处理。
+        if at_handled:
+            logger.debug("at_message 已在唤醒词检查中触发，跳过默认 at_message 事件")
+            return True
 
         return False
 
