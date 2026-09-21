@@ -226,6 +226,8 @@ class AssistantPlugin(PluginBase):
         self._session_routes: dict = {}
         # 跟踪每个 session 的活跃任务，用于新消息到达时取消旧任务
         self._active_tasks: dict[str, asyncio.Task] = {}
+        # route_key -> 近期使用过的 session_id 列表（供停止时覆盖旧 ID）
+        self._active_sids: dict[str, list] = {}
         self._global_admins: set = set()
 
         config_path = os.path.join(os.path.dirname(__file__), "config.toml")
@@ -779,20 +781,22 @@ class AssistantPlugin(PluginBase):
     def _session_key(self, route: WatchRoute) -> str:
         """生成会话池的唯一 key（按模式隔离，opencode/claude 不会互相干扰）。
 
-        注意：该 key 会作为 session_id 直接发给网关（/api/chat/start 与
-        /api/chat/events），必须满足网关的 [A-Za-z0-9_-] 校验，否则订阅会被拒，
-        表现为"消息已发出但永远收不到回复"。
-        原始信息（wxid/群ID）含 : 与 @，故用 SHA1 摘要保证唯一性且不泄露 wxid。
+        格式与 HermesPlugin / AgentChat / ClawPlugin 保持一致：
+            {mode}:assistant:{sender_wxid}:{group_id}   （群聊，同群不同人独立）
+            {mode}:assistant:{chat_id}                  （私聊）
+        明文保留 wxid 与群 ID，保证每个微信账号/每个群天然隔离，不依赖后端绑定。
+
+        历史说明：早期为规避网关字符校验改用 SHA1 摘要（assistant-single-<digest>），
+        但摘要丢掉了身份信息，导致不同账号落到同一后端会话（实测均被绑定到
+        live2_1789565471 集团会话）。实测当前网关接受 ':' 与 '@'
+        （/api/chat/start 与 /api/chat/events 均通过），故恢复明文格式。
         """
         prefix = "assistant"
         if route.is_group and route.sender_wxid:
             raw = f"{prefix}:{route.sender_wxid}:{route.to_wxid}"
         else:
             raw = f"{prefix}:{route.to_wxid}"
-        raw = f"{self.api_mode}:{raw}"
-        mode = self._sanitize_sid(str(self.api_mode or ""))
-        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
-        return f"{prefix}-{mode}-{digest}"
+        return f"{self.api_mode}:{raw}"
 
     # ---------- 会话池（mode:wxid → ses_xxx / UUID 映射，实现对话延续）--------
     #
@@ -816,22 +820,63 @@ class AssistantPlugin(PluginBase):
         except Exception as e:
             logger.warning("[Assistant] 保存会话池失败: {}", e)
 
-    def _clear_session_pool_key(self, route: WatchRoute) -> None:
-        key = self._session_key(route)
+    # 会话新鲜度：session_id 后缀。同一天内复用同一会话（上下文延续），
+    # 跨天自动换新；"新开对话"通过递增序号立即换新。
+    _STAMP_KEY_SUFFIX = ":__stamp__"
+
+    def _stamp_key(self, route: WatchRoute) -> str:
+        """会话新鲜度在池中的存储 key（与业务会话 key 区分，避免污染）。"""
+        return f"{self._session_key(route)}{self._STAMP_KEY_SUFFIX}"
+
+    def _today(self) -> str:
+        return time.strftime("%Y%m%d", time.localtime())
+
+    def _new_session(self, route: WatchRoute) -> None:
+        """开启新会话：递增重置序号，使 session_id 后缀变化 → 网关侧视为新会话。
+
+        single 模式下 session_id 由 _session_key + 日期/序号后缀构成，
+        不再依赖"删除池中绑定"来重置，因此这里递增序号即可立即生效。
+        """
         try:
             pool = self._load_session_pool()
+            skey = self._stamp_key(route)
+            seq = int(pool.get(skey + ":seq", "0") or 0) + 1
+            pool[skey + ":seq"] = str(seq)
+            self._save_session_pool(pool)
+        except Exception:
+            pass
+
+    def _clear_session_pool_key(self, route: WatchRoute) -> None:
+        """兼容旧语义：清空该 route 的会话绑定。
+
+        single 模式下会话 ID 由自身 key 派生（不写池），故这里改为递增
+        重置序号，实现"新开对话"；其他模式仍按原逻辑删除绑定记录。
+        """
+        try:
+            pool = self._load_session_pool()
+            key = self._session_key(route)
             if key in pool:
                 pool.pop(key, None)
                 self._save_session_pool(pool)
         except Exception:
             pass
+        if self.api_mode == "single":
+            self._new_session(route)
 
     async def _resolve_session_id(self, route: WatchRoute) -> str:
         """返回复用会话的 session_id：opencode 用 ses_xxx，claude 用 UUID。"""
         key = self._session_key(route)
         pool = self._load_session_pool()
         ses = pool.get(key, "")
-        return ses if ses else key
+        if ses:
+            return ses
+        # single 模式：不绑定后端会话，直接用"明文 key + 新鲜度后缀"，
+        # 保证每个 wxid/群独立，且支持跨天自动更新与手动重置。
+        if self.api_mode == "single":
+            seq = str(pool.get(self._stamp_key(route) + ":seq", "0") or "0")
+            suffix = self._today() if seq in ("", "0") else f"{self._today()}-{seq}"
+            return f"{key}:{suffix}"
+        return key
 
     def _pool_has_bound(self, route: WatchRoute) -> bool:
         """当前会话是否已在会话池中绑定真实后端会话 ID。"""
@@ -842,15 +887,25 @@ class AssistantPlugin(PluginBase):
     def _is_catchup_needed(self, session_id: str) -> bool:
         """判断是否需要从历史列表中捕获会话 ID（首次发送后绑定）。
 
-        session_id 未绑定时为 _session_key() 生成的占位 key（形如
-        assistant-single-<sha1前16位>），据此判断"尚未绑定真实会话"。
+        session_id 未绑定时为 _session_key() 生成的占位 key（明文，形如
+        single:assistant:<wxid>:<group>），据此判断"尚未绑定真实会话"。
         """
         if self.api_mode in ("claude", "single"):
-            return not str(session_id).startswith("assistant-") and session_id != ""
+            # 明文占位 key 形如 "single:assistant:..."，绑定后为后端真实 ID
+            return not str(session_id).startswith(f"{self.api_mode}:assistant:") and session_id != ""
         return not str(session_id).startswith("ses_")
 
     async def _catchup_session_id(self, route: WatchRoute, hint: str = "") -> None:
-        """首次发送后，从 /api/chat/history 找到本次刚创建的会话并绑定。"""
+        """首次发送后，从 /api/chat/history 找到本次刚创建的会话并绑定。
+
+        single 模式直接跳过：该模式下 _session_key() 本身就是稳定的明文
+        session_id（含 wxid 与群 ID），网关按它维护上下文即可，无需绑定。
+        若在此模式下绑定，逻辑会"取历史中最新的一条 source==single 会话"，
+        而该会话可能是完全无关的第三方会话（实测所有账号都被绑到同一个
+        live2_1789565471 集团会话），造成跨账号/跨群上下文串线。
+        """
+        if self.api_mode == "single":
+            return
         key = self._session_key(route)
         try:
             pool = self._load_session_pool()
@@ -1017,26 +1072,76 @@ class AssistantPlugin(PluginBase):
         )
         return bool(self.propagate_to_other_plugins)
 
-    async def _stop_active_session(self, session_id: str, reason: str = "new_message") -> None:
-        """取消指定 session 的活跃任务：stop API + cancel asyncio task。"""
-        task = self._active_tasks.pop(session_id, None)
-        if task is not None and not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        # 通知 BT 停止该会话的任务
+    async def _stop_active_session(self, session_id: str, reason: str = "new_message",
+                                  route_key: str = "") -> None:
+        """取消指定 session 的活跃任务：stop API + cancel asyncio task。
+
+        注意：只取消"属于本次调用"的 task，避免旧任务的 finally 误删新任务。
+        stop 范围严格限定在 route_key 对应的会话内，不影响其他用户/群。
+        """
+        task = self._active_tasks.get(session_id)
+        if task is not None:
+            # 先摘表，防止被取消任务的 finally 误删后续注册的新任务
+            if self._active_tasks.get(session_id) is task:
+                self._active_tasks.pop(session_id, None)
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    pass
+        # 通知后端停止该会话的任务。
+        # 会话 ID 可能因"新开对话"而变化，故对该 route 近期使用过的 ID 都发一次
+        # stop（严格限定在当前 route 内），确保旧任务也能被真正终止。
+        ids = self._collect_stop_ids(session_id, route_key)
+        for sid in ids:
+            await self._post_stop(sid)
+
+    def _remember_active_sid(self, route_key: str, session_id: str) -> None:
+        """记录某 route 近期使用过的 session_id，供停止时覆盖旧 ID。"""
+        if not route_key or not session_id:
+            return
+        ids = self._active_sids.setdefault(route_key, [])
+        if session_id not in ids:
+            ids.append(session_id)
+            if len(ids) > 5:
+                del ids[0]
+
+    def _collect_stop_ids(self, session_id: str, route_key: str = "") -> list:
+        """收集本次需要发送 stop 的 session_id 列表。
+
+        严格限定在当前 route 内：只取"当前 ID + 该 route 近期用过的旧 ID"。
+        绝不能遍历全局 _active_sids，否则 A 发言会把 B/C/D 的会话一并 stop，
+        造成跨用户误停（多用户场景下是严重事故）。
+        """
+        ids = []
+        if session_id:
+            ids.append(session_id)
+        if route_key:
+            for sid in self._active_sids.get(route_key, []):
+                if sid and sid not in ids:
+                    ids.append(sid)
+        return ids[:8]
+
+    async def _post_stop(self, session_id: str) -> None:
+        """向网关发送 stop，失败时记录日志（不再静默吞掉）。"""
         try:
             timeout = aiohttp.ClientTimeout(total=5.0)
             async with aiohttp.ClientSession(timeout=timeout) as s:
                 async with s.post(
                     f"{self.api_base_url}/api/chat/stop",
                     json={"session_id": session_id}
-                ):
-                    pass
-        except Exception:
-            pass  # stop 失败不影响新任务启动
+                ) as resp:
+                    body = ""
+                    try:
+                        body = (await resp.text())[:120]
+                    except Exception:
+                        pass
+                    logger.debug("[Assistant] stop sid={} status={} body={}", session_id, resp.status, body)
+        except Exception as e:
+            logger.warning("[Assistant] 发送 stop 失败 sid={}: {}", session_id, e)
 
     # ---------- 流式对话 ----------
     @staticmethod
@@ -1053,11 +1158,14 @@ class AssistantPlugin(PluginBase):
             return
         session_id = await self._resolve_session_id(route)
         # 新消息到达：先取消该 session 的旧任务，避免并行冲突
-        await self._stop_active_session(session_id)
+        _route_key = self._session_key(route)
+        await self._stop_active_session(session_id, route_key=_route_key)
         # 注册当前任务
         _current_task = asyncio.current_task()
         if _current_task:
             self._active_tasks[session_id] = _current_task
+        # 记录本 route 用过的 session_id，便于停止时覆盖旧 ID
+        self._remember_active_sid(_route_key, session_id)
         first_use = not self._pool_has_bound(route)
         self._session_routes[session_id] = route
         accumulated = ""
@@ -1193,8 +1301,12 @@ class AssistantPlugin(PluginBase):
             if first_use:
                 await self._catchup_session_id(route, message)
         finally:
-            # 会话结束：从活跃任务表中移除，停止并等待 working 后台任务退出
-            self._active_tasks.pop(session_id, None)
+            # 会话结束：仅当表中任务确实是"自己"时才移除。
+            # 无条件 pop 会误删后续新任务（旧任务被取消后 finally 晚于新任务注册执行），
+            # 导致 _stop_active_session 找不到任务、后续新消息无法取消旧任务。
+            _self_task = asyncio.current_task()
+            if _self_task is not None and self._active_tasks.get(session_id) is _self_task:
+                self._active_tasks.pop(session_id, None)
             if progress_task is not None:
                 progress_stop.set()
                 try:
