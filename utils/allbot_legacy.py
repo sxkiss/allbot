@@ -863,16 +863,32 @@ class AllBot:
 
         # 如果成功获取图片数据且有MD5值，保存到files目录
         image_data = None
-        if (
-            message["Content"]
-            and isinstance(message["Content"], str)
-            and message["ImageMD5"]
-        ):
+        content = message.get("Content") or ""
+        # 只有真正的 base64 图片内容才落盘。
+        # 否则（例如 Content 还是 <msg><img .../> 这类 XML）会被 b64decode 成几十字节的垃圾文件，
+        # 覆盖掉 files/ 下同名文件，导致引用图片永远拿到坏数据。
+        content_is_base64_image = (
+            isinstance(content, str)
+            and content
+            and not content.lstrip().startswith("<")
+            and not content.lstrip().startswith("{")
+        )
+        if content_is_base64_image and message.get("ImageMD5"):
             try:
                 # 解码base64获取图片数据
                 import base64
 
-                image_data = base64.b64decode(message["Content"])
+                image_data = base64.b64decode(content)
+
+                # 落盘前再做一次有效性校验，避免把解码失败/不完整的垃圾数据写成文件
+                if not self._looks_like_real_image(image_data):
+                    logger.error(
+                        "图片数据无效（解码结果 {} 字节，非图片格式），跳过落盘 md5={}",
+                        len(image_data),
+                        message["ImageMD5"],
+                    )
+                    image_data = None
+                    raise ValueError("decoded payload is not a valid image")
 
                 # 确保files目录存在
                 files_dir = os.path.join(os.getcwd(), "files")
@@ -898,6 +914,26 @@ class AllBot:
                 await EventManager.emit("image_message", self.bot, message)
             else:
                 logger.warning("风控保护: 新设备登录后4小时内请挂机")
+
+    @staticmethod
+    def _looks_like_real_image(image_data: bytes) -> bool:
+        """校验解码后的字节是否真的是一张可打开的图片。
+
+        背景：CDN 下载失败时 Content 可能残留 XML 或半截数据，b64decode 后会得到
+        几十字节的垃圾，直接落盘会把 files/ 下同名文件污染成坏图。
+        """
+        if not image_data or len(image_data) < 64:
+            return False
+        try:
+            import io
+
+            from PIL import Image
+
+            img = Image.open(io.BytesIO(image_data))
+            img.verify()
+            return True
+        except Exception:
+            return False
 
     def _get_image_extension(self, image_data):
         """根据图片数据判断文件扩展名"""
