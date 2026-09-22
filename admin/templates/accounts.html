@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+
+{% block title %}账号管理 - AllBot{% endblock %}
+
+{% block page_title %}账号管理{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-4" data-aos="fade-up">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-people-fill me-2 text-primary"></i>微信账号管理
+                    </h5>
+                    <button id="btn-new-account" class="btn btn-sm btn-primary">
+                        <i class="bi bi-plus-circle me-1"></i>新建账号
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>在这里管理您的微信机器人账号。您可以切换到不同的账号或创建新账号。
+                    </div>
+
+                    <div id="accounts-container" class="row">
+                        <div class="col-12 text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <p class="mt-2">正在加载账号列表...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 账号卡片模板 -->
+<template id="account-card-template">
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 account-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0 account-nickname">账号名称</h5>
+                <span class="badge bg-success current-badge">当前账号</span>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="avatar-container me-3">
+                        <img src="" alt="头像" class="account-avatar rounded-circle" style="width: 64px; height: 64px; object-fit: cover; display: none;">
+                        <i class="bi bi-person-circle account-avatar-placeholder" style="font-size: 3rem;"></i>
+                    </div>
+                    <div>
+                        <p class="mb-1"><strong>微信ID:</strong> <span class="account-wxid">wxid_123456</span></p>
+                        <p class="mb-1"><strong>微信号:</strong> <span class="account-alias">-</span></p>
+                        <p class="mb-0"><strong>上次登录:</strong> <span class="account-last-login">2023-01-01 12:00:00</span></p>
+                    </div>
+                </div>
+                <div class="text-end mb-2">
+                    <button class="btn btn-sm btn-outline-primary btn-refresh-account">
+                        <i class="bi bi-arrow-clockwise me-1"></i>刷新信息
+                    </button>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="d-flex justify-content-between">
+                    <button class="btn btn-primary btn-sm btn-switch-account">
+                        <i class="bi bi-box-arrow-in-right me-1"></i>切换到此账号
+                    </button>
+                    <button class="btn btn-danger btn-sm btn-delete-account">
+                        <i class="bi bi-trash me-1"></i>删除
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- 重启进度模态框 -->
+<div class="modal fade" id="restartModal" tabindex="-1" aria-labelledby="restartModalLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="restartModalLabel">系统正在重启</h5>
+            </div>
+            <div class="modal-body">
+                <p id="restart-message">正在切换账号，请稍候...</p>
+                <div class="progress">
+                    <div id="restart-progress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 先检查并更新账号列表，然后加载账号列表
+        checkAndUpdateAccounts();
+
+        // 新建账号按钮点击事件
+        document.getElementById('btn-new-account').addEventListener('click', function() {
+            if (confirm('确定要创建新账号吗？这将退出当前账号并重启系统。')) {
+                createNewAccount();
+            }
+        });
+    });
+
+    // 加载账号列表
+    function loadAccounts() {
+        fetch('/api/accounts/list', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('获取账号列表失败');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                renderAccounts(data.data);
+            } else {
+                showError(data.error || '获取账号列表失败');
+            }
+        })
+        .catch(error => {
+            console.error('获取账号列表失败:', error);
+            showError('获取账号列表失败: ' + error.message);
+        });
+    }
+
+    // 渲染账号列表
+    function renderAccounts(data) {
+        const container = document.getElementById('accounts-container');
+        const template = document.getElementById('account-card-template');
+        const accounts = data.accounts || [];
+        const currentWxid = data.current || '';
+
+        // 清空容器
+        container.innerHTML = '';
+
+        if (accounts.length === 0) {
+            container.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <i class="bi bi-exclamation-circle" style="font-size: 3rem;"></i>
+                    <p class="mt-2">暂无账号记录</p>
+                    <p>点击"新建账号"按钮创建一个新的微信机器人账号</p>
+                </div>
+            `;
+            return;
+        }
+
+        // 添加当前账号卡片
+        accounts.forEach(account => {
+            const card = template.content.cloneNode(true);
+
+            // 设置账号信息
+            card.querySelector('.account-nickname').textContent = account.nickname || '未命名账号';
+            card.querySelector('.account-wxid').textContent = account.wxid || '';
+            card.querySelector('.account-alias').textContent = account.alias || '-';
+            card.querySelector('.account-last-login').textContent = account.last_login_formatted || '未知';
+
+            // 设置头像
+            const avatarImg = card.querySelector('.account-avatar');
+            const avatarPlaceholder = card.querySelector('.account-avatar-placeholder');
+
+            if (account.avatar_url) {
+                // 添加随机参数避免缓存
+                const timestamp = new Date().getTime();
+                avatarImg.src = `${account.avatar_url}?t=${timestamp}`;
+
+                // 添加图片加载事件
+                avatarImg.onload = function() {
+                    console.log('头像加载成功:', account.wxid);
+                    avatarImg.style.display = 'block';
+                    avatarPlaceholder.style.display = 'none';
+                };
+
+                // 添加图片加载失败事件
+                avatarImg.onerror = function() {
+                    console.error('头像加载失败:', account.wxid);
+                    avatarImg.style.display = 'none';
+                    avatarPlaceholder.style.display = 'block';
+                };
+            } else {
+                avatarImg.style.display = 'none';
+                avatarPlaceholder.style.display = 'block';
+            }
+
+            // 设置当前账号标记
+            const currentBadge = card.querySelector('.current-badge');
+            if (account.wxid === currentWxid) {
+                currentBadge.style.display = 'inline-block';
+                card.querySelector('.btn-switch-account').disabled = true;
+                card.querySelector('.btn-delete-account').disabled = true;
+            } else {
+                currentBadge.style.display = 'none';
+            }
+
+            // 设置切换账号按钮事件
+            card.querySelector('.btn-switch-account').addEventListener('click', function() {
+                switchAccount(account.wxid);
+            });
+
+            // 设置删除账号按钮事件
+            card.querySelector('.btn-delete-account').addEventListener('click', function() {
+                deleteAccount(account.wxid);
+            });
+
+            // 设置刷新信息按钮事件
+            card.querySelector('.btn-refresh-account').addEventListener('click', function() {
+                refreshAccount(account.wxid, this);
+            });
+
+            container.appendChild(card);
+        });
+    }
+
+    // 切换账号
+    function switchAccount(wxid) {
+        if (confirm(`确定要切换到此账号吗？系统将重启。`)) {
+            // 显示重启进度模态框
+            const restartModal = new bootstrap.Modal(document.getElementById('restartModal'));
+            restartModal.show();
+
+            // 进度条动画
+            const progressBar = document.getElementById('restart-progress');
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                progress += 2;
+                if (progress > 100) {
+                    clearInterval(progressInterval);
+                    // 重启完成，刷新页面
+                    window.location.href = '/qrcode';
+                } else {
+                    progressBar.style.width = `${progress}%`;
+                }
+            }, 200); // 20秒完成进度条
+
+            // 发送切换账号请求
+            fetch(`/api/accounts/switch/${wxid}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('切换账号失败');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!data.success) {
+                    clearInterval(progressInterval);
+                    restartModal.hide();
+                    showError(data.error || '切换账号失败');
+                }
+                // 成功时不做任何处理，让进度条继续运行
+            })
+            .catch(error => {
+                console.error('切换账号失败:', error);
+                clearInterval(progressInterval);
+                restartModal.hide();
+                showError('切换账号失败: ' + error.message);
+            });
+        }
+    }
+
+    // 删除账号
+    function deleteAccount(wxid) {
+        if (confirm(`确定要删除此账号吗？此操作不可恢复。`)) {
+            fetch(`/api/accounts/${wxid}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('删除账号失败');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    showToast('成功', '账号已删除', 'success');
+                    loadAccounts(); // 重新加载账号列表
+                } else {
+                    showError(data.error || '删除账号失败');
+                }
+            })
+            .catch(error => {
+                console.error('删除账号失败:', error);
+                showError('删除账号失败: ' + error.message);
+            });
+        }
+    }
+
+    // 创建新账号
+    function createNewAccount() {
+        // 显示重启进度模态框
+        const restartModal = new bootstrap.Modal(document.getElementById('restartModal'));
+        document.getElementById('restart-message').textContent = '正在创建新账号，请稍候...';
+        restartModal.show();
+
+        // 进度条动画
+        const progressBar = document.getElementById('restart-progress');
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress += 2;
+            if (progress > 100) {
+                clearInterval(progressInterval);
+                // 重启完成，跳转到登录页面
+                window.location.href = '/qrcode';
+            } else {
+                progressBar.style.width = `${progress}%`;
+            }
+        }, 200); // 20秒完成进度条
+
+        // 发送创建新账号请求
+        fetch('/api/accounts/switch/new', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('创建新账号失败');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (!data.success) {
+                clearInterval(progressInterval);
+                restartModal.hide();
+                showError(data.error || '创建新账号失败');
+            }
+            // 成功时不做任何处理，让进度条继续运行
+        })
+        .catch(error => {
+            console.error('创建新账号失败:', error);
+            clearInterval(progressInterval);
+            restartModal.hide();
+            showError('创建新账号失败: ' + error.message);
+        });
+    }
+
+    // 刷新账号信息
+    function refreshAccount(wxid, button) {
+        // 显示加载状态
+        const originalText = button.innerHTML;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 刷新中...';
+        button.disabled = true;
+
+        fetch(`/api/accounts/refresh/${wxid}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('刷新账号信息失败');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // 找到对应的账号卡片
+                const card = button.closest('.account-card');
+                if (card) {
+                    // 更新昵称
+                    if (data.data.nickname) {
+                        card.querySelector('.account-nickname').textContent = data.data.nickname;
+                    }
+
+                    // 更新微信号
+                    if (data.data.alias) {
+                        card.querySelector('.account-alias').textContent = data.data.alias;
+                    }
+
+                    // 更新头像
+                    if (data.data.avatar_url) {
+                        const avatarImg = card.querySelector('.account-avatar');
+                        const avatarPlaceholder = card.querySelector('.account-avatar-placeholder');
+
+                        // 添加随机参数避免缓存
+                        const timestamp = new Date().getTime();
+                        avatarImg.src = `${data.data.avatar_url}?t=${timestamp}`;
+
+                        // 添加图片加载事件
+                        avatarImg.onload = function() {
+                            console.log('头像加载成功:', data.data.avatar_url);
+                            avatarImg.style.display = 'block';
+                            avatarPlaceholder.style.display = 'none';
+                        };
+
+                        // 添加图片加载失败事件
+                        avatarImg.onerror = function() {
+                            console.error('头像加载失败:', data.data.avatar_url);
+                            avatarImg.style.display = 'none';
+                            avatarPlaceholder.style.display = 'block';
+                        };
+                    }
+                }
+
+                showToast('成功', '账号信息已更新', 'success');
+            } else {
+                showError(data.error || '刷新账号信息失败');
+            }
+        })
+        .catch(error => {
+            console.error('刷新账号信息失败:', error);
+            showError('刷新账号信息失败: ' + error.message);
+        })
+        .finally(() => {
+            // 恢复按钮状态
+            button.innerHTML = originalText;
+            button.disabled = false;
+        });
+    }
+
+    // 检查并更新账号列表
+    function checkAndUpdateAccounts() {
+        fetch('/api/accounts/check-and-update', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('检查账号列表更新失败');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // 如果有更新，重新加载账号列表
+                if (data.updated) {
+                    console.log('账号列表已更新，重新加载');
+                    loadAccounts();
+                } else {
+                    // 如果没有更新，但账号列表为空，仍然加载账号列表
+                    const container = document.getElementById('accounts-container');
+                    if (container.children.length <= 1) { // 只有加载中的提示或为空
+                        console.log('账号列表为空，加载账号列表');
+                        loadAccounts();
+                    }
+                }
+            } else {
+                console.error('检查账号列表更新失败:', data.error);
+                // 如果检查失败，仍然尝试加载账号列表
+                loadAccounts();
+            }
+        })
+        .catch(error => {
+            console.error('检查账号列表更新失败:', error);
+            // 如果检查失败，仍然尝试加载账号列表
+            loadAccounts();
+        });
+    }
+
+    // 显示错误信息
+    function showError(message) {
+        showToast('错误', message, 'danger');
+    }
+</script>
+{% endblock %}

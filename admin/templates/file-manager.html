@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AllBot 文件管理器</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="/static/css/lib/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="/static/css/lib/bootstrap-icons.css" rel="stylesheet">
+    <!-- 自定义样式 -->
+    <link href="/static/css/admin.css" rel="stylesheet">
+    <style>
+        /* 文件管理器特定样式 */
+        .file-manager-container {
+            display: flex;
+            height: calc(100vh - 60px);
+            overflow: hidden;
+        }
+
+        .file-sidebar {
+            width: 250px;
+            border-right: 1px solid #dee2e6;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            padding: 15px;
+        }
+
+        .file-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .file-toolbar {
+            padding: 10px 15px;
+            border-bottom: 1px solid #dee2e6;
+            background-color: #f8f9fa;
+        }
+
+        .file-content {
+            flex: 1;
+            overflow: auto;
+            padding: 15px;
+        }
+
+        .file-list-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .file-list-item:hover {
+            background-color: #f1f3f5;
+        }
+
+        .file-list-item.active {
+            background-color: #e9ecef;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+
+        .file-name {
+            margin-left: 10px;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .file-size, .file-date {
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin-left: 15px;
+            white-space: nowrap;
+        }
+
+        .file-actions {
+            opacity: 0.2;
+            transition: opacity 0.2s;
+        }
+
+        .file-list-item:hover .file-actions {
+            opacity: 1;
+        }
+
+        .file-icon-folder {
+            color: #ffc107;
+        }
+
+        .file-icon-py {
+            color: #3775a9;
+        }
+
+        .file-icon-js {
+            color: #f7df1e;
+        }
+
+        .file-icon-html {
+            color: #e34c26;
+        }
+
+        .file-icon-css {
+            color: #264de4;
+        }
+
+        .file-icon-json {
+            color: #f69220;
+        }
+
+        .file-icon-md {
+            color: #9E9E9E;
+        }
+
+        .file-icon-txt {
+            color: #607d8b;
+        }
+
+        /* 文件夹树 */
+        .folder-tree {
+            list-style-type: none;
+            padding-left: 0;
+        }
+
+        .folder-tree ul {
+            list-style-type: none;
+            padding-left: 20px;
+            display: none;
+            margin-top: 5px;
+        }
+
+        .folder-item {
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 2px;
+        }
+
+        .folder-item-content {
+            display: flex;
+            align-items: center;
+            padding: 5px 0;
+            border-radius: 4px;
+        }
+
+        .folder-item-content:hover {
+            background-color: rgba(0,0,0,0.05);
+        }
+
+        .folder-item.active > .folder-item-content {
+            background-color: #e9ecef;
+            font-weight: 500;
+        }
+
+        .folder-item.expanded > ul {
+            display: block;
+        }
+
+        .folder-toggle {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            text-align: center;
+            line-height: 16px;
+            margin-right: 5px;
+            font-size: 12px;
+        }
+
+        .folder-toggle i {
+            transform: rotate(-90deg);
+            transition: transform 0.2s;
+        }
+
+        .folder-item.expanded > .folder-item-content .folder-toggle i {
+            transform: rotate(0deg);
+        }
+
+        /* 确保子文件夹是垂直向下展开的 */
+        .folder-tree li {
+            position: relative;
+        }
+
+        /* 文件编辑器 */
+        .file-editor-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 1050;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: white;
+        }
+
+        .editor-main {
+            flex: 1;
+            background-color: white;
+            border-radius: 4px;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .line-numbers {
+            padding: 10px 8px;
+            background-color: #f5f5f5;
+            text-align: right;
+            color: #6c757d;
+            border-right: 1px solid #dee2e6;
+            font-family: monospace;
+            overflow-y: hidden;
+            user-select: none;
+        }
+
+        .file-editor {
+            flex: 1;
+            padding: 10px;
+            font-family: monospace;
+            resize: none;
+            border: none;
+            outline: none;
+            overflow-y: auto;
+            line-height: 1.5;
+        }
+
+        /* 消息提示 */
+        .loading-files,
+        .empty-folder-message,
+        .error-message {
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            padding: 30px;
+            text-align: center;
+            color: #6c757d;
+        }
+
+        .loading-files i,
+        .empty-folder-message i,
+        .error-message i {
+            font-size: 3rem;
+            margin-bottom: 15px;
+        }
+
+        .error-message {
+            color: #dc3545;
+        }
+
+        /* 添加顶部进度条样式 */
+        .top-progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background-color: transparent;
+            z-index: 1050;
+            display: none;
+        }
+
+        .progress-bar-inner {
+            height: 100%;
+            width: 0;
+            background-color: #0d6efd;
+            transition: width 0.3s ease;
+        }
+
+        /* 添加恢复消息样式 */
+        .recovery-message {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            z-index: 1040;
+            max-width: 350px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideInRight 0.5s forwards;
+        }
+
+        /* 优化加载指示器样式 */
+        .loading-indicator {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 150px;
+            color: #6c757d;
+        }
+
+        /* 优化文件列表项的交互体验 */
+        .file-list-item {
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+
+        .file-list-item:hover {
+            background-color: rgba(13, 110, 253, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .file-list-item:active {
+            transform: translateY(0);
+        }
+
+        .file-list-item.active {
+            background-color: rgba(13, 110, 253, 0.15);
+            border-left: 3px solid #0d6efd;
+        }
+
+        /* 添加分页控件样式 */
+        #pagination .page-link {
+            color: #495057;
+            border-color: #dee2e6;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.765625rem;
+        }
+
+        #pagination .page-item.active .page-link {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+            color: #fff;
+        }
+
+        /* 添加文件操作动画 */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s forwards;
+        }
+
+        /* 优化空文件夹和错误消息样式 */
+        .empty-message, .error-message {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 150px;
+            color: #6c757d;
+            text-align: center;
+            padding: 1rem;
+        }
+
+        .error-message {
+            color: #dc3545;
+        }
+
+        .error-message i, .empty-message i {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .error-details {
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            max-width: 80%;
+            word-break: break-word;
+        }
+
+        /* 确保上传按钮可见 */
+        #btn-upload-file {
+            display: inline-block !important;
+            visibility: visible !important;
+        }
+
+        /* 上下文菜单样式 */
+        .context-menu {
+            position: absolute;
+            z-index: 1100;
+            background-color: #fff;
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            overflow: hidden;
+            min-width: 180px;
+        }
+
+        .context-menu .dropdown-menu {
+            display: block;
+            position: static;
+            margin: 0;
+            padding: 0.5rem 0;
+            border: none;
+            box-shadow: none;
+            width: 100%;
+        }
+
+        .context-menu .dropdown-item {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+        }
+
+        .context-menu .dropdown-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        /* 解压模态框样式 */
+        #extract-modal .modal-body {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        #extract-progress-bar {
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <!-- 添加顶部进度条 -->
+    <div id="top-progress" class="top-progress-bar">
+        <div class="progress-bar-inner"></div>
+    </div>
+
+    <!-- 添加恢复提示消息 -->
+    <div id="recovery-message" class="recovery-message" style="display: none;">
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            系统检测到异常，正在尝试恢复...
+        </div>
+    </div>
+
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-robot"></i> XYBot
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">主页</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/file-manager">文件管理</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logs">日志</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <!-- 版本信息 -->
+                    <li class="nav-item">
+                        <div class="d-flex align-items-center me-3">
+                            <div id="version-info" class="version-info">
+                                <span class="badge bg-primary me-1" id="current-version">v{{ version }}</span>
+                                <button id="check-update-btn" class="btn btn-outline-light btn-sm ms-1" onclick="manualCheckUpdate()" data-bs-toggle="tooltip" title="检查是否有新版本">
+                                    <i class="bi bi-arrow-repeat"></i>
+                                </button>
+                            </div>
+                            <div id="update-container" class="align-items-center" style="display: none !important;">
+                                <span class="badge bg-success shadow-sm" data-bs-toggle="tooltip" title="{{ update_description }}" style="font-size: 0.9rem;" id="update-badge">
+                                    <i class="bi bi-arrow-up-circle-fill me-1"></i>新版本: <span id="latest-version">{{ latest_version }}</span>
+                                </span>
+                                <button id="update-now-btn" class="btn btn-success btn-sm ms-1 shadow-sm" onclick="updateNow()" data-bs-toggle="tooltip" title="立即更新到最新版本">
+                                    <i class="bi bi-cloud-download"></i> 立即更新
+                                </button>
+                            </div>
+                        </div>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logout" id="logout-btn">
+                            <i class="bi bi-box-arrow-right"></i> 退出
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 文件管理器容器 -->
+    <div class="file-manager-container">
+        <!-- 左侧边栏 -->
+        <div class="file-sidebar">
+            <h5 class="mb-3">文件夹</h5>
+            <div id="folder-tree" class="folder-tree">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">加载中...</span>
+                </div>
+                <span class="ms-2">加载文件夹...</span>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="file-main">
+            <!-- 工具栏 -->
+            <div class="file-toolbar">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <!-- 导航路径 -->
+                        <nav aria-label="文件路径导航" class="d-flex align-items-center">
+                            <button id="btn-go-up" class="btn btn-sm btn-outline-secondary me-2">
+                                <i class="bi bi-arrow-up"></i>
+                            </button>
+                            <button id="btn-refresh-address" class="btn btn-sm btn-outline-secondary me-3">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                            <ol id="path-breadcrumb" class="breadcrumb mb-0">
+                                <li class="breadcrumb-item"><a href="#" data-path="/">根目录</a></li>
+                            </ol>
+                        </nav>
+                    </div>
+                    <div class="col-auto">
+                        <!-- 操作按钮 -->
+                        <div class="btn-group">
+                            <button id="btn-new-file" class="btn btn-sm btn-primary">
+                                <i class="bi bi-file-earmark-plus"></i> 新建文件
+                            </button>
+                            <button id="btn-new-folder" class="btn btn-sm btn-secondary">
+                                <i class="bi bi-folder-plus"></i> 新建文件夹
+                            </button>
+                            <button id="btn-upload-file" class="btn btn-sm btn-success">
+                                <i class="bi bi-cloud-upload"></i> 上传文件
+                            </button>
+                            <button id="btn-refresh-files" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-arrow-repeat"></i> 刷新
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 文件内容区 -->
+            <div id="file-content" class="file-content">
+                <div class="d-flex justify-content-between mb-3">
+                    <div id="status-info" class="text-secondary">
+                        文件数量: <span id="file-count">0</span>
+                    </div>
+                    <div id="selection-info" class="text-primary"></div>
+                </div>
+
+                <!-- 加载中提示 -->
+                <div id="loading-files" class="loading-indicator">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <div class="mt-2">加载中，请稍候...</div>
+                </div>
+
+                <!-- 空文件夹提示 -->
+                <div id="empty-folder-message" class="empty-message" style="display: none;">
+                    <i class="bi bi-folder2-open"></i>
+                    <div>此文件夹为空</div>
+                </div>
+
+                <!-- 错误提示 -->
+                <div id="error-message" class="error-message" style="display: none;">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <div>加载失败</div>
+                    <div id="error-details" class="error-details"></div>
+                    <button id="btn-retry" class="btn btn-sm btn-outline-danger mt-2">
+                        <i class="bi bi-arrow-repeat"></i> 重试
+                    </button>
+                </div>
+
+                <!-- 文件列表 -->
+                <div id="file-list" class="file-list"></div>
+
+                <!-- 分页控件 -->
+                <div id="pagination" class="d-flex justify-content-center mt-3" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件编辑器 -->
+    <div id="file-editor-container" class="file-editor-container" style="display: none;">
+        <div class="editor-toolbar">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 id="editor-filename" class="mb-0"></h5>
+                <div>
+                    <button id="btn-save-file" class="btn btn-primary">
+                        <i class="bi bi-save"></i> 保存
+                    </button>
+                    <button id="btn-close-editor" class="btn btn-secondary ms-2">
+                        <i class="bi bi-x-lg"></i> 关闭
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="editor-main">
+            <div id="line-numbers" class="line-numbers"></div>
+            <textarea id="file-editor" class="file-editor" spellcheck="false"></textarea>
+        </div>
+    </div>
+
+    <!-- 新建文件模态框 -->
+    <div class="modal fade" id="new-file-modal" tabindex="-1" aria-labelledby="new-file-label" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="new-file-label">新建文件</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="new-file-name" class="form-label">文件名</label>
+                        <input type="text" class="form-control" id="new-file-name" placeholder="example.txt">
+                    </div>
+                    <div class="mb-3">
+                        <label for="new-file-content" class="form-label">文件内容</label>
+                        <textarea class="form-control" id="new-file-content" rows="5"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="btn-create-file">创建</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新建文件夹模态框 -->
+    <div class="modal fade" id="new-folder-modal" tabindex="-1" aria-labelledby="new-folder-label" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="new-folder-label">新建文件夹</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="new-folder-name" class="form-label">文件夹名</label>
+                        <input type="text" class="form-control" id="new-folder-name" placeholder="new-folder">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="btn-create-folder">创建</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 删除确认模态框 -->
+    <div class="modal fade" id="delete-confirm-modal" tabindex="-1" aria-labelledby="delete-confirm-label" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="delete-confirm-label">确认删除</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <p>确定要删除 <span id="delete-item-name" class="fw-bold"></span> 吗？</p>
+                    <div id="delete-warning-message" class="alert alert-warning" style="display: none;">
+                        <i class="bi bi-exclamation-triangle-fill"></i> 警告：此操作将删除文件夹及其所有内容！
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-danger" id="btn-confirm-delete">删除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 重命名模态框 -->
+    <div class="modal fade" id="rename-modal" tabindex="-1" aria-labelledby="rename-label" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="rename-label">重命名</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="rename-item-name" class="form-label">新名称</label>
+                        <input type="text" class="form-control" id="rename-item-name">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="btn-confirm-rename">重命名</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上传文件模态框 -->
+    <div class="modal fade" id="upload-file-modal" tabindex="-1" aria-labelledby="uploadFileModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadFileModalLabel">上传文件</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="upload-form" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="upload-path" class="form-label">上传路径</label>
+                            <input type="text" class="form-control" id="upload-path" name="path" readonly>
+                        </div>
+
+                        <!-- 添加上传类型选择 -->
+                        <div class="mb-3">
+                            <label class="form-label">上传类型</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="upload-type" id="upload-type-files" autocomplete="off" checked>
+                                <label class="btn btn-outline-primary" for="upload-type-files">文件</label>
+
+                                <input type="radio" class="btn-check" name="upload-type" id="upload-type-folder" autocomplete="off">
+                                <label class="btn btn-outline-primary" for="upload-type-folder">文件夹</label>
+
+                                <input type="radio" class="btn-check" name="upload-type" id="upload-type-zip" autocomplete="off">
+                                <label class="btn btn-outline-primary" for="upload-type-zip">压缩包</label>
+                            </div>
+                        </div>
+
+                        <!-- 文件上传选择器 -->
+                        <div class="mb-3 upload-selector" id="file-selector">
+                            <label for="upload-files" class="form-label">选择文件</label>
+                            <input type="file" class="form-control" id="upload-files" name="files" multiple>
+                            <div class="form-text">可以选择多个文件一起上传</div>
+                        </div>
+
+                        <!-- 文件夹上传选择器 -->
+                        <div class="mb-3 upload-selector" id="folder-selector" style="display:none">
+                            <label for="upload-folder" class="form-label">选择文件夹</label>
+                            <input type="file" class="form-control" id="upload-folder" name="folder" webkitdirectory directory multiple>
+                            <div class="form-text">选择一个文件夹上传，将保留文件夹结构</div>
+                        </div>
+
+                        <!-- 压缩包上传选择器 -->
+                        <div class="mb-3 upload-selector" id="zip-selector" style="display:none">
+                            <label for="upload-zip" class="form-label">选择压缩包</label>
+                            <input type="file" class="form-control" id="upload-zip" name="zip" accept=".zip,.rar,.7z,.tar,.gz,.tar.gz">
+                            <div class="form-text">支持.zip/.rar/.7z/.tar/.gz等常见压缩格式</div>
+                        </div>
+
+                        <!-- 上传后自动解压选项（仅压缩包模式可见） -->
+                        <div class="mb-3 form-check" id="extract-option" style="display:none">
+                            <input type="checkbox" class="form-check-input" id="auto-extract">
+                            <label class="form-check-label" for="auto-extract">上传后自动解压</label>
+                        </div>
+
+                        <div id="upload-progress-container" class="mb-3 d-none">
+                            <label class="form-label">上传进度</label>
+                            <div class="progress">
+                                <div id="upload-progress-bar" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                        <div id="upload-status" class="alert alert-info d-none" role="alert">
+                            准备上传...
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" id="btn-start-upload" class="btn btn-primary">开始上传</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加解压模态框 -->
+    <div class="modal fade" id="extractModal" tabindex="-1" aria-labelledby="extractModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="extractModalLabel">解压文件</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="extract-file-path" class="form-label">文件路径</label>
+                        <input type="text" class="form-control" id="extract-file-path" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="extract-destination" class="form-label">解压到</label>
+                        <input type="text" class="form-control" id="extract-destination" value="">
+                        <div class="form-text">默认解压到当前文件夹，可以指定子文件夹名称</div>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="extract-overwrite">
+                        <label class="form-check-label" for="extract-overwrite">覆盖已存在的文件</label>
+                    </div>
+                    <div id="extract-progress-container" class="mb-3" style="display: none;">
+                        <label class="form-label">解压进度</label>
+                        <div class="progress">
+                            <div id="extract-progress-bar" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                    <div id="extract-status" class="alert alert-info" style="display: none;" role="alert">
+                        准备解压...
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" id="btn-start-extract" class="btn btn-primary">开始解压</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast容器 -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+
+    <!-- Bootstrap JS -->
+    <script src="/static/js/lib/bootstrap.bundle.min.js"></script>
+
+    <!-- Toast工具函数 -->
+    <script>
+        const toastContainer = document.querySelector('.toast-container');
+
+        // 显示Toast消息
+        function showToast(title, message, type = 'info') {
+            if (!toastContainer) return;
+
+            const toastId = 'toast-' + Date.now();
+            const toastEl = document.createElement('div');
+            toastEl.className = `toast bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : type === 'warning' ? 'warning' : 'info'} text-white`;
+            toastEl.id = toastId;
+            toastEl.setAttribute('role', 'alert');
+            toastEl.setAttribute('aria-live', 'assertive');
+            toastEl.setAttribute('aria-atomic', 'true');
+
+            toastEl.innerHTML = `
+                <div class="toast-header">
+                    <strong class="me-auto">${title}</strong>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">
+                    ${message}
+                </div>
+            `;
+
+            toastContainer.appendChild(toastEl);
+
+            // 显示toast
+            const toast = new bootstrap.Toast(toastEl, {
+                autohide: true,
+                delay: 5000
+            });
+
+            toast.show();
+
+            // 自动删除
+            toastEl.addEventListener('hidden.bs.toast', () => {
+                toastEl.remove();
+            });
+        }
+    </script>
+
+    <!-- 添加启动状态检查的脚本 -->
+    <script>
+    // 添加页面级的错误恢复和超时检测机制
+    document.addEventListener('DOMContentLoaded', function() {
+        // 检查页面是否在合理时间内加载
+        let startTime = Date.now();
+        let initTimer = setTimeout(function() {
+            if (!window.fileManagerInitialized) {
+                console.warn('文件管理器未在预期时间内初始化');
+
+                // 显示恢复消息
+                let recoveryEl = document.getElementById('recovery-message');
+                if (recoveryEl) {
+                    recoveryEl.style.display = 'block';
+
+                    // 尝试强制重新加载脚本
+                    let scriptElement = document.createElement('script');
+                    scriptElement.src = '/static/js/file-manager.js?t=' + new Date().getTime();
+                    document.body.appendChild(scriptElement);
+
+                    // 5秒后刷新页面
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 5000);
+                }
+            }
+        }, 10000);
+
+        // 添加顶部进度条动画
+        function animateProgressBar() {
+            let progressBar = document.querySelector('.top-progress-bar');
+            let inner = progressBar.querySelector('.progress-bar-inner');
+
+            if (progressBar && inner) {
+                progressBar.style.display = 'block';
+
+                let width = 0;
+                let interval = setInterval(function() {
+                    if (width >= 90) {
+                        clearInterval(interval);
+                    } else {
+                        width += (90 - width) * 0.05;
+                        inner.style.width = width + '%';
+                    }
+                }, 100);
+
+                // 注册完成事件
+                window.addEventListener('fileManagerLoaded', function() {
+                    inner.style.width = '100%';
+                    setTimeout(function() {
+                        progressBar.style.display = 'none';
+                        inner.style.width = '0';
+                    }, 500);
+                });
+            }
+        }
+
+        // 启动进度条
+        animateProgressBar();
+
+        // 确保模态框正确初始化
+        try {
+            const extractModal = document.getElementById('extractModal');
+            if (extractModal) {
+                console.log('找到解压模态框元素，初始化中...');
+                // 初始化解压模态框
+                window.extractModalInstance = new bootstrap.Modal(extractModal);
+                console.log('解压模态框初始化成功');
+            } else {
+                console.error('未找到解压模态框元素!');
+            }
+        } catch (e) {
+            console.error('初始化解压模态框失败:', e);
+        }
+    });
+    </script>
+
+    <!-- 文件管理器脚本 -->
+    <script src="/static/js/file-manager.js"></script>
+
+    <!-- 版本检查脚本 -->
+    <script>
+        // 手动检查更新函数
+        function manualCheckUpdate() {
+            // 显示加载状态
+            const checkBtn = document.getElementById('check-update-btn');
+            const originalHTML = checkBtn.innerHTML;
+            checkBtn.innerHTML = '<i class="bi bi-arrow-repeat animate__animated animate__rotateIn"></i>';
+            checkBtn.disabled = true;
+
+            // 默认隐藏更新容器
+            const updateContainer = document.getElementById('update-container');
+            if (updateContainer) {
+                updateContainer.removeAttribute('style');
+                updateContainer.setAttribute('style', 'display: none !important;');
+                updateContainer.classList.remove('d-flex');
+            }
+
+            // 隐藏可能存在的tooltip
+            const tooltip = bootstrap.Tooltip.getInstance(checkBtn);
+            if (tooltip) {
+                tooltip.hide();
+            }
+
+            // 调用检查函数
+            checkForUpdates(true)
+                .then(hasUpdate => {
+                    // 恢复按钮状态
+                    setTimeout(() => {
+                        checkBtn.innerHTML = originalHTML;
+                        checkBtn.disabled = false;
+
+                        // 如果没有更新，不需要显示提示，因为已经在checkForUpdates函数中显示了
+
+                        // 清除所有tooltip
+                        document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+                            const tooltipInstance = bootstrap.Tooltip.getInstance(el);
+                            if (tooltipInstance) {
+                                tooltipInstance.hide();
+                            }
+                        });
+                    }, 1000);
+                })
+                .catch(error => {
+                    console.error('检查更新失败:', error);
+                    // 恢复按钮状态
+                    setTimeout(() => {
+                        checkBtn.innerHTML = originalHTML;
+                        checkBtn.disabled = false;
+                        showToast('错误', '检查更新失败，请稍后再试。', 'error');
+                    }, 1000);
+                });
+        }
+
+        // 检查更新函数
+        function checkForUpdates(isManualCheck = false) {
+            return new Promise((resolve, reject) => {
+                // 获取当前版本
+                const currentVersionEl = document.getElementById('current-version');
+                if (!currentVersionEl) {
+                    reject(new Error('无法获取当前版本号'));
+                    return;
+                }
+
+                const currentVersion = currentVersionEl.textContent.replace('v', '');
+
+                // 请求更新信息
+                fetch('/api/check_update')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('服务器响应错误: ' + response.status);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        // 如果有新版本
+                        if (data.success && data.has_update) {
+                            // 更新版本信息
+                            const latestVersionEl = document.getElementById('latest-version');
+                            if (latestVersionEl) {
+                                latestVersionEl.textContent = data.latest_version;
+                            }
+
+                            // 更新描述信息
+                            const updateBadge = document.getElementById('update-badge');
+                            if (updateBadge) {
+                                updateBadge.setAttribute('data-bs-original-title', data.update_description);
+                                updateBadge.setAttribute('title', data.update_description);
+                            }
+
+                            // 显示更新容器
+                            const updateContainer = document.getElementById('update-container');
+                            if (updateContainer) {
+                                updateContainer.removeAttribute('style');
+                                updateContainer.classList.add('d-flex');
+                            }
+
+                            // 如果是手动检查，显示消息
+                            if (isManualCheck) {
+                                showToast('发现新版本', `发现新版本 ${data.latest_version}，点击更新按钮立即更新。`, 'success');
+                            }
+
+                            // 存储更新信息到本地
+                            localStorage.setItem('updateInfo', JSON.stringify({
+                                version: data.latest_version,
+                                description: data.update_description,
+                                timestamp: Date.now()
+                            }));
+
+                            // 返回有更新
+                            resolve(true);
+                        } else {
+                            // 如果版本相同，隐藏更新容器
+                            if (data.success && data.latest_version === currentVersion) {
+                                // 隐藏更新容器
+                                const updateContainer = document.getElementById('update-container');
+                                if (updateContainer) {
+                                    updateContainer.removeAttribute('style');
+                                    updateContainer.setAttribute('style', 'display: none !important;');
+                                    updateContainer.classList.remove('d-flex');
+                                }
+                                // 清除本地存储的更新信息
+                                localStorage.removeItem('updateInfo');
+                            }
+
+                            // 显示消息（如果是手动检查）
+                            if (isManualCheck) {
+                                showToast('检查完成', '当前已经是最新版本', 'info');
+                            }
+                            // 返回没有更新
+                            resolve(false);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('检查更新失败:', error);
+                        reject(error);
+                    });
+            });
+        }
+
+        // 立即更新函数
+        function updateNow() {
+            // 显示加载状态
+            const updateBtn = document.getElementById('update-now-btn');
+            if (!updateBtn) return;
+
+            const originalHTML = updateBtn.innerHTML;
+            updateBtn.innerHTML = '<i class="bi bi-arrow-repeat animate__animated animate__rotateIn"></i> 更新中...';
+            updateBtn.disabled = true;
+
+            // 请求更新
+            fetch('/api/update_bot', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('服务器响应错误: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // 更新成功
+                    showToast('更新成功', '机器人已更新到最新版本，将在几秒后重启。', 'success');
+
+                    // 隐藏更新容器
+                    const updateContainer = document.getElementById('update-container');
+                    if (updateContainer) {
+                        updateContainer.removeAttribute('style');
+                        updateContainer.setAttribute('style', 'display: none !important;');
+                        updateContainer.classList.remove('d-flex');
+                    }
+
+                    // 清除本地存储的更新信息
+                    localStorage.removeItem('updateInfo');
+
+                    // 3秒后刷新页面
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 3000);
+                } else {
+                    // 更新失败
+                    showToast('更新失败', data.error || '更新失败，请稍后再试。', 'error');
+                    // 恢复按钮状态
+                    updateBtn.innerHTML = originalHTML;
+                    updateBtn.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('更新失败:', error);
+                showToast('更新错误', '更新请求出错，请稍后再试。', 'error');
+                // 恢复按钮状态
+                updateBtn.innerHTML = originalHTML;
+                updateBtn.disabled = false;
+            });
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化所有tooltip
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+                new bootstrap.Tooltip(el);
+            });
+
+            // 检查本地存储的更新信息
+            const updateInfo = localStorage.getItem('updateInfo');
+            if (updateInfo) {
+                try {
+                    const info = JSON.parse(updateInfo);
+                    const timestamp = info.timestamp;
+                    const now = Date.now();
+
+                    // 如果信息不超过24小时，显示更新提示
+                    if (now - timestamp < 24 * 60 * 60 * 1000) {
+                        // 更新版本信息
+                        const latestVersionEl = document.getElementById('latest-version');
+                        if (latestVersionEl) {
+                            latestVersionEl.textContent = info.version;
+                        }
+
+                        // 更新描述信息
+                        const updateBadge = document.getElementById('update-badge');
+                        if (updateBadge) {
+                            updateBadge.setAttribute('data-bs-original-title', info.description);
+                            updateBadge.setAttribute('title', info.description);
+                        }
+
+                        // 显示更新容器
+                        const updateContainer = document.getElementById('update-container');
+                        if (updateContainer) {
+                            updateContainer.removeAttribute('style');
+                            updateContainer.classList.add('d-flex');
+                        }
+                    } else {
+                        // 超过24小时的信息清除
+                        localStorage.removeItem('updateInfo');
+                    }
+                } catch (e) {
+                    console.error('解析更新信息失败:', e);
+                    localStorage.removeItem('updateInfo');
+                }
+            }
+
+            // 每小时检查一次更新
+            checkForUpdates().catch(error => console.error('自动检查更新失败:', error));
+            setInterval(() => {
+                checkForUpdates().catch(error => console.error('自动检查更新失败:', error));
+            }, 3600000); // 3600000毫秒 = 1小时
+        });
+    </script>
+</body>
+</html>

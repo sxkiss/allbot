@@ -1,0 +1,80 @@
+# Python 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+
+# Python 编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 分发/打包
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 日志文件
+*.log
+logs/
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# 环境变量
+.env
+.env.local
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.temp
+.cache/
+.*
+tests/
+
+
+# Spec workflow 临时文件
+.spec-workflow/
+plugin-market-api/
+docs/reports
+# 插件目录整体保留，只屏蔽插件列表
+plugins/*/
+!plugins/
+!plugins/BotStatus
+!plugins/FileDownloader(bot下载文件示例)
+!plugins/FileUploadTest(bot发送文件示例)
+!plugins/Reminder
+!plugins/RandomPicture
+!plugins/ManagePlugin
+!plugins/GroupWelcome
+!plugins/GroupMonitor
+!plugins/DifyConversationManager
+!plugins/Dify
+!plugins/DependencyManager
+!plugins/Protocol869Demo
+!plugins/VideoSender
+!plugins/RevokeBotMessage
+!plugins/ClawPlugin
+!plugins/VideoDemand
+!plugins/RandomPhoto
+!plugins/Screenshot
+!plugins/HermesPlugin
+!plugins/AssistantPlugin
+# 会话池是运行时状态（wxid→session 映射），含隐私且会频繁变动，不入库
+plugins/AssistantPlugin/wx_session_pool.json
+docs/reports/diagnostic-quote-media-20260816.md

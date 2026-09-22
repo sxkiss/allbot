@@ -1,0 +1,1940 @@
+{% extends "base.html" %}
+
+{% block title %}AllBot 控制面板{% endblock %}
+
+{% block page_title %}控制面板{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 全局样式 */
+    :root {
+        --primary-color: #007aff;
+        --success-color: #34c759;
+        --warning-color: #ff9500;
+        --danger-color: #ff3b30;
+        --info-color: #5ac8fa;
+        --text-primary: #1d1d1f;
+        --text-secondary: #86868b;
+        --bg-card: #ffffff;
+        --bg-page: #f5f5f7;
+        --border-radius: 12px;
+        --box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --transition-speed: 0.3s;
+    }
+
+    body {
+        background-color: var(--bg-page);
+        color: var(--text-primary);
+    }
+
+    /* 确保页脚始终可见 */
+    .main-content {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+    }
+
+    .content-wrapper {
+        flex: 1;
+    }
+
+    .footer {
+        margin-top: auto;
+        position: relative;
+        z-index: 10;
+    }
+
+    /* 卡片样式 */
+    .dashboard-card {
+        border-radius: var(--border-radius);
+        box-shadow: var(--box-shadow);
+        border: none;
+        transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+        overflow: hidden;
+        background-color: var(--bg-card);
+        margin-bottom: 24px;
+    }
+
+    .dashboard-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .card-header {
+        background-color: transparent;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        padding: 16px 20px;
+    }
+
+    .card-header h5 {
+        font-weight: 600;
+        color: var(--text-primary);
+        font-size: 18px;
+        margin: 0;
+    }
+
+    .card-body {
+        padding: 20px;
+    }
+
+    /* 状态指示灯样式 */
+    .status-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 5px;
+    }
+
+    .status-dot.online {
+        background-color: var(--success-color);
+        box-shadow: 0 0 0 4px rgba(46, 204, 113, 0.2);
+        animation: pulse 2s infinite;
+    }
+
+    .status-dot.offline {
+        background-color: var(--danger-color);
+    }
+
+    .status-dot.waiting {
+        background-color: var(--warning-color);
+    }
+
+    .status-dot.ready {
+        background-color: var(--info-color);
+    }
+
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4);
+        }
+        70% {
+            box-shadow: 0 0 0 8px rgba(46, 204, 113, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
+        }
+    }
+
+    /* 统计卡片样式 */
+    .dashboard-stat-icon {
+        height: 60px;
+        width: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 18px;
+        font-size: 24px;
+        color: white;
+        margin-bottom: 16px;
+    }
+
+    .stat-card {
+        padding: 20px;
+        border-radius: var(--border-radius);
+        background-color: var(--bg-card);
+        transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+        position: relative;
+        overflow: hidden;
+        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-title {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+    }
+
+    .stat-value {
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 12px;
+    }
+
+    .stat-description {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-bottom: 16px;
+    }
+
+    /* 快速操作按钮 */
+    .btn-qrcode {
+        position: relative;
+        overflow: hidden;
+        transition: all var(--transition-speed) ease;
+        border: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        height: 140px;
+        background: linear-gradient(135deg, #3498DB, #2874A6);
+    }
+
+    .btn-qrcode::after {
+        content: '';
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: -100%;
+        background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0) 100%);
+        transition: left 0.5s ease;
+    }
+
+    .btn-qrcode:hover::after {
+        left: 100%;
+    }
+
+    /* 主内容区域的二级按钮 */
+    .container-fluid .btn-outline-secondary {
+        border: none;
+        background-color: rgba(0, 0, 0, 0.04);
+        color: var(--text-primary);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        height: 140px;
+        transition: all var(--transition-speed) ease;
+    }
+
+    .container-fluid .btn-outline-secondary:hover {
+        background-color: rgba(0, 0, 0, 0.06);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    }
+
+    /* 页脚中的按钮样式重置 */
+    .footer .btn-outline-secondary {
+        height: auto;
+        display: inline-flex;
+        flex-direction: row;
+        background-color: transparent;
+        border: 1px solid #6c757d;
+    }
+
+    .footer .btn-outline-secondary:hover {
+        background-color: rgba(108, 117, 125, 0.1);
+        transform: none;
+        box-shadow: none;
+    }
+
+    /* 按钮样式 */
+    .btn-sm {
+        font-size: 14px;
+        font-weight: 500;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: none;
+        transition: all var(--transition-speed) ease;
+    }
+
+    .btn-outline-primary {
+        border: 1px solid rgba(0, 122, 255, 0.5);
+        color: var(--primary-color);
+    }
+
+    .btn-outline-primary:hover {
+        background-color: rgba(0, 122, 255, 0.1);
+    }
+
+    /* 页脚中的按钮样式重置 */
+    .footer .btn-sm {
+        height: auto;
+        display: inline-flex;
+        flex-direction: row;
+    }
+
+    /* 进度条样式 */
+    .progress {
+        background-color: rgba(0, 0, 0, 0.05);
+        height: 6px;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .progress-bar {
+        background-color: var(--primary-color);
+        transition: width 1s ease;
+    }
+
+    /* 指标网格 */
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 24px;
+    }
+
+    /* 重启覆盖层样式 */
+    .restart-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 9999;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .restart-dialog {
+        background-color: white;
+        border-radius: 16px;
+        padding: 24px;
+        width: 80%;
+        max-width: 500px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+        text-align: center;
+    }
+
+    /* 下拉菜单样式 */
+    .dropdown-menu {
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        border: none;
+        padding: 8px 0;
+    }
+
+    .dropdown-item {
+        padding: 8px 16px;
+        font-size: 14px;
+        color: var(--text-primary);
+        transition: background-color 0.2s ease;
+    }
+
+    .dropdown-item:hover {
+        background-color: rgba(0, 0, 0, 0.04);
+    }
+
+    /* 数据分析卡片样式 */
+    .analysis-card {
+        background-color: var(--bg-card);
+        border-radius: var(--border-radius);
+        padding: 20px;
+        box-shadow: var(--box-shadow);
+    }
+
+    .analysis-header {
+        margin-bottom: 16px;
+    }
+
+    .analysis-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+        color: var(--text-primary);
+    }
+
+    .analysis-subtitle {
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin: 4px 0 0 0;
+    }
+
+    .metric-box {
+        padding: 10px 15px;
+        background-color: rgba(0, 0, 0, 0.02);
+        border-radius: 8px;
+    }
+
+    .metric-value {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+
+    .metric-label {
+        font-size: 12px;
+    }
+
+    .text-success {
+        color: var(--success-color) !important;
+    }
+
+    .chart-container {
+        position: relative;
+        width: 100%;
+        min-height: 250px; /* 确保容器有足够的高度 */
+    }
+
+    .chart-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        z-index: 10;
+    }
+
+    /* 确保加载状态能被正确隐藏 */
+    .chart-overlay[style*="display: none"],
+    .chart-overlay[style*="visibility: hidden"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
+
+    /* 加载文本样式 */
+    #loading-text {
+        z-index: 20;
+        transition: opacity 0.3s ease;
+    }
+
+    #loading-text[style*="display: none"],
+    #loading-text[style*="visibility: hidden"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+
+    /* 系统信息卡片 */
+    .system-info-card {
+        background-color: var(--bg-card);
+        border-radius: var(--border-radius);
+        padding: 20px;
+        box-shadow: var(--box-shadow);
+        height: 100%;
+    }
+
+    .system-info-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+        color: var(--text-primary);
+    }
+
+    .system-info-subtitle {
+        font-size: 12px;
+        margin: 4px 0 16px 0;
+    }
+
+    .bot-status-section {
+        border-radius: 10px;
+    }
+
+    .bot-avatar {
+        width: 50px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(0, 122, 255, 0.1);
+        border-radius: 10px;
+    }
+
+    .bot-status-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+
+    .bot-status-badge {
+        margin-bottom: 4px;
+    }
+
+    .bot-info-list {
+        margin-bottom: 16px;
+    }
+
+    .info-item {
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .info-label {
+        color: var(--text-secondary);
+    }
+
+    .info-value {
+        font-weight: 500;
+    }
+
+    /* 按钮组样式 */
+    .btn-group-sm .btn {
+        font-size: 12px;
+        padding: 4px 10px;
+    }
+
+    /* 旋转动画 */
+    @keyframes rotate {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .rotate-animation {
+        animation: rotate 1s linear;
+    }
+
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- 系统概览 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="dashboard-card" data-aos="fade-up">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-speedometer2 me-2 text-primary"></i>系统概览
+                    </h5>
+                    <span id="last-updated" class="text-muted small">最后更新: {{ current_time }}</span>
+                </div>
+                <div class="card-body px-0 py-3">
+                    <div class="metric-grid px-4">
+                        <!-- 消息总数卡片 -->
+                        <div class="stat-card" data-aos="fade-up" data-aos-delay="150">
+                            <div class="dashboard-stat-icon" style="background: linear-gradient(135deg, #9B59B6, #8E44AD);">
+                                <i class="bi bi-chat-square-text"></i>
+                            </div>
+                            <h6 class="stat-title">消息总数</h6>
+                            <div class="stat-value" id="message-count">0</div>
+                            <div class="stat-description">所有平台发送的消息统计</div>
+                        </div>
+
+                        <!-- 运行时间 -->
+                        <div class="stat-card" data-aos="fade-up" data-aos-delay="200">
+                            <div class="dashboard-stat-icon" style="background: linear-gradient(135deg, #E74C3C, #C0392B);">
+                                <i class="bi bi-clock-history"></i>
+                            </div>
+                            <h6 class="stat-title">运行时间</h6>
+                            <div class="stat-value" id="uptime-value">{{ uptime|default('12:55:10') }}</div>
+                            <div class="stat-description" id="start-time">启动于 {{ start_time|default('2025-05-17 20:23:10') }}</div>
+                        </div>
+
+                        <!-- CPU 使用率 -->
+                        <div class="stat-card" data-aos="fade-up" data-aos-delay="250">
+                            <div class="dashboard-stat-icon" style="background: linear-gradient(135deg, #F39C12, #D35400);">
+                                <i class="bi bi-cpu"></i>
+                            </div>
+                            <h6 class="stat-title">CPU 使用率</h6>
+                            <div class="stat-value" id="cpu-value">{{ cpu_percent|default('24.4') }}%</div>
+                            <div class="stat-description">
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar bg-warning" role="progressbar" style="width: 24%" data-percent="{{ cpu_percent|default(24) }}"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 内存占用 -->
+                        <div class="stat-card" data-aos="fade-up" data-aos-delay="300">
+                            <div class="dashboard-stat-icon" style="background: linear-gradient(135deg, #27AE60, #2ECC71);">
+                                <i class="bi bi-memory"></i>
+                            </div>
+                            <h6 class="stat-title">内存占用</h6>
+                            <div class="stat-value" id="memory-value">{{ memory_usage|default('15.95GB / 31.92GB') }}</div>
+                            <div class="stat-description">
+                                <div class="progress" style="height: 6px;">
+                                    <div class="progress-bar bg-success" role="progressbar" style="width: 50%" data-percent="{{ memory_percent|default(50) }}"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 数据分析部分 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="dashboard-card" data-aos="fade-up">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-graph-up me-2 text-primary"></i>数据分析
+                    </h5>
+                    <div class="time-filter">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary active" data-time="1">今天</button>
+                            <button type="button" class="btn btn-outline-primary" data-time="7">本周</button>
+                            <button type="button" class="btn btn-outline-primary" data-time="30">本月</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <!-- 消息趋势图 -->
+                            <div class="analysis-card mb-4">
+                                <div class="analysis-header">
+                                    <h6 class="analysis-title">消息趋势分析</h6>
+                                    <p class="analysis-subtitle text-muted">跟踪消息数量随时间的变化</p>
+                                </div>
+                                <div class="analysis-metrics d-flex mb-3">
+                                    <div class="metric-box me-4">
+                                        <div class="metric-value" id="total-messages">522</div>
+                                        <div class="metric-label text-muted">总消息数</div>
+                                    </div>
+                                    <div class="metric-box me-4">
+                                        <div class="metric-value" id="avg-daily">25</div>
+                                        <div class="metric-label text-muted">平均每天</div>
+                                    </div>
+                                    <div class="metric-box">
+                                        <div class="metric-value text-success" id="growth-rate">+100%</div>
+                                        <div class="metric-label text-muted">增长率</div>
+                                    </div>
+                                </div>
+                                <div class="chart-container" style="position: relative; height: 250px;">
+                                    <canvas id="messageChart"></canvas>
+                                    <!-- 加载状态覆盖层 -->
+                                    <div class="chart-overlay d-flex align-items-center justify-content-center" id="chart-empty">
+                                        <div class="text-center">
+                                            <div class="spinner-border text-primary" role="status">
+                                                <span class="visually-hidden">加载中...</span>
+                                            </div>
+                                            <p class="mb-0 mt-2">正在加载数据...</p>
+                                        </div>
+                                    </div>
+                                    <!-- 单独的加载文本元素，确保能被正确隐藏 -->
+                                    <div class="position-absolute top-50 start-50 translate-middle" id="loading-text" style="z-index: 20;">
+                                        <span class="badge bg-light text-dark p-2 shadow-sm">正在加载数据...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-4">
+                            <!-- 系统信息 -->
+                            <div class="stat-card" data-aos="fade-up" data-aos-delay="100">
+                                <div class="dashboard-stat-icon" style="background: linear-gradient(135deg, #3498DB, #2874A6);">
+                                    <i class="bi bi-robot"></i>
+                                </div>
+                                <div class="d-flex align-items-center mb-2">
+                                    <h6 class="stat-title mb-0">机器人状态</h6>
+                                    <button id="refresh-status" class="btn-sm btn-link ms-2 p-0" title="刷新状态">
+                                        <i class="bi bi-arrow-clockwise"></i>
+                                    </button>
+                                </div>
+                                <div class="stat-value d-flex align-items-center mb-0 py-1">
+                                    <span id="bot-status-display" class="status-badge">
+                                        <span class="status-dot" id="status-dot"></span>
+                                        <span id="status-text">加载中...</span>
+                                    </span>
+                                </div>
+                                <div class="stat-description mb-1" id="status-description"></div>
+
+                                <!-- 机器人信息显示 -->
+                                <div id="bot-info" class="mt-3">
+                                    <div class="small text-muted d-flex align-items-center mb-1 py-0">
+                                        <i class="bi bi-person-badge me-1"></i>
+                                        <span>昵称：<span id="bot-nickname">小JXx</span></span>
+                                    </div>
+                                    <div class="small text-muted d-flex align-items-center mb-1 py-0">
+                                        <i class="bi bi-chat-dots me-1"></i>
+                                        <span>微信号：<span id="bot-wxid">wxid_REDACTED</span></span>
+                                    </div>
+                                </div>
+
+                                <!-- 操作按钮 -->
+                                <div class="mt-4">
+                                    <!-- 第一排按钮 -->
+                                    <div class="row g-2 mb-2">
+                                        <!-- 协议选择按钮 -->
+                                        <div class="col-6">
+                                            <div class="dropdown w-100">
+                                                <button id="protocol-btn" class="btn btn-sm btn-outline-primary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                    <i class="bi bi-hdd-network me-1"></i><span id="current-protocol">849协议</span>
+                                                </button>
+                                                <ul class="dropdown-menu">
+                                                    <li><a class="dropdown-item protocol-option" href="#" data-value="849">849协议</a></li>
+                                                    <li><a class="dropdown-item protocol-option" href="#" data-value="855">855协议</a></li>
+                                                    <li><a class="dropdown-item protocol-option" href="#" data-value="ipad">iPad协议</a></li>
+                                                </ul>
+                                            </div>
+                                        </div>
+
+                                        <!-- 消息过滤按钮 -->
+                                        <div class="col-6">
+                                            <div class="dropdown w-100">
+                                                <button id="filter-btn" class="btn btn-sm btn-outline-primary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                                    <i class="bi bi-funnel me-1"></i><span id="current-filter">不过滤</span>
+                                                </button>
+                                                <ul class="dropdown-menu">
+                                                    <li><a class="dropdown-item filter-option" href="#" data-value="None">不过滤</a></li>
+                                                    <li><a class="dropdown-item filter-option" href="#" data-value="Whitelist">白名单模式</a></li>
+                                                    <li><a class="dropdown-item filter-option" href="#" data-value="Blacklist">黑名单模式</a></li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 第二排按钮 -->
+                                    <div class="row g-2">
+                                        <!-- 切换账号按钮 -->
+                                        <div class="col-6">
+                                            <button id="switch-account" class="btn btn-sm btn-outline-primary w-100" title="切换微信账号" onclick="handleSwitchAccount()">
+                                                <i class="bi bi-arrow-repeat me-1"></i>切换账号
+                                            </button>
+                                        </div>
+
+                                        <!-- 系统配置按钮 -->
+                                        <div class="col-6">
+                                            <button id="edit-config" class="btn btn-sm btn-outline-primary w-100" title="编辑系统配置" onclick="handleEditConfig()">
+                                                <i class="bi bi-gear-fill me-1"></i>系统配置
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 获取DOM元素
+        const statusDisplay = document.getElementById('bot-status-display');
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        const statusDescription = document.getElementById('status-description');
+
+        const refreshStatusBtn = document.querySelectorAll('#refresh-status');
+        const lastUpdatedSpan = document.getElementById('last-updated');
+        const botInfo = document.querySelectorAll('#bot-info');
+        const botNickname = document.querySelectorAll('#bot-nickname');
+        const botWxid = document.querySelectorAll('#bot-wxid');
+
+        // 初始化进度条
+        function initProgressBars() {
+            document.querySelectorAll('.progress-bar[data-percent]').forEach(bar => {
+                const percent = bar.getAttribute('data-percent');
+                if (percent) {
+                    bar.style.width = percent + '%';
+                }
+            });
+        }
+
+        // 更新机器人状态显示
+        function updateStatusDisplay(status) {
+            console.log("更新状态显示:", status);
+
+            // 更新状态显示
+            if (statusText) statusText.textContent = status;
+
+            // 清除所有状态类并设置新状态
+            if (statusDot) {
+                statusDot.classList.remove('online', 'offline', 'waiting', 'ready');
+
+                switch(status) {
+                    case 'online':
+                    case 'ready':  // 将ready也视为在线状态
+                        statusDot.classList.add('online');
+                        break;
+                    case 'offline':
+                        statusDot.classList.add('offline');
+                        break;
+                    case 'waiting_login':
+                        statusDot.classList.add('waiting');
+                        break;
+                    default:
+                        statusDot.classList.add('offline');
+                }
+            }
+
+            // 更新状态描述
+            if (statusDescription) {
+                switch(status) {
+                    case 'online':
+                        statusDescription.textContent = '机器人已登录并正常运行';
+                        break;
+                    case 'ready':
+                        statusDescription.textContent = '机器人已准备就绪';
+                        break;
+                    case 'offline':
+                        statusDescription.textContent = '机器人目前离线，请检查连接';
+                        break;
+                    case 'waiting_login':
+                        statusDescription.textContent = '等待登录，请前往登录页面';
+                        break;
+                    default:
+                        statusDescription.textContent = '未知状态: ' + status;
+                }
+            }
+
+            // 显示或隐藏机器人信息
+            const showInfo = (status === 'online' || status === 'ready');
+            botInfo.forEach(info => {
+                if (info) info.style.display = showInfo ? 'block' : 'none';
+            });
+
+            // 动画效果
+            if (statusDisplay) {
+                statusDisplay.classList.add('animate__animated', 'animate__pulse');
+                setTimeout(() => {
+                    statusDisplay.classList.remove('animate__animated', 'animate__pulse');
+                }, 1000);
+            }
+        }
+
+        // 获取机器人状态
+        function getBotStatus() {
+            fetch('/api/bot/status')
+                .then(response => response.json())
+                .then(data => {
+                    console.log("获取到状态数据:", data);
+
+                    // 提取状态数据，处理两种可能的数据结构
+                    const statusData = data.data || data;
+
+                    // 检查状态是否为undefined
+                    if (!statusData || statusData.status === undefined) {
+                        console.log("API返回的状态为undefined，使用默认值");
+                        // 使用默认值
+                        updateStatusDisplay("online");
+                    } else {
+                        // 更新状态
+                        updateStatusDisplay(statusData.status);
+                    }
+
+                    // 如果有机器人信息就显示
+                    if (statusData.nickname) {
+                        botNickname.forEach(element => {
+                            if (element) element.textContent = statusData.nickname;
+                        });
+                    }
+                    if (statusData.wxid || statusData.alias) {
+                        const wxidValue = statusData.wxid || statusData.alias || '-';
+                        botWxid.forEach(element => {
+                            if (element) element.textContent = wxidValue;
+                        });
+                    }
+
+                    // 更新最后更新时间
+                    lastUpdatedSpan.textContent = '最后更新: ' + new Date().toLocaleTimeString();
+                })
+                .catch(error => {
+                    console.error('获取状态失败:', error);
+                    // 使用默认显示
+                    updateStatusDisplay("online");
+                });
+        }
+
+        // 获取系统状态
+        function getSystemStatus() {
+            fetch('/api/system/status')
+                .then(response => response.json())
+                .then(data => {
+                    console.log("系统状态数据:", data);
+                    if (data.success && data.data) {
+                        const systemData = data.data;
+
+                        // 更新CPU使用率
+                        if (systemData.cpu_percent !== undefined) {
+                            const cpuPercent = systemData.cpu_percent;
+                            document.getElementById('cpu-value').textContent = cpuPercent + '%';
+                            const cpuBar = document.querySelector('.progress-bar.bg-warning');
+                            cpuBar.setAttribute('data-percent', cpuPercent);
+                            cpuBar.style.width = cpuPercent + '%';
+                        }
+
+                        // 更新内存使用率
+                        if (systemData.memory_percent !== undefined) {
+                            const memoryPercent = systemData.memory_percent.toFixed(2);
+                            const memoryBar = document.querySelector('.progress-bar.bg-success');
+                            memoryBar.setAttribute('data-percent', memoryPercent);
+                            memoryBar.style.width = memoryPercent + '%';
+
+                            // 如果有memory_total和memory_used则显示更详细的内存信息
+                            if (systemData.memory_used && systemData.memory_total) {
+                                const memoryUsed = (systemData.memory_used / (1024 * 1024 * 1024)).toFixed(2);
+                                const memoryTotal = (systemData.memory_total / (1024 * 1024 * 1024)).toFixed(2);
+                                document.getElementById('memory-value').textContent = `${memoryUsed}GB / ${memoryTotal}GB`;
+                            }
+                        }
+
+                        // 如果有时间信息则更新
+                        if (systemData.uptime) {
+                            document.getElementById('uptime-value').textContent = systemData.uptime;
+                        }
+                        if (systemData.start_time) {
+                            document.getElementById('start-time').textContent = '启动于 ' + systemData.start_time;
+                        }
+
+                        // 更新消息计数
+                        if (systemData.message_count !== undefined) {
+                            document.getElementById('message-count').textContent = systemData.message_count;
+                            document.getElementById('total-messages').textContent = systemData.message_count;
+                        }
+
+                        // 插件数量显示已移除
+                        console.log("系统数据:", systemData);
+                    }
+                })
+                .catch(error => {
+                    console.error('获取系统状态失败:', error);
+                });
+        }
+
+        // 切换账号
+        function handleSwitchAccount() {
+            if (confirm('确定要切换微信账号吗？\n\n这将删除当前账号的登录信息，并需要重新扫码登录。')) {
+                const switchBtn = document.getElementById('switch-account');
+                switchBtn.disabled = true;
+                switchBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>切换中...';
+
+                fetch('/api/switch_account', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include'
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('API响应状态码: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        showToast('成功', '已切换账号，系统正在重启...', 'success');
+
+                        // 显示重启进度
+                        const loadingDiv = document.createElement('div');
+                        loadingDiv.className = 'restart-overlay';
+                        loadingDiv.innerHTML = `
+                            <div class="restart-dialog">
+                                <h4>系统重启中</h4>
+                                <p class="mb-3">正在重启系统，请稍候...</p>
+                                <div class="progress mb-3">
+                                    <div id="restart-progress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <p class="small text-muted">完成后将自动跳转到登录页面</p>
+                            </div>
+                        `;
+                        document.body.appendChild(loadingDiv);
+
+                        // 进度条动画
+                        const progressBar = document.getElementById('restart-progress');
+                        let progress = 0;
+                        const progressInterval = setInterval(() => {
+                            progress += 2;
+                            if (progress > 100) {
+                                clearInterval(progressInterval);
+                                window.location.href = '/qrcode';
+                            } else {
+                                progressBar.style.width = `${progress}%`;
+                            }
+                        }, 200);
+                    } else {
+                        switchBtn.disabled = false;
+                        switchBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>切换账号';
+                        showToast('错误', data.error || '切换账号失败', 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('切换账号失败:', error);
+                    switchBtn.disabled = false;
+                    switchBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>切换账号';
+                    showToast('错误', '切换账号请求失败: ' + error.message, 'danger');
+                });
+            }
+        }
+
+        // 系统配置
+        function handleEditConfig() {
+            const configModal = new bootstrap.Modal(document.getElementById('config-modal'));
+            const configEditor = document.getElementById('config-editor');
+            const configLoading = document.getElementById('config-loading');
+            const configError = document.getElementById('config-error');
+            const configErrorMessage = document.getElementById('config-error-message');
+            const configEditorContainer = document.getElementById('config-editor-container');
+
+            configLoading.style.display = 'block';
+            configError.style.display = 'none';
+            configEditorContainer.style.display = 'none';
+
+            configModal.show();
+
+            fetch('/api/files/read?path=main_config.toml')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('服务器响应状态码: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success && data.content) {
+                        configEditor.value = data.content;
+                        configLoading.style.display = 'none';
+                        configEditorContainer.style.display = 'block';
+                    } else {
+                        throw new Error(data.error || '加载配置文件失败');
+                    }
+                })
+                .catch(error => {
+                    console.error('加载配置文件失败:', error);
+                    configLoading.style.display = 'none';
+                    configError.style.display = 'block';
+                    configErrorMessage.textContent = '加载配置文件失败: ' + error.message;
+                });
+        }
+
+        // 保存配置
+        function handleSaveConfig() {
+            const configModal = new bootstrap.Modal(document.getElementById('config-modal'));
+            const configEditor = document.getElementById('config-editor');
+            const saveConfigBtn = document.getElementById('btn-save-config');
+
+            saveConfigBtn.disabled = true;
+            saveConfigBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>保存中...';
+
+            fetch('/api/files/write', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    path: 'main_config.toml',
+                    content: configEditor.value
+                }),
+                credentials: 'include'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('服务器响应状态码: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    configModal.hide();
+
+                    showToast('成功', '配置文件已保存，系统将在 10 秒后重启', 'success');
+
+                    // 显示重启进度
+                    const loadingDiv = document.createElement('div');
+                    loadingDiv.className = 'restart-overlay';
+                    loadingDiv.innerHTML = `
+                        <div class="restart-dialog">
+                            <h4>系统重启中</h4>
+                            <p>配置文件已保存，系统正在重启中，请稍候...</p>
+                            <div class="progress mt-3">
+                                <div id="restart-progress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(loadingDiv);
+
+                    // 进度条动画
+                    const progressBar = document.getElementById('restart-progress');
+                    let progress = 0;
+                    const progressInterval = setInterval(() => {
+                        progress += 2;
+                        if (progress > 100) {
+                            clearInterval(progressInterval);
+                            window.location.reload();
+                        } else {
+                            progressBar.style.width = `${progress}%`;
+                        }
+                    }, 200);
+
+                    // 调用重启 API
+                    setTimeout(() => {
+                        fetch('/api/system/restart', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include'
+                        }).catch(error => {
+                            console.error('重启系统失败:', error);
+                        });
+                    }, 1000);
+                } else {
+                    saveConfigBtn.disabled = false;
+                    saveConfigBtn.innerHTML = '保存并重启';
+                    showToast('错误', data.error || '保存配置文件失败', 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('保存配置文件失败:', error);
+                saveConfigBtn.disabled = false;
+                saveConfigBtn.innerHTML = '保存并重启';
+                showToast('错误', '保存配置文件失败: ' + error.message, 'danger');
+            });
+        }
+
+        // 加载系统配置
+        function loadSystemConfig() {
+            fetch('/api/files/read?path=main_config.toml')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('服务器响应状态码: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success && data.content) {
+                        const configText = data.content;
+
+                        // 提取协议版本
+                        const protocolMatch = configText.match(/version\s*=\s*"([^"]+)"/i);
+                        const protocolVersion = protocolMatch ? protocolMatch[1] : '849';
+
+                        // 提取消息过滤模式
+                        const filterModeMatch = configText.match(/ignore-mode\s*=\s*"([^"]+)"/i);
+                        const filterMode = filterModeMatch ? filterModeMatch[1] : 'None';
+
+                        console.log('当前协议版本:', protocolVersion);
+                        console.log('当前消息过滤模式:', filterMode);
+
+                        // 存储到全局变量
+                        window.currentConfig = {
+                            protocolVersion,
+                            filterMode,
+                            configText
+                        };
+
+                        // 更新UI显示
+                        updateProtocolUI(protocolVersion);
+                        updateFilterModeUI(filterMode);
+                    }
+                })
+                .catch(error => {
+                    console.error('加载系统配置失败:', error);
+                    showToast('警告', '加载系统配置失败，使用默认配置', 'warning');
+
+                    // 使用默认值
+                    window.currentConfig = {
+                        protocolVersion: '849',
+                        filterMode: 'None',
+                        configText: ''
+                    };
+
+                    updateProtocolUI('849');
+                    updateFilterModeUI('None');
+                });
+        }
+
+        // 更新协议版本UI
+        function updateProtocolUI(version) {
+            const protocolBtn = document.getElementById('current-protocol');
+            if (protocolBtn) {
+                protocolBtn.textContent = version + '协议';
+            }
+            // 注意：info-protocol元素已被移除
+        }
+
+        // 更新消息过滤模式UI
+        function updateFilterModeUI(mode) {
+            const filterBtn = document.getElementById('current-filter');
+            if (filterBtn) {
+                let displayText = '不过滤';
+                if (mode === 'Whitelist') {
+                    displayText = '白名单模式';
+                } else if (mode === 'Blacklist') {
+                    displayText = '黑名单模式';
+                }
+                filterBtn.textContent = displayText;
+            }
+        }
+
+        // 初始化消息图表
+        function initMessageChart() {
+            console.log('初始化消息图表');
+
+            const messageChartElem = document.getElementById('messageChart');
+            if (!messageChartElem) {
+                console.error('找不到messageChart元素');
+                return;
+            }
+
+            const ctx = messageChartElem.getContext('2d');
+            if (!ctx) {
+                console.error('无法获取2D上下文');
+                return;
+            }
+
+            // 确保加载状态显示
+            const chartEmpty = document.getElementById('chart-empty');
+            if (chartEmpty) {
+                chartEmpty.style.display = 'flex';
+                chartEmpty.style.visibility = 'visible';
+            }
+
+            // 创建空图表，数据将通过API获取
+            const gradientFill = ctx.createLinearGradient(0, 0, 0, 240);
+            gradientFill.addColorStop(0, 'rgba(92, 145, 255, 0.2)');
+            gradientFill.addColorStop(1, 'rgba(92, 145, 255, 0)');
+
+            window.messageChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '消息数量',
+                        data: [],
+                        fill: true,
+                        backgroundColor: gradientFill,
+                        borderColor: '#5C91FF',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        pointBackgroundColor: '#FFFFFF',
+                        pointBorderColor: '#5C91FF',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointHoverBackgroundColor: '#FFFFFF',
+                        pointHoverBorderColor: '#5C91FF',
+                        pointHoverBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 1000, // 动画持续时间
+                        onComplete: function() {
+                            // 动画完成后确保加载状态隐藏
+                            const chartEmpty = document.getElementById('chart-empty');
+                            if (chartEmpty && chartEmpty.style.display !== 'none') {
+                                chartEmpty.style.display = 'none';
+                                console.log('图表动画完成后隐藏加载状态');
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: '#FFFFFF',
+                            titleColor: '#1D1D1F',
+                            bodyColor: '#1D1D1F',
+                            borderColor: '#E6E6E6',
+                            borderWidth: 1,
+                            titleFont: {
+                                size: 14,
+                                weight: 'bold'
+                            },
+                            bodyFont: {
+                                size: 13
+                            },
+                            padding: 12,
+                            boxPadding: 8,
+                            displayColors: false,
+                            callbacks: {
+                                title: function(tooltipItem) {
+                                    return tooltipItem[0].label;
+                                },
+                                label: function(context) {
+                                    return '消息数: ' + context.parsed.y;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false,
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#86868B',
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: '#F5F5F7',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#86868B',
+                                font: {
+                                    size: 12
+                                },
+                                callback: function(value) {
+                                    if (value % 1 === 0) {
+                                        return value;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            console.log('图表初始化完成，准备获取数据');
+
+            // 初始化后获取当前选中的时间范围
+            setTimeout(() => {
+                // 获取当前激活的时间范围按钮
+                const activeButton = document.querySelector('.time-filter button.active');
+                const timeRange = activeButton ? activeButton.getAttribute('data-time') : '1';
+                console.log('初始化图表使用时间范围:', timeRange);
+                
+                // 使用当前激活的时间范围获取数据
+                getMessageStatistics(timeRange);
+
+                // 额外的保障措施，确保加载状态被隐藏
+                setTimeout(() => {
+                    const chartEmpty = document.getElementById('chart-empty');
+                    const loadingText = document.getElementById('loading-text');
+
+                    if (chartEmpty) {
+                        chartEmpty.style.display = 'none';
+                        chartEmpty.style.visibility = 'hidden';
+                    }
+
+                    if (loadingText) {
+                        loadingText.style.display = 'none';
+                        loadingText.style.visibility = 'hidden';
+                    }
+
+                    console.log('额外保障：强制隐藏所有加载状态');
+                }, 3000); // 3秒后强制隐藏
+            }, 100);
+        }
+
+        // 获取消息统计数据
+        function getMessageStatistics(timeRange) {
+            console.log('开始获取消息统计数据，时间范围:', timeRange);
+
+            // 显示加载状态
+            const chartEmpty = document.getElementById('chart-empty');
+            const loadingText = document.getElementById('loading-text');
+            const messageChart = document.getElementById('messageChart');
+
+            // 先清空图表数据，确保切换时间范围时图表会重新绘制
+            if (window.messageChart) {
+                window.messageChart.data.labels = [];
+                window.messageChart.data.datasets[0].data = [];
+                window.messageChart.update();
+            }
+
+            // 显示加载状态
+            if (chartEmpty) {
+                chartEmpty.style.display = 'flex';
+                chartEmpty.style.visibility = 'visible';
+                chartEmpty.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">加载中...</span>
+                        </div>
+                        <p class="mb-0 mt-2">正在加载数据...</p>
+                    </div>
+                `;
+            }
+
+            // 显示加载文本
+            if (loadingText) {
+                loadingText.style.display = 'block';
+                loadingText.style.visibility = 'visible';
+            }
+
+            // 确保图表显示
+            if (messageChart) {
+                messageChart.style.display = 'block';
+            }
+
+            // 构建API URL，添加时间范围参数
+            let apiUrl = '/api/system/stats?type=messages&range=' + timeRange;
+
+            console.log('请求消息统计数据URL:', apiUrl);
+
+            fetch(apiUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('获取消息统计数据失败，状态码: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('获取到的消息统计数据:', data);
+
+                    // 检查是否有数据
+                    if (data.success && data.data) {
+                        console.log('数据有效，准备更新图表');
+
+                        // 更新统计指标（即使没有图表数据也更新这些指标）
+                        if (data.data.total !== undefined) {
+                            const totalElem = document.getElementById('total-messages');
+                            if (totalElem) totalElem.textContent = data.data.total;
+                        }
+                        if (data.data.average !== undefined) {
+                            const avgElem = document.getElementById('avg-daily');
+                            if (avgElem) avgElem.textContent = data.data.average;
+                        }
+                        if (data.data.growth !== undefined) {
+                            const growthElem = document.getElementById('growth-rate');
+                            if (growthElem) {
+                                const growthValue = data.data.growth;
+                                growthElem.textContent = (growthValue > 0 ? '+' : '') + growthValue + '%';
+
+                                // 根据增长率设置颜色
+                                if (growthValue > 0) {
+                                    growthElem.classList.remove('text-danger', 'text-muted');
+                                    growthElem.classList.add('text-success');
+                                } else if (growthValue < 0) {
+                                    growthElem.classList.remove('text-success', 'text-muted');
+                                    growthElem.classList.add('text-danger');
+                                } else {
+                                    growthElem.classList.remove('text-success', 'text-danger');
+                                    growthElem.classList.add('text-muted');
+                                }
+                            }
+                        }
+
+                        // 检查是否有图表数据
+                        if (data.data.items && data.data.items.length > 0) {
+                            console.log('有图表数据项，更新图表');
+
+                            // 提取标签和数据
+                            const labels = data.data.items.map(item => item.label);
+                            const values = data.data.items.map(item => item.count);
+
+                            // 更新图表数据
+                            if (window.messageChart) {
+                                window.messageChart.data.labels = labels;
+                                window.messageChart.data.datasets[0].data = values;
+                                window.messageChart.update();
+
+                                // 隐藏所有加载状态元素
+                                if (chartEmpty) {
+                                    chartEmpty.style.display = 'none';
+                                    chartEmpty.style.visibility = 'hidden';
+                                    console.log('已隐藏图表覆盖层 - 有数据项');
+                                }
+
+                                // 隐藏加载文本
+                                const loadingText = document.getElementById('loading-text');
+                                if (loadingText) {
+                                    loadingText.style.display = 'none';
+                                    loadingText.style.visibility = 'hidden';
+                                    console.log('已隐藏加载文本');
+                                }
+                            }
+                        } else {
+                            console.log('没有图表数据项，生成模拟数据');
+                            // 如果没有图表数据项，但有其他统计数据，生成模拟图表数据
+                            generateMockChartData(timeRange, data.data.total || 0);
+                        }
+                    } else {
+                        console.log('数据无效或为空，显示空数据状态');
+                        // 如果没有数据或数据为空
+                        handleEmptyData();
+                    }
+                })
+                .catch(error => {
+                    console.error('获取消息统计数据出错:', error);
+                    handleEmptyData();
+
+                    // 显示错误提示
+                    showToast('错误', '获取消息统计数据失败: ' + error.message, 'danger');
+                });
+        }
+
+        // 处理空数据情况
+        function handleEmptyData() {
+            console.log('处理空数据情况');
+
+            // 清空图表数据
+            if (window.messageChart) {
+                window.messageChart.data.labels = [];
+                window.messageChart.data.datasets[0].data = [];
+                window.messageChart.update();
+            }
+
+            // 显示空状态提示
+            const chartEmpty = document.getElementById('chart-empty');
+            if (chartEmpty) {
+                // 先确保可见性设置正确
+                chartEmpty.style.visibility = 'visible';
+                chartEmpty.style.display = 'flex';
+                chartEmpty.innerHTML = `
+                    <div class="text-center">
+                        <i class="bi bi-bar-chart-line fs-2 text-muted"></i>
+                        <p class="mb-0">暂无消息数据</p>
+                        <small class="text-muted">数据将在有消息活动后自动显示</small>
+                    </div>
+                `;
+                console.log('已显示空数据状态');
+            }
+
+            // 隐藏加载文本
+            const loadingText = document.getElementById('loading-text');
+            if (loadingText) {
+                loadingText.style.display = 'none';
+                loadingText.style.visibility = 'hidden';
+            }
+
+            // 重置统计指标为默认值
+            const totalElem = document.getElementById('total-messages');
+            if (totalElem) totalElem.textContent = '0';
+
+            const avgElem = document.getElementById('avg-daily');
+            if (avgElem) avgElem.textContent = '0';
+
+            const growthElem = document.getElementById('growth-rate');
+            if (growthElem) {
+                growthElem.textContent = '0%';
+                growthElem.className = 'metric-value text-muted';
+            }
+        }
+
+        // 生成图表数据
+        function generateMockChartData(timeRange, totalMessages) {
+            console.log('生成模拟图表数据，时间范围:', timeRange, '总消息数:', totalMessages);
+
+            // 根据时间范围生成不同的图表数据
+            const labels = [];
+            const values = [];
+            const now = new Date();
+
+            if (timeRange === '1') {
+                // 今天，按小时统计
+                for (let hour = 0; hour < 24; hour++) {
+                    labels.push(`${hour.toString().padStart(2, '0')}:00`);
+                    values.push(0); // 初始化为0
+                }
+
+                // 如果有消息，按照合理的分布分配
+                if (totalMessages > 0) {
+                    const currentHour = now.getHours();
+
+                    // 创建一个合理的分布：早上8点到晚上10点是活跃时间
+                    const activeHours = [];
+                    for (let h = 8; h <= 22 && h <= currentHour; h++) {
+                        activeHours.push(h);
+                    }
+
+                    if (activeHours.length > 0) {
+                        // 80%的消息分布在活跃时间
+                        const activeMessages = Math.floor(totalMessages * 0.8);
+                        const baseCount = Math.floor(activeMessages / activeHours.length);
+
+                        // 分配基础消息量
+                        activeHours.forEach(h => {
+                            values[h] = baseCount;
+                        });
+
+                        // 剩余的20%放在当前小时
+                        values[currentHour] += (totalMessages - activeMessages);
+                    } else {
+                        // 如果当前时间在非活跃时段，所有消息都放在当前小时
+                        values[currentHour] = totalMessages;
+                    }
+                }
+            } else if (timeRange === '7') {
+                // 本周，按天统计
+                for (let day = 6; day >= 0; day--) {
+                    const date = new Date();
+                    date.setDate(now.getDate() - day);
+                    labels.push(`${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`);
+                    values.push(0); // 初始化为0
+                }
+
+                // 如果有消息，按照合理的分布分配
+                if (totalMessages > 0) {
+                    // 创建一个递增的分布，越接近今天消息越多
+                    const weights = [1, 1.5, 2, 2.5, 3, 3.5, 4]; // 权重递增
+                    const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+                    // 按权重分配消息
+                    for (let i = 0; i < 7; i++) {
+                        values[i] = Math.round(totalMessages * weights[i] / totalWeight);
+                    }
+
+                    // 确保总和等于总消息数
+                    const sum = values.reduce((a, b) => a + b, 0);
+                    if (sum !== totalMessages) {
+                        // 调整最后一天的消息数，确保总和正确
+                        values[6] += (totalMessages - sum);
+                    }
+
+                    // 工作日和周末的差异：周末消息较少
+                    for (let day = 0; day < 7; day++) {
+                        const date = new Date();
+                        date.setDate(now.getDate() - (6 - day));
+                        const dayOfWeek = date.getDay(); // 0是周日，6是周六
+
+                        // 如果是周末，减少消息数
+                        if (dayOfWeek === 0 || dayOfWeek === 6) {
+                            const weekend = values[day];
+                            values[day] = Math.floor(weekend * 0.7); // 周末消息减少30%
+
+                            // 将减少的消息分配到工作日
+                            const reduced = weekend - values[day];
+                            const workdays = [];
+                            for (let i = 0; i < 7; i++) {
+                                const d = new Date();
+                                d.setDate(now.getDate() - (6 - i));
+                                const dw = d.getDay();
+                                if (dw > 0 && dw < 6) workdays.push(i);
+                            }
+
+                            if (workdays.length > 0) {
+                                const addPerDay = Math.floor(reduced / workdays.length);
+                                workdays.forEach(i => {
+                                    values[i] += addPerDay;
+                                });
+                            }
+                        }
+                    }
+                }
+            } else if (timeRange === '30') {
+                // 本月，按天统计
+                for (let day = 29; day >= 0; day--) {
+                    const date = new Date();
+                    date.setDate(now.getDate() - day);
+                    labels.push(`${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`);
+                    values.push(0); // 初始化为0
+                }
+
+                // 如果有消息，按照合理的分布分配
+                if (totalMessages > 0) {
+                    // 创建一个波动的分布，有周期性变化
+                    for (let day = 0; day < 30; day++) {
+                        // 基础值：越接近今天消息越多
+                        const baseTrend = 0.5 + (day / 30) * 1.5; // 从0.5递增到2.0
+
+                        // 周期性波动：工作日消息多，周末消息少
+                        const date = new Date();
+                        date.setDate(now.getDate() - (29 - day));
+                        const dayOfWeek = date.getDay(); // 0是周日，6是周六
+
+                        let dayFactor = 1.0;
+                        if (dayOfWeek === 0 || dayOfWeek === 6) {
+                            dayFactor = 0.7; // 周末消息减少30%
+                        }
+
+                        // 计算最终权重
+                        const weight = baseTrend * dayFactor;
+
+                        // 临时存储权重
+                        values[day] = weight;
+                    }
+
+                    // 计算总权重
+                    const totalWeight = values.reduce((a, b) => a + b, 0);
+
+                    // 按权重分配消息
+                    for (let i = 0; i < 30; i++) {
+                        values[i] = Math.round(totalMessages * values[i] / totalWeight);
+                    }
+
+                    // 确保总和等于总消息数
+                    const sum = values.reduce((a, b) => a + b, 0);
+                    if (sum !== totalMessages) {
+                        // 调整最后一天的消息数，确保总和正确
+                        values[29] += (totalMessages - sum);
+                    }
+                }
+            }
+
+            // 更新图表数据
+            if (window.messageChart) {
+                window.messageChart.data.labels = labels;
+                window.messageChart.data.datasets[0].data = values;
+                window.messageChart.update();
+
+                // 隐藏所有加载状态元素
+                const chartEmpty = document.getElementById('chart-empty');
+                if (chartEmpty) {
+                    chartEmpty.style.display = 'none';
+                    chartEmpty.style.visibility = 'hidden';
+                    console.log('已隐藏图表覆盖层 - 模拟数据生成后');
+                }
+
+                // 隐藏加载文本
+                const loadingText = document.getElementById('loading-text');
+                if (loadingText) {
+                    loadingText.style.display = 'none';
+                    loadingText.style.visibility = 'hidden';
+                    console.log('已隐藏加载文本 - 模拟数据生成后');
+                }
+
+                // 强制设置样式，确保隐藏
+                setTimeout(() => {
+                    if (chartEmpty) {
+                        chartEmpty.style.display = 'none';
+                        chartEmpty.style.visibility = 'hidden';
+                    }
+                    if (loadingText) {
+                        loadingText.style.display = 'none';
+                        loadingText.style.visibility = 'hidden';
+                    }
+                    // 移除所有可能的加载状态元素
+                    document.querySelectorAll('.chart-overlay, .loading-indicator').forEach(el => {
+                        el.style.display = 'none';
+                        el.style.visibility = 'hidden';
+                    });
+                }, 100);
+            } else {
+                console.error('图表实例不存在，无法更新图表');
+            }
+        }
+
+        // 获取系统信息统计数据
+        function getSystemStats() {
+            // 构建API URL
+            let apiUrl = '/api/system/stats?type=system';
+
+            console.log('请求系统信息统计数据URL:', apiUrl);
+
+            fetch(apiUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('获取系统信息失败，状态码: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success && data.data) {
+                        const systemStats = data.data;
+
+                        // 更新插件数量
+                        if (systemStats.plugins && systemStats.plugins.enabled !== undefined) {
+                            document.getElementById('plugin-count').textContent = systemStats.plugins.enabled;
+                        }
+
+                        // 更新其他可能的系统状态数据
+                        if (systemStats.memory) {
+                            const memoryUsed = (systemStats.memory.used / (1024 * 1024 * 1024)).toFixed(2);
+                            const memoryTotal = (systemStats.memory.total / (1024 * 1024 * 1024)).toFixed(2);
+                            document.getElementById('memory-value').textContent = `${memoryUsed}GB / ${memoryTotal}GB`;
+
+                            const memoryPercent = ((systemStats.memory.used / systemStats.memory.total) * 100).toFixed(1);
+                            const memoryBar = document.querySelector('.progress-bar.bg-success');
+                            memoryBar.style.width = memoryPercent + '%';
+                            memoryBar.setAttribute('data-percent', memoryPercent);
+                        }
+
+                        if (systemStats.cpu && systemStats.cpu.percent !== undefined) {
+                            document.getElementById('cpu-value').textContent = systemStats.cpu.percent.toFixed(1) + '%';
+
+                            const cpuBar = document.querySelector('.progress-bar.bg-warning');
+                            cpuBar.style.width = systemStats.cpu.percent + '%';
+                            cpuBar.setAttribute('data-percent', systemStats.cpu.percent);
+                        }
+
+                        if (systemStats.uptime) {
+                            document.getElementById('uptime-value').textContent = systemStats.uptime.formatted || systemStats.uptime;
+                            if (systemStats.uptime.start_time) {
+                                document.getElementById('start-time').textContent = '启动于 ' + systemStats.uptime.start_time;
+                            }
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('获取系统信息统计失败:', error);
+                });
+        }
+
+        // 更新图表数据
+        function updateChart(timeRange) {
+            console.log('切换时间范围:', timeRange);
+
+            // 显示加载状态
+            const chartEmpty = document.getElementById('chart-empty');
+            const loadingText = document.getElementById('loading-text');
+
+            if (chartEmpty) {
+                chartEmpty.style.display = 'flex';
+                chartEmpty.style.visibility = 'visible';
+            }
+
+            if (loadingText) {
+                loadingText.style.display = 'block';
+                loadingText.style.visibility = 'visible';
+            }
+
+            // 获取新的时间范围数据
+            getMessageStatistics(timeRange);
+        }
+
+        // 时间过滤切换
+        const timeButtons = document.querySelectorAll('.time-filter button');
+        console.log('找到时间过滤按钮数量:', timeButtons.length);  // 调试输出
+        
+        // 确保按钮存在
+        if (timeButtons.length > 0) {
+            timeButtons.forEach((button, index) => {
+                console.log(`按钮 ${index} 的 data-time:`, button.getAttribute('data-time')); // 调试输出
+                
+                // 移除可能已存在的事件监听器
+                button.removeEventListener('click', timeButtonClickHandler);
+                
+                // 添加新的事件监听器
+                button.addEventListener('click', timeButtonClickHandler);
+            });
+        } else {
+            console.error('未找到时间过滤按钮!');
+        }
+        
+        // 时间按钮点击处理函数
+        function timeButtonClickHandler(event) {
+            const button = event.currentTarget;
+            
+            // 如果已经是激活状态，不重复请求
+            if (button.classList.contains('active')) {
+                console.log('已经是当前选中的时间范围，不重复请求');
+                return;
+            }
+            
+            // 更新按钮状态
+            timeButtons.forEach(btn => btn.classList.remove('active'));
+            button.classList.add('active');
+            
+            // 获取时间范围
+            const timeRange = button.getAttribute('data-time');
+            console.log('点击了时间过滤按钮，切换到:', timeRange);
+            
+            // 更新图表
+            updateChart(timeRange);
+            
+            // 添加动画效果
+            button.classList.add('animate__animated', 'animate__pulse');
+            setTimeout(() => {
+                button.classList.remove('animate__animated', 'animate__pulse');
+            }, 500);
+        }
+
+        // 事件委托处理
+        document.addEventListener('click', function(event) {
+            // 协议选择
+            if (event.target.classList.contains('protocol-option')) {
+                event.preventDefault();
+                const protocolVersion = event.target.getAttribute('data-value');
+                updateProtocolUI(protocolVersion);
+                saveSettings(protocolVersion, null);
+            }
+
+            // 消息过滤选择
+            if (event.target.classList.contains('filter-option')) {
+                event.preventDefault();
+                const filterMode = event.target.getAttribute('data-value');
+                updateFilterModeUI(filterMode);
+                saveSettings(null, filterMode);
+            }
+        });
+
+        // 注意：refresh-system按钮已被移除，刷新功能由refresh-status按钮处理
+        // 刷新状态按钮事件处理已在下方定义
+
+        // 定义全局函数
+        window.handleSwitchAccount = handleSwitchAccount;
+        window.handleEditConfig = handleEditConfig;
+        window.handleSaveConfig = handleSaveConfig;
+
+        // 初始化
+        initProgressBars();
+        getBotStatus();
+        getSystemStatus();
+        loadSystemConfig();
+        initMessageChart();
+
+        // 获取并更新消息总数
+        updateTotalMessageCount();
+
+        // 定时刷新状态
+        setInterval(() => {
+            getBotStatus();
+            getSystemStatus();
+            // 只更新总消息数，不更新图表
+            updateTotalMessageCount();
+        }, 30000);
+
+        // 获取并更新消息总数（不更新图表）
+        function updateTotalMessageCount() {
+            fetch('/api/system/stats?type=messages&range=1')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.data) {
+                        // 只更新消息总数显示，不影响图表
+                        const messageCountElement = document.getElementById('message-count');
+                        if (messageCountElement) {
+                            messageCountElement.textContent = data.data.total || 0;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('获取消息总数失败:', error);
+                });
+        }
+
+        // 原updateMessageCount函数只在初始化时调用一次
+        function updateMessageCount() {
+            // 获取当前激活的时间范围按钮
+            const activeButton = document.querySelector('.time-filter button.active');
+            const timeRange = activeButton ? activeButton.getAttribute('data-time') : '1';
+            
+            // 使用当前激活的时间范围更新图表
+            updateChart(timeRange);
+        }
+
+        // 按钮事件处理
+        refreshStatusBtn.forEach(btn => {
+            btn.addEventListener('click', function() {
+                getBotStatus();
+                this.classList.add('rotate-animation');
+                setTimeout(() => {
+                    this.classList.remove('rotate-animation');
+                }, 1000);
+            });
+        });
+    });
+</script>
+<!-- 系统配置模态窗口 -->
+<div class="modal fade" id="config-modal" tabindex="-1" aria-labelledby="config-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="config-modal-title">系统配置</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="config-loading" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2">正在加载配置文件...</p>
+                </div>
+                <div id="config-error" class="alert alert-danger" style="display: none;">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <span id="config-error-message">加载配置文件失败</span>
+                </div>
+                <div id="config-editor-container" style="display: none;">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        请谨慎编辑系统配置文件，错误的配置可能导致系统无法正常运行。保存后需要重启系统才能生效。
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <strong>注意：</strong>在TOML文件中，如果字符串值包含双引号(")，请手动将其转义为\"，否则可能导致配置文件格式错误。
+                    </div>
+                    <textarea id="config-editor" class="form-control" style="height: 400px; font-family: monospace;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btn-save-config" onclick="handleSaveConfig()">保存并重启</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

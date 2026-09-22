@@ -1,0 +1,773 @@
+{% extends "base.html" %}
+
+{% block title %}终端 - AllBot管理面板{% endblock %}
+
+{% block extra_css %}
+<style>
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 500;
+    margin-bottom: 20px;
+    color: #333;
+}
+.terminal-container {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin: 20px auto; /* 居中显示 */
+    padding: 0;
+    overflow: hidden;
+    height: calc(100vh - 200px); /* 减小高度，使页脚可见 */
+    max-height: 700px; /* 限制最大高度 */
+    display: flex;
+    flex-direction: column;
+    max-width: 1200px; /* 限制最大宽度 */
+    width: calc(100% - 40px); /* 宽度稍微减少，留出边距 */
+    resize: both; /* 允许用户调整大小 */
+}
+.terminal-header {
+    background-color: #1a1e21;
+    color: white;
+    padding: 10px 15px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+.terminal-title {
+    font-size: 1rem;
+    margin: 0;
+    font-weight: 500;
+}
+.terminal-content {
+    flex: 1;
+    position: relative;
+    overflow: auto; /* 改为auto允许滚动 */
+    background-color: #000;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    min-height: 400px; /* 减小最小高度 */
+}
+iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    margin: 0;
+    padding: 0;
+    background-color: #000;
+    display: block;
+    overflow: hidden;
+}
+.loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+}
+.hidden {
+    display: none !important;
+}
+.error-message {
+    color: #ff6b6b;
+    text-align: center;
+    margin-top: 20px;
+}
+.debug-info {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(0,0,0,0.7);
+    color: #0f0;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    font-size: 12px;
+    max-width: 400px;
+    max-height: 200px;
+    overflow: auto;
+    z-index: 1000;
+}
+.terminal-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 10px;
+}
+.terminal-option {
+    background: #333;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 5px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    transition: all 0.2s;
+}
+.terminal-option:hover {
+    background: #444;
+}
+.terminal-option.active {
+    background: #007bff;
+    border-color: #0069d9;
+}
+
+/* 添加调整大小提示器 */
+.terminal-resizer {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 50%, rgba(128, 128, 128, 0.5) 50%);
+    z-index: 100;
+    border-bottom-right-radius: 8px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">终端控制台</div>
+
+<div class="terminal-container">
+    <div class="terminal-header">
+        <div class="terminal-title">AllBot 系统终端</div>
+        <div class="terminal-actions">
+            <button id="new-cmd-btn" class="btn btn-sm btn-outline-light me-2">
+                <i class="bi bi-plus"></i> 新建命令
+            </button>
+            <a href="javascript:void(0)" id="new-window-btn" class="btn btn-sm btn-outline-light me-2">
+                <i class="bi bi-box-arrow-up-right"></i> 新窗口打开
+            </a>
+            <a href="/system" class="btn btn-sm btn-outline-light">
+                <i class="bi bi-arrow-left"></i> 返回
+            </a>
+        </div>
+    </div>
+
+    <div class="terminal-content">
+        <div id="loading-overlay" class="loading-overlay">
+            <div class="spinner-border text-light mb-3" role="status">
+                <span class="visually-hidden">正在连接终端...</span>
+            </div>
+            <p>正在连接终端服务...</p>
+            <p class="text-warning fw-bold">注意: 终端服务需要在容器内的3000端口运行</p>
+            <p class="text-muted small">如果长时间无法连接，请尝试以下方法：</p>
+            <ol class="text-start small">
+                <li>检查WeTTy服务是否已启动，可运行命令：<br><code>ps aux | grep wetty</code></li>
+                <li>尝试重启WeTTy服务：<br><code>pkill -f wetty && wetty --port 3000 --host 0.0.0.0 --allow-iframe --base /wetty --command /bin/bash &</code></li>
+                <li>确认服务器防火墙允许3000端口访问</li>
+            </ol>
+            <div id="error-message" class="error-message hidden">
+                连接终端服务失败，请确保服务已正确启动
+                <button id="retry-button" class="btn btn-sm btn-outline-light mt-2">重试</button>
+                <div class="mt-2">
+                    <button id="direct-bash" class="btn btn-sm btn-outline-light">尝试/bin/bash</button>
+                    <button id="direct-sh" class="btn btn-sm btn-outline-light ms-2">尝试/bin/sh</button>
+                </div>
+                <div class="terminal-options mt-3">
+                    <span class="terminal-option" data-method="direct">直接连接</span>
+                    <span class="terminal-option active" data-method="proxy">代理连接</span>
+                    <span class="terminal-option" data-method="relative">相对路径</span>
+                </div>
+                <div class="mt-3">
+                    <p>如果无法连接，请检查WeTTy服务是否已启动：</p>
+                    <div>
+                        <a href="/simple-terminal" class="btn btn-sm btn-outline-light" target="_blank">简易终端</a>
+                        <a href="/terminal-proxy" class="btn btn-sm btn-outline-light ms-2" target="_blank">终端代理</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <iframe id="terminal-frame" sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-top-navigation" scrolling="auto" frameborder="0" style="width:100%; height:100%; display:block; padding:0; margin:0; overflow:auto;"></iframe>
+        <div id="terminal-fallback" class="hidden" style="width:100%;height:100%;background:#000;color:#fff;padding:20px;overflow:auto;font-family:monospace;white-space:pre-wrap;"></div>
+        <div class="terminal-resizer" id="terminal-resizer"></div>
+    </div>
+</div>
+
+<div id="debug-info" class="debug-info hidden"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const frame = document.getElementById('terminal-frame');
+    const fallback = document.getElementById('terminal-fallback');
+    const loading = document.getElementById('loading-overlay');
+    const errorMessage = document.getElementById('error-message');
+    const debugInfo = document.getElementById('debug-info');
+    let retryCount = 0;
+    const maxRetries = 3;
+    let debugLog = [];
+    let connectionMethod = localStorage.getItem('terminalMethod') || 'proxy';
+    
+    // 标记选中的连接方式
+    const updateConnectionOptions = () => {
+        document.querySelectorAll('.terminal-option').forEach(el => {
+            if (el.dataset.method === connectionMethod) {
+                el.classList.add('active');
+            } else {
+                el.classList.remove('active');
+            }
+        });
+    };
+    
+    // 设置连接方式选项的事件处理
+    document.querySelectorAll('.terminal-option').forEach(el => {
+        el.addEventListener('click', () => {
+            connectionMethod = el.dataset.method;
+            localStorage.setItem('terminalMethod', connectionMethod);
+            updateConnectionOptions();
+            retryConnection();
+        });
+    });
+    
+    // 初始化选中状态
+    updateConnectionOptions();
+    
+    // 调试日志函数
+    function log(message) {
+        const timestamp = new Date().toISOString().substring(11, 23);
+        const logMessage = `${timestamp} ${message}`;
+        console.log(logMessage);
+        debugLog.push(logMessage);
+        if (debugLog.length > 20) debugLog.shift();
+        debugInfo.innerHTML = debugLog.join('<br>');
+        debugInfo.classList.remove('hidden');
+    }
+    
+    log('终端页面已加载，准备连接终端');
+    
+    // 获取内部终端输入元素的函数
+    function getTerminalTextarea() {
+        try {
+            const iframeDoc = frame.contentDocument || frame.contentWindow.document;
+            return iframeDoc.querySelector('.xterm-helper-textarea');
+        } catch(e) {
+            log('无法获取终端文本区域: ' + e);
+            return null;
+        }
+    }
+    
+    // 强制获取终端焦点
+    function focusTerminal() {
+        try {
+            frame.contentWindow.focus();
+            frame.focus();
+            
+            const termElement = getTerminalTextarea();
+            if (termElement) {
+                termElement.focus();
+                log('成功获取终端文本区域焦点');
+                return true;
+            }
+        } catch(e) {
+            log('获取焦点失败: ' + e);
+        }
+        return false;
+    }
+    
+    // 获取当前主机地址，用于终端连接
+    function getTerminalHost() {
+        // 尝试不同的连接方式，按优先级
+        
+        // 1. 首先尝试使用相对路径（推荐）
+        if (window.location.pathname.includes('/admin')) {
+            return '/wetty'; // 相对于网站根目录
+        }
+        
+        // 2. 如果需要，使用当前主机名和固定端口
+        const hostname = window.location.hostname;
+        if (hostname) {
+            // 使用当前主机名加端口3000
+            return `http://${hostname}:3000`;
+        }
+        
+        // 3. 后备方案：使用localhost（通常用于本地开发）
+        return 'http://localhost:3000';
+    }
+    
+    // 尝试通过代理连接
+    function connectViaProxy() {
+        log('通过代理连接终端');
+        
+        // 使用相对路径而不是硬编码IP
+        const baseUrl = getTerminalHost();
+        
+        // 计算终端容器的尺寸
+        const container = document.querySelector('.terminal-content');
+        let containerWidth = 800;
+        let containerHeight = 500;
+        
+        if (container) {
+            containerWidth = container.clientWidth || 800;
+            containerHeight = container.clientHeight || 500;
+            log(`终端容器尺寸: ${containerWidth}x${containerHeight}`);
+        }
+        
+        // 计算合适的行列数，根据容器尺寸
+        const cols = Math.floor(containerWidth / 9); // 每个字符大约9像素宽
+        const rows = Math.floor(containerHeight / 17); // 每行大约17像素高
+        
+        const params = new URLSearchParams({
+            command: '/bin/bash',
+            title: 'AllBot终端',
+            fontSize: '13',
+            theme: 'dark',
+            allowTransparency: 'true',
+            disableLeaveAlert: 'true',
+            cols: cols > 0 ? cols : 80,
+            rows: rows > 0 ? rows : 24
+        });
+        
+        frame.src = `${baseUrl}/?${params.toString()}`;
+        log(`连接终端URL: ${frame.src}`);
+        
+        frame.onload = function() {
+            log('终端iframe加载完成，尝试获取焦点');
+            try {
+                // 尝试点击iframe，获取焦点并清理界面
+                setTimeout(function() {
+                    // 尝试自定义postMessage通信，避免跨域问题
+                    try {
+                        frame.contentWindow.postMessage({
+                            type: 'customStyle',
+                            style: `
+                                body, html { 
+                                    background: #000 !important; 
+                                    color: #fff; 
+                                    overflow: hidden; 
+                                    margin: 0; 
+                                    padding: 0;
+                                }
+                                .terminal { 
+                                    background: #000 !important;
+                                    padding: 0 !important;
+                                    margin: 0 !important;
+                                }
+                                .xterm { 
+                                    font-family: monospace !important;
+                                    padding: 0 !important;
+                                }
+                                .xterm-viewport {
+                                    overflow-y: hidden !important;
+                                }
+                                footer, .copyright-section, .bottom-bar, .info-bar, 
+                                .terminal-footer, .help-buttons, .wetty-footer,
+                                .wetty-info, .term-bottom-bar, .wetty-bottom-bar {
+                                    display: none !important;
+                                    height: 0 !important;
+                                }
+                            `
+                        }, '*');
+                    } catch(e) {
+                        log('postMessage通信失败: ' + e);
+                    }
+                    
+                    frame.contentWindow.focus();
+                    frame.focus();
+                    hideLoading();
+                }, 800);
+            } catch(e) {
+                log('自动获取焦点失败: ' + e);
+            }
+        };
+        frame.classList.remove('hidden');
+        fallback.classList.add('hidden');
+    }
+    
+    // 根据选择的方法连接
+    function tryConnection(command) {
+        // 根据用户选择使用不同的连接方式
+        if (connectionMethod === 'direct') {
+            // 使用当前主机名直接连接
+            const hostname = window.location.hostname;
+            const baseUrl = `http://${hostname}:3000`;
+            log(`使用直接连接方式: ${baseUrl}`);
+            
+            const params = new URLSearchParams({
+                command: command || '/bin/bash',
+                title: 'AllBot终端',
+                fontSize: '13'
+            });
+            
+            frame.src = `${baseUrl}/?${params.toString()}`;
+        } else if (connectionMethod === 'relative') {
+            // 使用相对路径
+            const baseUrl = '/wetty';
+            log(`使用相对路径连接: ${baseUrl}`);
+            
+            const params = new URLSearchParams({
+                command: command || '/bin/bash',
+                title: 'AllBot终端',
+                fontSize: '13'
+            });
+            
+            frame.src = `${baseUrl}/?${params.toString()}`;
+        } else {
+            // 默认使用代理方式
+            log('使用代理模式访问终端');
+            connectViaProxy();
+        }
+    }
+    
+    // 重新连接
+    function retryConnection() {
+        log('重新尝试连接');
+        errorMessage.classList.add('hidden');
+        tryConnection();
+    }
+    
+    // 设置尝试不同shell按钮
+    document.getElementById('direct-bash').addEventListener('click', function() {
+        log('用户点击尝试/bin/bash按钮');
+        tryConnection('/bin/bash');
+    });
+    
+    document.getElementById('direct-sh').addEventListener('click', function() {
+        log('用户点击尝试/bin/sh按钮');
+        tryConnection('/bin/sh');
+    });
+    
+    function showError() {
+        errorMessage.classList.remove('hidden');
+    }
+    
+    function hideLoading() {
+        loading.classList.add('hidden');
+    }
+    
+    // 监听iframe加载完成
+    frame.addEventListener('load', function() {
+        log('终端iframe加载完成');
+        
+        // 直接隐藏加载界面，假设连接成功
+        hideLoading();
+        
+        // 尝试主动获取焦点和处理iframe内容
+        setTimeout(function() {
+            try {
+                frame.contentWindow.focus();
+                frame.focus();
+                log('iframe加载后自动获取焦点');
+                
+                // 尝试清理iframe内容
+                try {
+                    const iframeDoc = frame.contentDocument || frame.contentWindow.document;
+                    
+                    // 添加样式隐藏不需要的元素并调整容器内显示
+                    const style = iframeDoc.createElement('style');
+                    style.textContent = `
+                        body, html { 
+                            background: #000 !important; 
+                            color: #fff; 
+                            overflow: hidden; 
+                            margin: 0; 
+                            padding: 0;
+                        }
+                        .xterm { 
+                            font-family: monospace; 
+                            padding: 0 !important;
+                        }
+                        .xterm-viewport {
+                            overflow-y: auto !important; /* 允许滚动 */
+                        }
+                        .terminal { 
+                            background: #000 !important; 
+                            width: 100% !important;
+                            height: 100% !important;
+                            padding: 5px !important;
+                        }
+                        .terminal-container { 
+                            padding: 0 !important; 
+                            margin: 0 !important;
+                            width: 100% !important;
+                            height: 100% !important;
+                        }
+                        footer, .copyright-section, .bottom-bar, .info-bar, 
+                        .terminal-footer, .help-buttons, .wetty-footer,
+                        .wetty-info-bar, .wetty-bottom, .term-footer, 
+                        .term-bottom-bar, .xterm-bottom, .terminal-info-bar,
+                        [class*="bottom-"], [class*="-bottom"] { 
+                            display: none !important; 
+                            visibility: hidden !important;
+                            height: 0 !important;
+                            opacity: 0 !important;
+                            position: absolute !important;
+                            bottom: -9999px !important;
+                        }
+                    `;
+                    iframeDoc.head.appendChild(style);
+                    
+                    // 创建一个MutationObserver来持续监控DOM变化
+                    const observer = new MutationObserver(function(mutations) {
+                        const elementsToRemove = iframeDoc.querySelectorAll('footer, .copyright-section, .bottom-bar, .info-bar, .terminal-footer, .help-buttons, .wetty-footer, .wetty-info-bar, .wetty-bottom, .terminal-info-bar, [class*="bottom-"], [class*="-bottom"]');
+                        elementsToRemove.forEach(el => {
+                            if(el && el.parentNode) el.parentNode.removeChild(el);
+                        });
+                    });
+                    
+                    // 开始观察DOM变化
+                    observer.observe(iframeDoc.body, { childList: true, subtree: true });
+                    log('设置DOM观察器成功，将持续清理不需要的元素');
+                    
+                    // 尝试直接移除现有元素
+                    const elementsToRemove = iframeDoc.querySelectorAll('footer, .copyright-section, .bottom-bar, .info-bar, .terminal-footer, .help-buttons, .wetty-footer, .wetty-info-bar, .wetty-bottom, .terminal-info-bar, [class*="bottom-"], [class*="-bottom"]');
+                    elementsToRemove.forEach(el => {
+                        if(el && el.parentNode) el.parentNode.removeChild(el);
+                    });
+                } catch(e) {
+                    log('设置DOM观察器失败: ' + e);
+                }
+                
+                // 添加点击事件监听器
+                document.addEventListener('click', function() {
+                    setTimeout(function() {
+                        try {
+                            frame.contentWindow.focus();
+                            frame.focus();
+                            log('用户点击，重新获取终端焦点');
+                        } catch(e) {
+                            // 忽略可能的跨域错误
+                        }
+                    }, 100);
+                });
+                
+                // 添加键盘事件监听器
+                document.addEventListener('keydown', function(e) {
+                    // 已处理Ctrl+Shift+D
+                    if (e.ctrlKey && e.shiftKey && e.key === 'D') return;
+                    
+                    setTimeout(function() {
+                        try {
+                            frame.contentWindow.focus();
+                            frame.focus();
+                        } catch(e) {
+                            // 忽略可能的跨域错误
+                        }
+                    }, 50);
+                });
+            } catch(e) {
+                log('iframe焦点获取失败: ' + e);
+            }
+        }, 1500);
+        
+        // 检查iframe src是否包含特定的错误标记
+        if (frame.src.includes('error') || frame.src.includes('fail')) {
+            log('iframe src包含错误标记');
+            showError();
+        }
+    });
+    
+    // 错误处理
+    frame.addEventListener('error', function(e) {
+        log(`终端iframe加载失败: ${e.type}`);
+        if (retryCount < maxRetries) {
+            retryCount++;
+            setTimeout(() => {
+                log(`第${retryCount}次重试加载终端`);
+                tryConnection();
+            }, 2000);
+        } else {
+            log('终端加载达到最大重试次数');
+            showError();
+        }
+    });
+    
+    // 重试按钮
+    document.getElementById('retry-button').addEventListener('click', function() {
+        log('用户点击重试按钮');
+        errorMessage.classList.add('hidden');
+        retryCount = 0;
+        tryConnection();
+    });
+    
+    // 设置超时
+    setTimeout(function() {
+        if (!loading.classList.contains('hidden')) {
+            log('终端加载超时');
+            showError();
+        }
+    }, 10000);
+    
+    // 添加窗口大小调整事件监听
+    window.addEventListener('resize', function() {
+        // 获取终端容器新的尺寸
+        const container = document.querySelector('.terminal-content');
+        if (container && frame) {
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+            
+            // 可以尝试通过postMessage传递新的尺寸给iframe
+            try {
+                frame.contentWindow.postMessage({
+                    type: 'resize',
+                    width: containerWidth,
+                    height: containerHeight
+                }, '*');
+                log(`窗口大小调整: ${containerWidth}x${containerHeight}`);
+            } catch(e) {
+                // 忽略可能的跨域错误
+            }
+        }
+    });
+    
+    // 初始连接
+    tryConnection();
+    
+    // 添加键盘快捷键切换调试信息显示
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+            debugInfo.classList.toggle('hidden');
+        }
+    });
+
+    // 新建命令按钮
+    document.getElementById('new-cmd-btn').addEventListener('click', function() {
+        const command = prompt("请输入要执行的命令：", "ls -la");
+        if (command) {
+            const baseUrl = getTerminalHost();
+            const params = new URLSearchParams({
+                command: command,
+                title: 'AllBot终端: ' + command,
+                fontSize: '13',
+                theme: 'dark'
+            });
+            
+            frame.src = `${baseUrl}/?${params.toString()}`;
+            log(`执行新命令: ${command}`);
+        }
+    });
+    
+    // 新窗口打开按钮
+    document.getElementById('new-window-btn').addEventListener('click', function() {
+        const baseUrl = getTerminalHost();
+        const params = new URLSearchParams({
+            command: '/bin/bash',
+            title: 'AllBot终端',
+            fontSize: '13',
+            theme: 'dark'
+        });
+        
+        const url = `${baseUrl}/?${params.toString()}`;
+        window.open(url, '_blank');
+        log('在新窗口打开终端');
+    });
+    
+    // 实现终端容器手动调整大小功能
+    (function() {
+        const container = document.querySelector('.terminal-container');
+        const resizer = document.getElementById('terminal-resizer');
+        let isResizing = false;
+        let lastX, lastY;
+        
+        // 鼠标按下开始调整大小
+        resizer.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            lastX = e.clientX;
+            lastY = e.clientY;
+            e.preventDefault();
+            
+            // 添加临时样式，禁用iframe内部事件捕获
+            if (frame && frame.style) {
+                frame.style.pointerEvents = 'none';
+            }
+            
+            log('开始调整终端大小');
+        });
+        
+        // 鼠标移动调整大小
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+            
+            const deltaX = e.clientX - lastX;
+            const deltaY = e.clientY - lastY;
+            
+            const containerWidth = container.offsetWidth;
+            const containerHeight = container.offsetHeight;
+            
+            container.style.width = (containerWidth + deltaX) + 'px';
+            container.style.height = (containerHeight + deltaY) + 'px';
+            
+            lastX = e.clientX;
+            lastY = e.clientY;
+            
+            // 更新终端尺寸
+            const newWidth = container.clientWidth;
+            const newHeight = container.clientHeight;
+            
+            // 发送调整大小事件到iframe
+            try {
+                frame.contentWindow.postMessage({
+                    type: 'resize',
+                    width: frame.clientWidth,
+                    height: frame.clientHeight
+                }, '*');
+            } catch(e) {
+                // 忽略可能的跨域错误
+            }
+        });
+        
+        // 鼠标释放停止调整大小
+        document.addEventListener('mouseup', function() {
+            if (!isResizing) return;
+            
+            isResizing = false;
+            
+            // 恢复iframe事件捕获
+            if (frame && frame.style) {
+                frame.style.pointerEvents = 'auto';
+            }
+            
+            // 重新获取焦点
+            try {
+                frame.contentWindow.focus();
+                frame.focus();
+            } catch(e) {
+                // 忽略可能的跨域错误
+            }
+            
+            // 保存当前尺寸到本地存储
+            try {
+                localStorage.setItem('terminalWidth', container.style.width);
+                localStorage.setItem('terminalHeight', container.style.height);
+                log(`终端大小已调整为 ${container.style.width} x ${container.style.height}`);
+            } catch(e) {
+                log('无法保存终端大小: ' + e);
+            }
+        });
+        
+        // 恢复之前保存的终端尺寸
+        try {
+            const savedWidth = localStorage.getItem('terminalWidth');
+            const savedHeight = localStorage.getItem('terminalHeight');
+            
+            if (savedWidth && savedHeight) {
+                container.style.width = savedWidth;
+                container.style.height = savedHeight;
+                log(`恢复终端大小: ${savedWidth} x ${savedHeight}`);
+            }
+        } catch(e) {
+            log('无法恢复终端大小: ' + e);
+        }
+    })();
+});
+</script>
+{% endblock %} 

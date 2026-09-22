@@ -1,0 +1,59 @@
+[adapter]
+name = "wxfilehelper"
+enabled = false
+module = "adapter.wx"
+class = "WxFileHelperAdapter"
+replyQueue = "allbot_reply:wxfilehelper"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[wxfilehelper]
+# 是否启用 wx-filehelper-api 适配器
+enable = false
+# 平台标识：将写入入站消息的 Platform 字段，同时影响 ReplyDispatcher 路由
+platform = "wxfilehelper"
+# 可选别名：用于回复队列中过滤 platform 字段
+aliases = ["wx", "filehelper"]
+
+# 协议/接口定义来源: https://github.com/sxkiss/wx-filehelper-api
+# wx-filehelper-api 服务地址
+baseUrl = "http://127.0.0.1:8070"
+requestTimeout = 10
+
+# 入站拉取 /bot/getUpdates 参数
+pollingTimeout = 20
+pollingLimit = 50
+pollingInterval = 1
+# 登录状态检测是否触发服务端主动轮询（建议 false，避免慢请求导致超时）
+loginAutoPoll = false
+# 启动时是否跳过历史积压更新（建议 true，避免重启重复处理旧消息）
+skipHistoryOnStart = true
+# 启动历史同步每批拉取上限（仅用于 skipHistoryOnStart）
+startupSyncLimit = 100
+
+# 登录检测与二维码刷新
+loginCheckInterval = 3
+qrRefreshInterval = 30
+# 离线时二维码保存路径（便于服务器环境直接扫码）
+qrSavePath = "admin/static/temp/wxfilehelper/login-qr.png"
+
+# 媒体缓存目录（用于保存 base64/url 形式的图片/文件后再调用 API 发送）
+mediaCacheDir = "admin/static/temp/wxfilehelper"
+
+# 默认 sessionId（当 getUpdates 消息未携带 chat 信息时兜底）
+sessionId = "wxfilehelper-filehelper"
+
+# 去重缓存
+# dedupCacheSize = 2000
+
+# 是否打印原始更新
+logRawMessage = true
+
+[wxfilehelper.redis]
+queue = "allbot"
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""

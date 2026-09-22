@@ -1,0 +1,34 @@
+[basic]
+# 是否启用插件
+enable = true
+
+# 安全设置
+# 是否检查包是否在允许列表中（true/false）
+check_allowed = false
+admin_list = ["REDACTED_USER"]
+
+# 允许安装的包列表（如果check_allowed=true）
+allowed_packages = [
+    "akshare",
+    "requests",
+    "pillow",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "lxml",
+    "beautifulsoup4",
+    "aiohttp"
+]
+
+[commands]
+# 命令前缀配置
+install = "!pip install"
+show = "!pip show"
+list = "!pip list"
+uninstall = "!pip uninstall"
+# GitHub插件安装命令前缀
+github_install = "github" 
+# 插件市场查询命令前缀（分页：插件查询 1 / 插件查询 2 ...）
+market_query = "插件查询"
+# 插件市场提交命令前缀（提交插件审核）
+market_submit = "插件提交"

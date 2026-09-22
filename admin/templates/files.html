@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}文件管理 - AllBot管理后台{% endblock %}
+
+{% block page_title %}文件管理{% endblock %}
+
+{% block extra_css %}
+<style>
+    .file-manager-iframe {
+        width: 100%;
+        height: calc(100vh - 180px);
+        border: none;
+        border-radius: 10px;
+        box-shadow: 0 0 15px rgba(0,0,0,0.05);
+    }
+
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid rgba(0,0,0,.1);
+    }
+
+    .card {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        margin-bottom: 20px;
+    }
+
+    /* 集成样式 */
+    .file-manager-container {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 0 15px rgba(0,0,0,0.05);
+        background-color: #fff;
+        height: calc(100vh - 180px);
+    }
+
+    /* 确保版本信息正确显示 */
+    #version-info {
+        display: flex !important;
+    }
+
+    #current-version {
+        display: inline-block !important;
+    }
+
+    /* 确保导航栏中的容器有正确的边距 */
+    .navbar .container-fluid {
+        padding: 0.5rem 1rem !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-folder me-2 text-primary"></i>文件管理器
+                    </h5>
+                    <button onclick="refreshFileManager()" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-arrow-clockwise me-1"></i>刷新
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <iframe id="fileManagerFrame" src="/file-manager" class="file-manager-iframe"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function refreshFileManager() {
+    const iframe = document.getElementById('fileManagerFrame');
+    if (iframe) {
+        iframe.src = iframe.src;
+    }
+}
+
+// 页面加载完成后检查iframe加载状态
+document.addEventListener('DOMContentLoaded', function() {
+    // 确保版本信息元素可见
+    const versionInfo = document.getElementById('version-info');
+    if (versionInfo) {
+        versionInfo.style.display = 'flex';
+    }
+
+    // 确保当前版本号可见
+    const currentVersion = document.getElementById('current-version');
+    if (currentVersion) {
+        currentVersion.style.display = 'inline-block';
+    }
+
+    const iframe = document.getElementById('fileManagerFrame');
+    if (iframe) {
+        iframe.onload = function() {
+            console.log('文件管理器iframe加载完成');
+        };
+
+        iframe.onerror = function() {
+            console.error('文件管理器iframe加载失败');
+            iframe.srcdoc = `
+                <div style="display: flex; justify-content: center; align-items: center; height: 100%; flex-direction: column; font-family: Arial, sans-serif;">
+                    <div style="color: #dc3545; font-size: 48px; margin-bottom: 20px;">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                    </div>
+                    <h3 style="color: #343a40; margin-bottom: 10px;">加载文件管理器失败</h3>
+                    <p style="color: #6c757d;">请检查服务器是否正常运行或刷新页面重试</p>
+                    <button onclick="parent.refreshFileManager()" style="background-color: #0d6efd; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 20px;">
+                        重新加载
+                    </button>
+                </div>
+            `;
+        };
+    }
+});
+</script>
+{% endblock %}

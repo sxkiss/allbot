@@ -1,0 +1,30 @@
+[adapter]
+name = "ocwx"
+enabled = false
+module = "adapter.ocwx"
+class = "OpenClawWeixinAdapter"
+replyQueue = "allbot_reply:ocwx"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[ocwx]
+enable = false
+platform = "ocwx"
+
+# 可选：留空时回退到 adapter/ocwx/ocwx_adapter.py 中的内置默认值。
+# 如需启用，请至少新增一个 [ocwx.accounts.<slot>] 账号槽位后，再把 enabled/enable 改为 true。
+
+[ocwx.defaults]
+# 可选：覆盖上游接口地址、轮询超时、登录检测与二维码刷新间隔。
+
+[ocwx.redis]
+# 可选：覆盖 Redis 连接；留空时优先回退到 main_config.toml 的 WechatAPIServer.redis-*。
+
+[ocwx.accounts]
+# 必填扩展示例：
+# [ocwx.accounts.main]
+# enabled = true
+# displayName = "主号"
+# baseUrl = "https://ilinkai.weixin.qq.com"

@@ -1,0 +1,21 @@
+{
+  "last_restart_time": 1748070342.715461,
+  "restart_count": 3,
+  "restart_history": [
+    {
+      "time": 1747924349.1471765,
+      "timestamp": "2025-05-22 22:32:29",
+      "reason": "\u8fde\u7eed\u68c0\u6d4b\u5230 10 \u6b21'\u83b7\u53d6\u65b0\u6d88\u606f\u5931\u8d25'\u7684\u65e5\u5fd7"
+    },
+    {
+      "time": 1747926372.9955962,
+      "timestamp": "2025-05-22 23:06:12",
+      "reason": "\u8fde\u7eed\u68c0\u6d4b\u5230 10 \u6b21'\u83b7\u53d6\u65b0\u6d88\u606f\u5931\u8d25'\u7684\u65e5\u5fd7"
+    },
+    {
+      "time": 1748070342.715461,
+      "timestamp": "2025-05-24 15:05:42",
+      "reason": "\u72b6\u6001\u4e3a offline"
+    }
+  ]
+}

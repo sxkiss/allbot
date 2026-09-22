@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}文件系统 - AllBot管理后台{% endblock %}
+
+{% block page_title %}文件系统{% endblock %}
+
+{% block extra_css %}
+<style>
+    .file-manager-iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        box-shadow: none;
+    }
+
+    /* 添加内部容器，控制整体区域 */
+    .iframe-container {
+        position: relative;
+        overflow: hidden;
+        border-radius: 10px;
+        height: calc(100vh - 210px); /* 减少高度以避免外部滚动 */
+        box-shadow: 0 0 15px rgba(0,0,0,0.05);
+    }
+
+    /* 精简外部容器边距 */
+    .content-wrapper .container-fluid {
+        padding: 0 !important;
+    }
+
+    /* 确保导航栏中的容器有正确的边距 */
+    .navbar .container-fluid {
+        padding: 0.5rem 1rem !important;
+    }
+
+    .row {
+        margin: 0 !important;
+    }
+
+    .col-12 {
+        padding: 0 !important;
+    }
+
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid rgba(0,0,0,.1);
+        padding: 0.75rem 1rem !important; /* 减少padding */
+    }
+
+    .card {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        margin-bottom: 0 !important; /* 移除底部margin */
+        transition: all 0.3s ease;
+    }
+
+    /* 移除卡片悬停效果以防止界面变动 */
+    .card:hover {
+        transform: none;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    }
+
+    .btn-refresh {
+        transition: all 0.3s ease;
+    }
+
+    .btn-refresh:hover {
+        transform: rotate(180deg);
+    }
+
+    /* 确保底部按钮可见，无需滚动 */
+    .content-wrapper .card-body {
+        padding: 0 !important;
+        overflow: hidden;
+    }
+
+    /* 调整刷新按钮和提示文本大小 */
+    .small {
+        font-size: 0.75rem !important;
+    }
+
+    /* 确保整个文件管理器视图能适应屏幕 */
+    .content-wrapper {
+        padding-bottom: 0 !important;
+    }
+
+    /* 确保版本信息正确显示 */
+    #version-info {
+        display: flex !important;
+    }
+
+    #current-version {
+        display: inline-block !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <div class="row">
+        <div class="col-12">
+            <div class="card animate__animated animate__fadeIn">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-hdd-network me-2 text-primary"></i>文件浏览与管理
+                        </h5>
+                        <!-- 直接在标题旁边显示版本号 -->
+                        <span class="badge bg-primary ms-3 shadow-sm" style="display: inline-block !important;">
+                            <i class="bi bi-code-slash me-1"></i>
+                            <span style="font-size: 0.9rem; display: inline-block !important;">{{ version }}</span>
+                        </span>
+                    </div>
+                    <div>
+                        <span class="text-muted me-3 small"><i class="bi bi-info-circle me-1"></i>双击打开文件/文件夹</span>
+                        <button onclick="refreshFileManager()" class="btn btn-sm btn-primary btn-refresh">
+                            <i class="bi bi-arrow-clockwise me-1"></i>刷新浏览器
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="iframe-container">
+                        <iframe id="fileManagerFrame" src="/file-manager" class="file-manager-iframe" onload="injectIframeStyles()"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function refreshFileManager() {
+    const iframe = document.getElementById('fileManagerFrame');
+    if (iframe) {
+        // 显示刷新通知
+        window.showToast('刷新', '正在重新加载文件管理器...', 'info');
+
+        iframe.src = iframe.src;
+    }
+}
+
+// 确保版本信息正确显示
+document.addEventListener('DOMContentLoaded', function() {
+    // 确保版本信息元素可见
+    const versionInfo = document.getElementById('version-info');
+    if (versionInfo) {
+        versionInfo.style.display = 'flex';
+    }
+
+    // 确保当前版本号可见
+    const currentVersion = document.getElementById('current-version');
+    if (currentVersion) {
+        currentVersion.style.display = 'inline-block';
+    }
+});
+
+// 注入样式到iframe中隐藏导航栏
+function injectIframeStyles() {
+    try {
+        const iframe = document.getElementById('fileManagerFrame');
+        if (!iframe) return;
+
+        const iframeDocument = iframe.contentDocument || iframe.contentWindow.document;
+        if (!iframeDocument) return;
+
+        // 创建样式元素
+        const style = iframeDocument.createElement('style');
+        style.textContent = `
+            /* 隐藏导航栏 */
+            .navbar, nav.navbar {
+                display: none !important;
+            }
+
+            /* 调整主体内容区域 */
+            body {
+                padding-top: 0 !important;
+                margin: 0 !important;
+            }
+
+            /* 确保文件列表可以完整显示 */
+            .file-manager-container {
+                height: auto !important;
+                min-height: 100% !important;
+                padding-bottom: 60px !important; /* 确保底部按钮可见 */
+                margin-bottom: 20px !important;
+                overflow-y: auto !important;
+            }
+
+            /* 确保底部功能按钮区域可见 */
+            .file-content {
+                padding-bottom: 80px !important;
+                overflow-y: auto !important;
+            }
+
+            /* 工具栏始终在顶部可见 */
+            .file-toolbar {
+                position: sticky;
+                top: 0;
+                z-index: 100;
+                background-color: #f8f9fa;
+            }
+
+            /* 优化新建按钮的位置 */
+            .btn-group {
+                position: relative;
+                z-index: 100;
+            }
+
+            /* 确保上传按钮可见 */
+            #btn-upload-file {
+                display: inline-block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+
+            /* 修复上传模态框样式 */
+            #upload-file-modal {
+                display: none;
+                z-index: 1050;
+            }
+
+            #upload-file-modal.show {
+                display: block !important;
+            }
+        `;
+
+        // 添加样式到iframe的头部
+        iframeDocument.head.appendChild(style);
+        console.log('成功注入样式到iframe中');
+    } catch (error) {
+        console.error('注入iframe样式失败:', error);
+    }
+}
+
+// 页面加载完成后检查iframe加载状态
+document.addEventListener('DOMContentLoaded', function() {
+    const iframe = document.getElementById('fileManagerFrame');
+    if (iframe) {
+        iframe.onload = function() {
+            console.log('文件管理器iframe加载完成');
+            window.showToast('成功', '文件管理器已加载完成', 'success');
+            // 确保样式注入
+            injectIframeStyles();
+        };
+
+        iframe.onerror = function() {
+            console.error('文件管理器iframe加载失败');
+            window.showToast('错误', '文件管理器加载失败', 'danger');
+
+            iframe.srcdoc = `
+                <div style="display: flex; justify-content: center; align-items: center; height: 100%; flex-direction: column; font-family: Arial, sans-serif;">
+                    <div style="color: #dc3545; font-size: 48px; margin-bottom: 20px;">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                    </div>
+                    <h3 style="color: #343a40; margin-bottom: 10px;">加载文件管理器失败</h3>
+                    <p style="color: #6c757d;">请检查服务器是否正常运行或刷新页面重试</p>
+                    <button onclick="parent.refreshFileManager()" style="background-color: #0d6efd; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 20px;">
+                        重新加载
+                    </button>
+                </div>
+            `;
+        };
+    }
+});
+</script>
+{% endblock %}

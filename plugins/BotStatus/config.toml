@@ -1,0 +1,4 @@
+[BotStatus]
+enable = true
+command = ["status", "bot", "机器人状态", "状态"]
+status-message = "ALLBot Running! 😊"

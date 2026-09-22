@@ -1,0 +1,1045 @@
+{% extends "base.html" %}
+
+{% block title %}插件市场 - AllBot管理后台{% endblock %}
+
+{% block page_title %}插件市场{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 全局样式变量 */
+    :root {
+        --primary-color: #5dade2;
+        --primary-light: rgba(93, 173, 226, 0.1);
+        --primary-border: rgba(93, 173, 226, 0.2);
+        --secondary-color: #3498db;
+        --success-color: #2ecc71;
+        --success-light: rgba(46, 204, 113, 0.1);
+        --success-border: rgba(46, 204, 113, 0.2);
+        --warning-color: #f39c12;
+        --warning-light: rgba(243, 156, 18, 0.1);
+        --warning-border: rgba(243, 156, 18, 0.2);
+        --info-color: #1abc9c;
+        --info-light: rgba(26, 188, 156, 0.1);
+        --info-border: rgba(26, 188, 156, 0.2);
+        --other-color: #e67e22;
+        --other-light: rgba(230, 126, 34, 0.1);
+        --other-border: rgba(230, 126, 34, 0.2);
+        --gold-color: #f1c40f;
+        --gold-light: rgba(241, 196, 15, 0.1);
+        --gold-border: rgba(241, 196, 15, 0.2);
+        --text-primary: #2c3e50;
+        --text-secondary: #7f8c8d;
+        --text-muted: #95a5a6;
+        --bg-light: #f8f9fa;
+        --border-light: #ecf0f1;
+        --border-radius: 8px;
+        --border-radius-lg: 12px;
+        --border-radius-sm: 6px;
+        --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        --box-shadow-hover: 0 10px 15px rgba(0, 0, 0, 0.1);
+        --transition-speed: 0.3s;
+        --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    /* 页面整体样式 */
+    .dashboard-card {
+        border: none;
+        border-radius: var(--border-radius-lg);
+        box-shadow: var(--box-shadow);
+        transition: all var(--transition-speed) ease;
+        overflow: hidden;
+    }
+
+    .dashboard-card:hover {
+        box-shadow: var(--box-shadow-hover);
+        transform: translateY(-2px);
+    }
+
+    .dashboard-card .card-header {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        border-bottom: none;
+        padding: 1.2rem 1.5rem;
+        font-family: var(--font-family);
+    }
+
+    /* 推荐插件卡片样式 */
+    .plugin-card {
+        border-radius: var(--border-radius);
+        border: 1px solid var(--border-light);
+        box-shadow: var(--box-shadow);
+        transition: all var(--transition-speed) ease;
+        overflow: hidden;
+        height: 260px; /* 减小固定高度 */
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        background-color: white;
+    }
+
+    .plugin-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--box-shadow-hover);
+    }
+
+    .plugin-card-header {
+        padding: 0.75rem;
+        border-bottom: 1px solid var(--border-light);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 50px; /* 减小固定高度 */
+    }
+
+    .plugin-card-title {
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0;
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 70%;
+    }
+
+    .plugin-card-version {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        background-color: var(--bg-light);
+        padding: 0.15rem 0.4rem;
+        border-radius: 20px;
+        flex-shrink: 0;
+    }
+
+    .plugin-card-body {
+        padding: 0.75rem;
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+        height: 150px; /* 减小固定高度 */
+        overflow: hidden;
+    }
+
+    .plugin-card-description {
+        color: var(--text-secondary);
+        margin-bottom: 0.75rem;
+        flex-grow: 1;
+        line-height: 1.4;
+        font-size: 0.85rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .plugin-card-footer {
+        padding: 0.75rem;
+        border-top: 1px solid var(--border-light);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        height: 45px; /* 减小固定高度 */
+    }
+
+    .plugin-card-author {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 60%;
+    }
+
+    .plugin-card-tags {
+        margin-top: 0.4rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        max-height: 40px;
+        overflow: hidden;
+    }
+
+    .plugin-card-tag {
+        font-size: 0.65rem;
+        padding: 0.1rem 0.35rem;
+        border-radius: 20px;
+        background-color: var(--primary-light);
+        color: var(--primary-color);
+        border: 1px solid var(--primary-border);
+    }
+
+    .recommended-badge {
+        position: absolute;
+        top: 0;
+        right: 0;
+        background: linear-gradient(135deg, var(--gold-color), var(--warning-color));
+        color: white;
+        padding: 0.2rem 0.5rem;
+        font-size: 0.65rem;
+        font-weight: 600;
+        border-bottom-left-radius: var(--border-radius);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        z-index: 1;
+    }
+
+    /* 插件数量标签样式 */
+    .plugin-count-wrapper {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-left: 0.5rem;
+    }
+
+    .plugin-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background-color: white;
+        color: var(--primary-color);
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.15rem 0.4rem;
+        border-radius: 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .plugin-count.installed {
+        background-color: var(--success-color);
+        color: white;
+    }
+
+    .plugin-count.updates {
+        background-color: var(--warning-color);
+        color: white;
+    }
+
+    .dashboard-card .card-body {
+        padding: 1.5rem;
+        background-color: white;
+    }
+
+    /* 表格样式 */
+    .plugin-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        margin-top: 1rem;
+    }
+
+    .plugin-table th {
+        padding: 12px 15px;
+        background-color: var(--bg-light);
+        border-bottom: 2px solid var(--primary-color);
+        text-align: left;
+        font-weight: 600;
+        color: var(--text-primary);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .plugin-table td {
+        padding: 15px;
+        border-bottom: 1px solid var(--border-light);
+        vertical-align: middle;
+        transition: all var(--transition-speed) ease;
+    }
+
+    .plugin-table tr {
+        transition: all var(--transition-speed) ease;
+    }
+
+    .plugin-table tr:hover {
+        background-color: var(--primary-light);
+        transform: scale(1.01);
+    }
+
+    .plugin-name {
+        color: var(--text-primary);
+        font-weight: 600;
+        font-size: 1.05rem;
+    }
+
+    .plugin-description {
+        color: var(--text-secondary);
+        max-width: 400px;
+        line-height: 1.5;
+    }
+
+    /* 标签样式 */
+    .plugin-tag {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 20px;
+        margin-right: 0.4rem;
+        margin-bottom: 0.4rem;
+        display: inline-block;
+        font-weight: 500;
+        transition: all var(--transition-speed) ease;
+        cursor: pointer;
+        border: 1px solid transparent;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    /* 标签颜色分类 */
+    .plugin-tag.tag-ai {
+        background-color: var(--primary-light);
+        color: var(--primary-color);
+        border-color: var(--primary-border);
+    }
+
+    .plugin-tag.tag-tools {
+        background-color: var(--success-light);
+        color: var(--success-color);
+        border-color: var(--success-border);
+    }
+
+    .plugin-tag.tag-entertainment {
+        background-color: var(--warning-light);
+        color: var(--warning-color);
+        border-color: var(--warning-border);
+    }
+
+    .plugin-tag.tag-other {
+        background-color: var(--other-light);
+        color: var(--other-color);
+        border-color: var(--other-border);
+    }
+
+    /* 标签悬停效果 */
+    .plugin-tag:hover {
+        transform: translateY(-3px) scale(1.05);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    /* 标签云样式 */
+    .tag-cloud {
+        background: linear-gradient(to right, rgba(248, 249, 250, 0.8), rgba(255, 255, 255, 0.9)) !important;
+        border: 1px solid rgba(222, 226, 230, 0.3) !important;
+        border-radius: var(--border-radius);
+        box-shadow: var(--box-shadow);
+        transition: all var(--transition-speed) ease;
+    }
+
+    .tag-cloud:hover {
+        box-shadow: var(--box-shadow-hover);
+    }
+
+    #tag-cloud-container {
+        transition: max-height var(--transition-speed) ease, opacity var(--transition-speed) ease;
+        overflow: hidden;
+        opacity: 1;
+    }
+
+    #tag-cloud-container.collapsed {
+        max-height: 0;
+        opacity: 0;
+    }
+
+    #toggle-tag-cloud {
+        color: var(--primary-color);
+        transition: transform var(--transition-speed) ease, color var(--transition-speed) ease;
+        background: transparent;
+        border: none;
+    }
+
+    #toggle-tag-cloud:hover {
+        color: var(--secondary-color);
+    }
+
+    #toggle-tag-cloud.collapsed i {
+        transform: rotate(-90deg);
+    }
+
+    /* 状态标签 */
+    .badge {
+        font-size: 0.7rem;
+        padding: 0.25em 0.6em;
+        font-weight: 500;
+        border-radius: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .badge.bg-success {
+        background-color: var(--success-color) !important;
+        color: white !important;
+    }
+
+    .badge.bg-warning {
+        background-color: var(--warning-color) !important;
+        color: white !important;
+    }
+
+    .badge.bg-primary {
+        background-color: var(--primary-color) !important;
+        color: white !important;
+    }
+
+    td small.text-muted {
+        font-size: 0.75rem;
+        opacity: 0.8;
+        font-style: italic;
+    }
+
+    /* 高亮可更新的插件行 */
+    tr.has-update {
+        background-color: var(--warning-light);
+    }
+
+    tr.has-update:hover {
+        background-color: rgba(247, 37, 133, 0.15);
+    }
+
+    /* 按钮样式 */
+    .btn-install, .btn-update, .btn-document {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 12px;
+        border-radius: var(--border-radius-sm);
+        border: 1px solid;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all var(--transition-speed) ease;
+        margin-right: 8px;
+        background-color: white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    /* 操作按钮容器 */
+    .plugin-actions {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 5px;
+    }
+
+    /* 推荐插件卡片中的按钮样式 */
+    .plugin-card-footer .plugin-actions {
+        gap: 3px;
+    }
+
+    .plugin-card-footer .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.7rem;
+    }
+
+    .plugin-card-footer .btn-outline-info {
+        color: var(--info-color);
+        border-color: var(--info-color);
+    }
+
+    .plugin-card-footer .btn-outline-info:hover {
+        background-color: var(--info-color);
+        color: white;
+    }
+
+    .btn-install {
+        color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+
+    .btn-install:hover {
+        background-color: var(--primary-color);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(67, 97, 238, 0.3);
+    }
+
+    .btn-update {
+        color: var(--warning-color);
+        border-color: var(--warning-color);
+    }
+
+    .btn-update:hover {
+        background-color: var(--warning-color);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(247, 37, 133, 0.3);
+    }
+
+    .btn-document {
+        color: var(--info-color);
+        border-color: var(--info-color);
+    }
+
+    .btn-document:hover {
+        background-color: var(--info-color);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(72, 149, 239, 0.3);
+    }
+
+    .btn-success {
+        color: var(--success-color);
+        border-color: var(--success-color);
+    }
+
+    .btn-success:hover {
+        background-color: var(--success-color);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(76, 201, 240, 0.3);
+    }
+
+    /* 顶部操作按钮 */
+    .btn-sm {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.875rem;
+        border-radius: var(--border-radius-sm);
+        transition: all var(--transition-speed) ease;
+    }
+
+    .btn-outline-primary {
+        color: var(--primary-color);
+        border-color: var(--primary-color);
+        background-color: white;
+        font-weight: 500;
+    }
+
+    .btn-outline-primary:hover {
+        background-color: var(--primary-color);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(93, 173, 226, 0.3);
+    }
+
+    .btn-outline-secondary {
+        color: var(--secondary-color);
+        border-color: var(--secondary-color);
+        background-color: white;
+        font-weight: 500;
+    }
+
+    .btn-outline-secondary:hover {
+        background-color: var(--secondary-color);
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+    }
+
+    /* 头部标题和按钮样式 */
+    .card-header h5 {
+        color: white;
+        font-weight: 600;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+    .card-header .badge {
+        background-color: white !important;
+        color: var(--primary-color) !important;
+        font-weight: 600;
+    }
+
+    /* 搜索框样式 */
+    .plugin-search .input-group {
+        border-radius: var(--border-radius);
+        overflow: hidden;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        transition: all var(--transition-speed) ease;
+    }
+
+    .plugin-search .input-group:focus-within {
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .plugin-search .input-group-text {
+        background-color: white;
+        border: 1px solid var(--border-light);
+        border-right: none;
+        color: var(--primary-color);
+    }
+
+    .plugin-search .form-control {
+        border: 1px solid var(--border-light);
+        border-left: none;
+        padding: 0.6rem 1rem;
+    }
+
+    .plugin-search .form-control:focus {
+        box-shadow: none;
+        border-color: var(--primary-color);
+    }
+
+    /* 加载动画 */
+    @keyframes pulse {
+        0% { opacity: 0.6; }
+        50% { opacity: 1; }
+        100% { opacity: 0.6; }
+    }
+
+    .loading-pulse {
+        animation: pulse 1.5s infinite ease-in-out;
+    }
+
+    /* 提示框样式 */
+    .alert {
+        border-radius: var(--border-radius);
+        border: none;
+        box-shadow: var(--box-shadow);
+    }
+
+    .alert-info {
+        background-color: var(--info-light);
+        color: var(--info-color);
+        border-left: 4px solid var(--info-color);
+    }
+
+    /* 禁用按钮样式 */
+    button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+
+    /* 模态框样式 */
+    .modal-content {
+        border-radius: var(--border-radius-lg);
+        border: none;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+    }
+
+    .modal-header {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        color: white;
+        border-bottom: none;
+        font-family: var(--font-family);
+    }
+
+    .section-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .section-title i {
+        color: var(--gold-color);
+    }
+
+    .btn-gold {
+        background: linear-gradient(135deg, var(--gold-color), var(--warning-color));
+        border: none;
+        color: white;
+        transition: all var(--transition-speed) ease;
+        font-weight: 500;
+    }
+
+    .btn-gold:hover {
+        opacity: 0.9;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .modal-footer {
+        border-top: 1px solid var(--border-light);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <div class="row">
+        <div class="col-12">
+            <div class="card dashboard-card" data-aos="fade-up">
+                <div class="card-header d-flex justify-content-between align-items-center py-3">
+                    <div class="d-flex align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-puzzle-fill me-2 text-primary"></i>插件市场
+                            <div class="plugin-count-wrapper">
+                                <span class="plugin-count" id="plugin-count" title="插件总数">0</span>
+                                <span class="plugin-count installed" id="installed-count" title="已安装插件数">0</span>
+                                <span class="plugin-count updates" id="updates-count" title="可更新插件数">0</span>
+                            </div>
+                        </h5>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" id="btn-refresh-market" title="刷新插件市场">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" id="btn-submit-plugin" title="提交插件"
+                            type="button" data-bs-toggle="modal" data-bs-target="#submitPluginModal">
+                            <i class="bi bi-cloud-upload-fill me-1"></i> 提交插件
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <!-- 过滤器和搜索区域 -->
+                    <div class="row mb-4">
+                        <div class="col-lg-7 mb-3 mb-lg-0">
+                            <!-- 分类过滤器 -->
+                            <div class="filter-section">
+                                <div class="btn-group btn-group-sm shadow-sm" role="group" aria-label="插件分类">
+                                    <button type="button" class="btn btn-outline-primary active" data-category="all">
+                                        <i class="bi bi-grid-3x3-gap-fill me-1"></i> 全部
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" data-category="tools">
+                                        <i class="bi bi-tools me-1"></i> 工具
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" data-category="ai">
+                                        <i class="bi bi-cpu me-1"></i> AI
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" data-category="entertainment">
+                                        <i class="bi bi-controller me-1"></i> 娱乐
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" data-category="adapter">
+                                        <i class="bi bi-plug me-1"></i> 适配器
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary" data-category="other">
+                                        <i class="bi bi-three-dots me-1"></i> 其他
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-5">
+                            <!-- 搜索框 -->
+                            <div class="plugin-search">
+                                <div class="input-group">
+                                    <span class="input-group-text">
+                                        <i class="bi bi-search"></i>
+                                    </span>
+                                    <input type="text" class="form-control" id="plugin-search-input"
+                                        placeholder="搜索插件名称、描述或标签...">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 推荐插件 -->
+                    <div class="mb-4">
+                        <h5 class="section-title">
+                            <i class="bi bi-star-fill"></i> 推荐插件
+                        </h5>
+                        <div class="row" id="recommended-plugins">
+                            <!-- 推荐插件卡片将通过JavaScript动态添加 -->
+                            <div class="col-md-4 mb-4">
+                                <div class="plugin-card position-relative">
+                                    <span class="recommended-badge">推荐</span>
+                                    <div class="plugin-card-header">
+                                        <h5 class="plugin-card-title" title="DifyConversationManager">DifyConversation</h5>
+                                        <span class="plugin-card-version">v1.2.0</span>
+                                    </div>
+                                    <div class="plugin-card-body">
+                                        <p class="plugin-card-description" title="dify会话管理器，集成Dify接口对话，可以进行对话管理">dify会话管理器，集成Dify接口对话</p>
+                                        <div class="plugin-card-tags">
+                                            <span class="plugin-card-tag">AI</span>
+                                            <span class="plugin-card-tag">对话</span>
+                                        </div>
+                                    </div>
+                                    <div class="plugin-card-footer">
+                                        <span class="plugin-card-author" title="来自: 全部的运营">来自: 全部的运营</span>
+                                        <div class="plugin-actions">
+                                            <button class="btn btn-sm btn-gold">
+                                                <i class="bi bi-download me-1"></i>安装
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-info">
+                                                <i class="bi bi-file-text"></i> 文档
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-4">
+                                <div class="plugin-card position-relative">
+                                    <span class="recommended-badge">推荐</span>
+                                    <div class="plugin-card-header">
+                                        <h5 class="plugin-card-title" title="AutoSummary">AutoSummary</h5>
+                                        <span class="plugin-card-version">v1.3.0</span>
+                                    </div>
+                                    <div class="plugin-card-body">
+                                        <p class="plugin-card-description" title="快速总结文本内容的插件，让你的文章一键生成摘要">快速总结文本内容的插件</p>
+                                        <div class="plugin-card-tags">
+                                            <span class="plugin-card-tag">AI</span>
+                                            <span class="plugin-card-tag">工具</span>
+                                        </div>
+                                    </div>
+                                    <div class="plugin-card-footer">
+                                        <span class="plugin-card-author" title="来自: 全部的运营">来自: 全部的运营</span>
+                                        <div class="plugin-actions">
+                                            <button class="btn btn-sm btn-gold">
+                                                <i class="bi bi-download me-1"></i>安装
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-info">
+                                                <i class="bi bi-file-text"></i> 文档
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-4">
+                                <div class="plugin-card position-relative">
+                                    <span class="recommended-badge">推荐</span>
+                                    <div class="plugin-card-header">
+                                        <h5 class="plugin-card-title" title="ChatSummary">ChatSummary</h5>
+                                        <span class="plugin-card-version">v1.1.9</span>
+                                    </div>
+                                    <div class="plugin-card-body">
+                                        <p class="plugin-card-description" title="聊天记录总结工具，自动分析对话内容，提取关键信息">聊天记录总结工具，提取关键信息</p>
+                                        <div class="plugin-card-tags">
+                                            <span class="plugin-card-tag">AI</span>
+                                            <span class="plugin-card-tag">聊天</span>
+                                        </div>
+                                    </div>
+                                    <div class="plugin-card-footer">
+                                        <span class="plugin-card-author" title="来自: 全部的运营">来自: 全部的运营</span>
+                                        <div class="plugin-actions">
+                                            <button class="btn btn-sm btn-gold">
+                                                <i class="bi bi-download me-1"></i>安装
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-info">
+                                                <i class="bi bi-file-text"></i> 文档
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 标签云 -->
+                    <div class="tag-cloud mb-4 p-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <h6 class="mb-0 me-2 d-flex align-items-center">
+                                <i class="bi bi-tags-fill me-2" style="color: var(--primary-color); font-size: 1.1rem;"></i>
+                                <span>热门标签</span>
+                            </h6>
+                            <div class="ms-auto">
+                                <button class="btn btn-sm p-0" id="toggle-tag-cloud" title="展开/折叠标签云">
+                                    <i class="bi bi-chevron-down"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="tag-cloud-container" class="mt-3">
+                            <!-- 标签将通过JavaScript动态添加 -->
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm" role="status" style="color: var(--primary-color);">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <span class="ms-2 text-muted">加载标签中...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 插件列表 -->
+                    <div class="table-responsive">
+                        <table class="plugin-table" id="plugin-market-table">
+                            <thead>
+                                <tr>
+                                    <th width="15%">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-grid-3x3-gap-fill me-2" style="color: var(--primary-color);"></i>名称
+                                        </div>
+                                    </th>
+                                    <th width="35%">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-card-text me-2" style="color: var(--primary-color);"></i>描述
+                                        </div>
+                                    </th>
+                                    <th width="10%">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-person-fill me-2" style="color: var(--primary-color);"></i>作者
+                                        </div>
+                                    </th>
+                                    <th width="8%">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-code-square me-2" style="color: var(--primary-color);"></i>版本
+                                        </div>
+                                    </th>
+                                    <th width="10%">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-calendar-event me-2" style="color: var(--primary-color);"></i>更新时间
+                                        </div>
+                                    </th>
+                                    <th width="8%">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-tags-fill me-2" style="color: var(--primary-color);"></i>标签
+                                        </div>
+                                    </th>
+                                    <th width="14%">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-gear-fill me-2" style="color: var(--primary-color);"></i>操作
+                                        </div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="plugin-market-list">
+                                <tr>
+                                    <td colspan="7" class="text-center py-5">
+                                        <div class="d-flex flex-column align-items-center">
+                                            <div class="spinner-border mb-3" role="status" style="color: var(--primary-color); width: 3rem; height: 3rem;">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <h6 class="mb-2" style="color: var(--primary-color);">加载插件市场中</h6>
+                                            <p class="text-muted mb-0">正在从服务器获取最新的插件数据...</p>
+                                            <div class="progress mt-3" style="width: 200px; height: 6px;">
+                                                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                                                    style="width: 100%; background-color: var(--primary-color);"
+                                                    aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-end mt-3">
+                        <div id="plugin-market-pagination"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 提交插件模态框 -->
+<div class="modal fade" id="submitPluginModal" tabindex="-1" aria-labelledby="submitPluginModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="submitPluginModalLabel">
+                    <i class="bi bi-cloud-upload-fill me-2"></i>提交插件到市场
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info mb-4" role="alert">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    提交的插件将经过审核后发布到插件市场，请确保提供准确的信息。
+                </div>
+
+                <form id="submitPluginForm">
+                    <div class="mb-4">
+                        <label for="pluginName" class="form-label fw-bold">
+                            <i class="bi bi-tag-fill me-1" style="color: var(--primary-color);"></i>
+                            插件名称 <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control form-control-lg" id="pluginName" name="pluginName" required>
+                        <div class="form-text">插件的唯一标识名称，建议使用英文</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="pluginDescription" class="form-label fw-bold">
+                            <i class="bi bi-card-text me-1" style="color: var(--primary-color);"></i>
+                            插件描述 <span class="text-danger">*</span>
+                        </label>
+                        <textarea class="form-control" id="pluginDescription" name="pluginDescription" rows="3" required></textarea>
+                        <div class="form-text">详细描述插件的功能和使用方法</div>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label for="pluginAuthor" class="form-label fw-bold">
+                                <i class="bi bi-person-fill me-1" style="color: var(--primary-color);"></i>
+                                作者 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="pluginAuthor" name="pluginAuthor" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="pluginVersion" class="form-label fw-bold">
+                                <i class="bi bi-code-square me-1" style="color: var(--primary-color);"></i>
+                                版本 <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" class="form-control" id="pluginVersion" name="pluginVersion" placeholder="1.0.0" required>
+                            <div class="form-text">遵循语义化版本规范，如：1.0.0</div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="pluginGithubUrl" class="form-label fw-bold">
+                            <i class="bi bi-github me-1" style="color: var(--primary-color);"></i>
+                            GitHub 仓库地址 <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light">
+                                <i class="bi bi-link-45deg"></i>
+                            </span>
+                            <input type="url" class="form-control" id="pluginGithubUrl" name="pluginGithubUrl"
+                                placeholder="https://github.com/username/repository" required>
+                        </div>
+                        <div class="form-text">插件的GitHub仓库地址，用于安装和更新</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="pluginTags" class="form-label fw-bold">
+                            <i class="bi bi-tags-fill me-1" style="color: var(--primary-color);"></i>
+                            标签
+                        </label>
+                        <input type="text" class="form-control" id="pluginTags" name="pluginTags" placeholder="AI, 工具, 娱乐">
+                        <div class="form-text">用逗号分隔的标签，帮助用户更好地找到您的插件</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="pluginRequirements" class="form-label fw-bold">
+                            <i class="bi bi-box-fill me-1" style="color: var(--primary-color);"></i>
+                            依赖库
+                        </label>
+                        <textarea class="form-control" id="pluginRequirements" name="pluginRequirements" rows="3" placeholder="requests>=2.25.1
+numpy>=1.20.0"></textarea>
+                        <div class="form-text">每行一个依赖库，格式为：包名>=版本号</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="pluginIcon" class="form-label fw-bold">
+                            <i class="bi bi-image-fill me-1" style="color: var(--primary-color);"></i>
+                            图标 (可选)
+                        </label>
+                        <input type="file" class="form-control" id="pluginIcon" name="pluginIcon" accept="image/*">
+                        <div class="form-text">建议使用正方形图片，大小不超过200KB</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i>取消
+                </button>
+                <button type="button" class="btn btn-primary" id="submitPluginBtn">
+                    <i class="bi bi-cloud-upload-fill me-1"></i>提交审核
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 页面加载动画
+    document.addEventListener('DOMContentLoaded', function() {
+        // 添加页面加载动画
+        const cards = document.querySelectorAll('.dashboard-card');
+        cards.forEach((card, index) => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            card.style.transition = 'all 0.5s ease';
+
+            setTimeout(() => {
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            }, 100 + index * 100);
+        });
+
+        // 添加表格头部动画
+        const tableHeaders = document.querySelectorAll('th');
+        tableHeaders.forEach((header, index) => {
+            header.style.opacity = '0';
+            header.style.transform = 'translateY(-10px)';
+            header.style.transition = 'all 0.3s ease';
+
+            setTimeout(() => {
+                header.style.opacity = '1';
+                header.style.transform = 'translateY(0)';
+            }, 500 + index * 50);
+        });
+    });
+</script>
+<script src="/static/js/plugin_market.js"></script>
+{% endblock %}

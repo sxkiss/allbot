@@ -1,0 +1,112 @@
+[Claw]
+# 插件总开关
+enable = false
+
+# OpenClaw Gateway WebSocket 地址
+ws-url = "ws://:18789"
+# 网关共享鉴权（二选一）
+gateway-token = ""
+gateway-password = ""
+# 设备令牌（可选）
+device-token = ""
+
+# 连接行为
+auto-connect = true
+auto-reconnect = true
+connect-timeout-seconds = 12
+request-timeout-seconds = 20
+challenge-timeout-seconds = 2
+
+# connect.client 身份信息
+client-id = "gateway-client"
+client-mode = "backend"
+client-version = "allbot-claw-1.0.0"
+client-platform = "linux"
+client-display-name = "AllBot Claw"
+client-device-family = ""
+
+# 网关角色与权限
+role = "operator"
+# 需要 `/model` 等管理能力时保留 `operator.admin`
+scopes = ["operator.read", "operator.write", "operator.admin"]
+caps = ["tool-events"]
+commands-claims = []
+permissions = {}
+
+# 固定默认 agent；留空时优先使用网关默认 agent
+default-agent-id = ""
+# 回复分片上限
+max-reply-chars = 1800
+# 是否回写流式 delta；建议保持 false，仅发送终态完整回复
+stream-reply-enable = false
+
+# device-auth；建议开启，否则远端网关可能清空 scopes
+device-auth-enable = true
+device-state-dir = ""
+
+# 自动转发
+auto-trigger-enable = true
+trigger-words = ["龙虾"]
+# prefix / contains / exact
+trigger-match-mode = "prefix"
+trigger-strip-word = true
+# 建议保持 false，优先依赖 WS 事件回推
+trigger-expect-final = false
+trigger-timeout-seconds = 45
+# pending run 最长保留时长（秒）
+pending-run-ttl-seconds = 600
+# pending run 看门狗
+pending-run-watchdog-enable = true
+pending-run-watchdog-seconds = 60
+pending-run-watchdog-interval-seconds = 5
+# 为每个聊天对象生成稳定 sessionKey；私聊=wxid，群聊=chatroom id
+trigger-use-session-key = true
+# OpenClaw 渠道标识；会用于规范化 sessionKey。
+# 当前插件仅在网关已识别该渠道时才附带 `agent.channel/replyChannel`，否则只透传微信会话上下文。
+gateway-channel = "wx-869"
+# 可选：OpenClaw 渠道账号 ID；不填则不传
+gateway-account-id = ""
+# 兼容旧配置：未显式配置 gateway-channel 时会回退到这里
+trigger-session-prefix = "wechat"
+trigger-agent-id = ""
+trigger-auto-default-agent = true
+trigger-reply-prefix = ""
+# 私聊消息无需触发词，直接转发
+private-auto-forward-enable = false
+# 管理员 slash 直通：
+# - 真正存在的网关 RPC method 继续走 RPC
+# - `/new` `/reset` `/model` 等 OpenClaw 原生命令走 `agent`
+slash-command-forward-enable = true
+propagate-to-other-plugins = true
+# 模型异常重试时向网关注入英文提示，不先回写到微信
+retry-hint-to-gateway-enable = true
+# 短窗去重（按 MsgId）
+dedup-enable = true
+dedup-window-seconds = 3
+# 唤醒词帮助关键词，如“龙虾 帮助”
+method-help-keywords = ["帮助", "命令", "命令列表", "常用命令"]
+# 群聊 @机器人 时无需触发词
+at-auto-forward-enable = true
+# 图片能力开关；群聊仍需通过引用 + 触发词或 @机器人 才会附带图片上下文
+image-auto-forward-enable = true
+# summary / base64 / path
+image-forward-mode = "path"
+# `base64` 模式下生效；0 表示不截断
+image-base64-max-chars = 0
+# 可选公网媒体地址，最终生成 `<base><prefix>/<filename>`；当前图片 prompt 与引用媒体兜底都使用它
+image-public-base-url = "http://127.0.0.1:9090"
+image-public-route-prefix = "/media/files"
+# 引用消息附带被引用内容上下文
+quote-include-enable = true
+
+# 链接文章（appmsg type=5）
+# 私聊会直接转发；群聊需通过引用 + 触发词或 @机器人 才会附带给网关
+
+[Claw.EventForward]
+# 事件主动转发（与对话直通独立）
+enable = true
+# 支持的网关事件类型列表（新增: presence, tick, heartbeat, session.*, sessions.changed, exec.approval.*, plugin.approval.*, voicewake.changed, cron, node.pair.*, device.pair.*）
+allowed-events = ["agent", "chat", "health", "shutdown", "node.pair.requested", "device.pair.requested", "presence", "tick", "heartbeat", "session.message", "session.operation", "session.tool", "sessions.changed", "exec.approval.requested", "exec.approval.resolved", "plugin.approval.requested", "plugin.approval.resolved", "voicewake.changed", "cron", "node.pair.resolved", "device.pair.resolved"]
+# 固定事件转发目标；留空时不向微信转发原始网关事件体
+to-wxids = []
+mention-in-group = true

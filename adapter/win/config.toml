@@ -1,0 +1,33 @@
+[adapter]
+name = "win"
+enabled = false
+module = "adapter.win"
+class = "WinAdapter"
+replyQueue = "allbot_reply:win"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[win]
+enable = false
+wsUrl = ""
+sendUrl = ""
+staticBaseUrl = ""
+mediaCacheDir = ""
+allowPrivate = true
+ignoreGhId = true
+groupWhitelist = []
+dedupCacheSize = 3000
+reconnectInterval = 5
+sessionTakeover = "auto"
+selfId = ""
+debug = false
+disableSend = false
+
+[win.redis]
+queue = "allbot"
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""

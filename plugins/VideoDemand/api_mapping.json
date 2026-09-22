@@ -1,0 +1,813 @@
+{
+  "1": {
+    "name": "热舞视频",
+    "urls": [
+      "http://api.yujn.cn/api/rewu.php?type=video",
+      "https://api.317ak.com/API/sp/rwxl.php"
+    ]
+  },
+  "2": {
+    "name": "吧啦鲨系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=吧啦鲨系",
+      "https://api.317ak.com/API/sp/blsx.php"
+    ]
+  },
+  "3": {
+    "name": "丁璐系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=丁璐系列",
+      "https://api.317ak.com/API/sp/dlxl.php"
+    ]
+  },
+  "4": {
+    "name": "不怪系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=不怪系列",
+      "https://api.317ak.com/API/sp/bgxl.php"
+    ]
+  },
+  "5": {
+    "name": "不是小媛",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=不是小媛",
+      "https://api.317ak.com/API/sp/bsxy.php"
+    ]
+  },
+  "6": {
+    "name": "不见花海",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=不见花海",
+      "https://api.317ak.com/API/sp/bjhh.php"
+    ]
+  },
+  "7": {
+    "name": "二爷系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=二爷系列",
+      "https://api.317ak.com/API/sp/eyxl.php"
+    ]
+  },
+  "8": {
+    "name": "二酱系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=二酱系列",
+      "https://api.317ak.com/API/sp/ejxl.php"
+    ]
+  },
+  "9": {
+    "name": "二麻翻唱",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=二麻翻唱",
+      "https://api.317ak.com/API/sp/emfc.php"
+    ]
+  },
+  "10": {
+    "name": "健身系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=健身系列",
+      "https://api.317ak.com/API/sp/jsxl.php"
+    ]
+  },
+  "11": {
+    "name": "傲娇媛系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=傲娇媛系"
+    ]
+  },
+  "12": {
+    "name": "凌凌七系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=凌凌七系"
+    ]
+  },
+  "13": {
+    "name": "半斤系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=半斤系列"
+    ]
+  },
+  "14": {
+    "name": "半糖糖系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=半糖糖系"
+    ]
+  },
+  "15": {
+    "name": "卿卿公主",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=卿卿公主"
+    ]
+  },
+  "16": {
+    "name": "呆萝系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=呆萝系列"
+    ]
+  },
+  "17": {
+    "name": "妲己系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=妲己系列"
+    ]
+  },
+  "18": {
+    "name": "安佳系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=安佳系列"
+    ]
+  },
+  "19": {
+    "name": "安然系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=安然系列"
+    ]
+  },
+  "20": {
+    "name": "宋熙雅系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=宋熙雅系"
+    ]
+  },
+  "21": {
+    "name": "富儿系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=富儿系列"
+    ]
+  },
+  "22": {
+    "name": "小苏伊伊",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=小苏伊伊"
+    ]
+  },
+  "23": {
+    "name": "小落英系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=小落英系"
+    ]
+  },
+  "24": {
+    "name": "巴啦魔仙",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=巴啦魔仙"
+    ]
+  },
+  "25": {
+    "name": "暴力美系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=暴力美系"
+    ]
+  },
+  "26": {
+    "name": "梦瑶系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=梦瑶系列"
+    ]
+  },
+  "27": {
+    "name": "江小系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=江小系列"
+    ]
+  },
+  "28": {
+    "name": "江青系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=江青系列"
+    ]
+  },
+  "29": {
+    "name": "海绵翻唱",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=海绵翻唱"
+    ]
+  },
+  "30": {
+    "name": "涵涵系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=涵涵系列"
+    ]
+  },
+  "31": {
+    "name": "温柔以待",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=温柔以待"
+    ]
+  },
+  "32": {
+    "name": "爆笑阿衰",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=爆笑阿衰"
+    ]
+  },
+  "33": {
+    "name": "爱希系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=爱希系列"
+    ]
+  },
+  "34": {
+    "name": "白月光系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=白月光系"
+    ]
+  },
+  "35": {
+    "name": "白璃系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=白璃系列"
+    ]
+  },
+  "36": {
+    "name": "白露系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=白露系列"
+    ]
+  },
+  "37": {
+    "name": "百变小晨",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=百变小晨"
+    ]
+  },
+  "38": {
+    "name": "等等系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=等等系列"
+    ]
+  },
+  "39": {
+    "name": "糕冷小王",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=糕冷小王"
+    ]
+  },
+  "40": {
+    "name": "红姐系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=红姐系列"
+    ]
+  },
+  "41": {
+    "name": "绷带很烦",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=绷带很烦"
+    ]
+  },
+  "42": {
+    "name": "美杜莎系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=美杜莎系"
+    ]
+  },
+  "43": {
+    "name": "翠翠系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=翠翠系列"
+    ]
+  },
+  "44": {
+    "name": "背影变装",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=背影变装"
+    ]
+  },
+  "45": {
+    "name": "腹肌变装",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=腹肌变装"
+    ]
+  },
+  "46": {
+    "name": "花花姑娘",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=花花姑娘"
+    ]
+  },
+  "47": {
+    "name": "茶茶欧尼",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=茶茶欧尼"
+    ]
+  },
+  "48": {
+    "name": "菜小怡系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=菜小怡系"
+    ]
+  },
+  "49": {
+    "name": "过肩出场",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=过肩出场"
+    ]
+  },
+  "50": {
+    "name": "陈和系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=陈和系列"
+    ]
+  },
+  "51": {
+    "name": "蛋儿系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=蛋儿系列",
+      "https://api.317ak.com/API/sp/dexl.php"
+    ]
+  },
+  "52": {
+    "name": "美女视频",
+    "urls": [
+      "https://api.71xk.com/api/video/v1",
+      "http://www.yujn.cn/api/xjj.php",
+      "http://www.yujn.cn/api/zzxjj.php",
+      "http://api.yujn.cn/api/juhexjj.php?type=video",
+      "https://api.cenguigui.cn/api/mp4/MP4_xiaojiejie.php",
+      "https://api.kuleu.com/api/MP4_xiaojiejie?type=video",
+      "https://api.pearktrue.cn/api/random/xjj/?type=video",
+      "https://www.wudada.online/Api/NewSp",
+      "https://v2.api-m.com/api/meinv?return=302"
+    ]
+  },
+  "53": {
+    "name": "安琪系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/aqxl.php"
+    ]
+  },
+  "54": {
+    "name": "双倍快乐",
+    "urls": [
+      "http://api.yujn.cn/api/sbkl.php?type=video"
+    ]
+  },
+  "55": {
+    "name": "变装系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/gjbz.php",
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=光剑变装",
+      "https://api.317ak.com/API/sp/dmbz.php"
+    ]
+  },
+  "56": {
+    "name": "女神系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=女神"
+    ]
+  },
+  "57": {
+    "name": "动漫系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=动漫"
+    ]
+  },
+  "58": {
+    "name": "动物系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=动物"
+    ]
+  },
+  "59": {
+    "name": "风景系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=风景"
+    ]
+  },
+  "60": {
+    "name": "情侣系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=情侣"
+    ]
+  },
+  "61": {
+    "name": "姓氏特效",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=姓氏特效"
+    ]
+  },
+  "62": {
+    "name": "酷炫特效",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=酷炫特效"
+    ]
+  },
+  "63": {
+    "name": "动态壁纸",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=动态壁纸"
+    ]
+  },
+  "64": {
+    "name": "热歌系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=热歌"
+    ]
+  },
+  "65": {
+    "name": "男神系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=男神"
+    ]
+  },
+  "66": {
+    "name": "明星系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=明星"
+    ]
+  },
+  "67": {
+    "name": "节日系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=节日"
+    ]
+  },
+  "68": {
+    "name": "充电系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=充电"
+    ]
+  },
+  "69": {
+    "name": "闹钟系列",
+    "urls": [
+      "https://api.suyanw.cn/api/kysp.php?lx=闹钟"
+    ]
+  },
+  "70": {
+    "name": "萌娃系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/mwxl.php"
+    ]
+  },
+  "71": {
+    "name": "桥本环菜",
+    "urls": [
+      "https://api.317ak.com/API/sp/qbhc.php"
+    ]
+  },
+  "72": {
+    "name": "燕酱系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/yjxl.php"
+    ]
+  },
+  "73": {
+    "name": "自拍视频",
+    "urls": [
+      "https://api.317ak.com/API/sp/zpsp.php"
+    ]
+  },
+  "74": {
+    "name": "双马尾系",
+    "urls": [
+      "https://api.317ak.com/API/sp/smwx.php"
+    ]
+  },
+  "75": {
+    "name": "渔网系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/ywxl.php"
+    ]
+  },
+  "76": {
+    "name": "鞠婧祎系",
+    "urls": [
+      "https://api.317ak.com/API/sp/jjyx.php"
+    ]
+  },
+  "77": {
+    "name": "漫展系列",
+    "urls": [
+      "https://www.yujn.cn/api/manzhan.php"
+    ]
+  },
+  "78": {
+    "name": "周扬青系",
+    "urls": [
+      "https://api.317ak.com/API/sp/zyqx.php"
+    ]
+  },
+  "79": {
+    "name": "周清欢系",
+    "urls": [
+      "https://api.317ak.com/API/sp/xqx.php"
+    ]
+  },
+  "80": {
+    "name": "极品狱卒",
+    "urls": [
+      "https://api.317ak.com/API/sp/jpyz.php"
+    ]
+  },
+  "81": {
+    "name": "纯情女高",
+    "urls": [
+      "https://api.317ak.com/API/sp/cqng.php",
+      "https://api.317ak.com/API/sp/ndxl.php"
+    ]
+  },
+  "82": {
+    "name": "漫画芋系",
+    "urls": [
+      "https://api.317ak.com/API/sp/mhyx.php"
+    ]
+  },
+  "83": {
+    "name": "感觉至上",
+    "urls": [
+      "https://api.dragonlongzhu.cn/api/MP4_xiaojiejie.php"
+    ]
+  },
+  "84": {
+    "name": "开心锤锤",
+    "urls": [
+      "http://abc.gykj.asia/API/kxcc.php"
+    ]
+  },
+  "85": {
+    "name": "动漫卡点",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=动漫系列"
+    ]
+  },
+  "86": {
+    "name": "少萝系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/slmm.php",
+      "https://api.317ak.com/API/sp/slxl.php"
+    ]
+  },
+  "87": {
+    "name": "甩裙系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/sqxl.php"
+    ]
+  },
+  "88": {
+    "name": "黑白双煞",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=黑白双丝",
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=黑白双煞",
+      "https://api.317ak.com/API/sp/hbss.php"
+    ]
+  },
+  "89": {
+    "name": "吊带系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/ddxl.php",
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=吊带系列",
+      "https://api.317ak.com/API/sp/ddsp.php"
+    ]
+  },
+  "90": {
+    "name": "萝莉系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/llxl.php"
+    ]
+  },
+  "91": {
+    "name": "甜妹系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/tmxl.php"
+    ]
+  },
+  "92": {
+    "name": "白丝系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=白丝系列",
+      "https://api.317ak.com/API/sp/bssp.php"
+    ]
+  },
+  "93": {
+    "name": "黑丝系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/hssp.php",
+      "http://www.yujn.cn/api/heisis.php"
+    ]
+  },
+  "94": {
+    "name": "小瑾系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/xjxl.php"
+    ]
+  },
+  "95": {
+    "name": "穿搭系列",
+    "urls": [
+      "http://api.yujn.cn/api/chuanda.php?type=video",
+      "https://api.317ak.com/API/sp/cdxl.php",
+      "https://api.317ak.com/API/sp/mncd.php"
+    ]
+  },
+  "96": {
+    "name": "惠子系列",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=惠子系列",
+      "https://api.317ak.com/API/sp/hzxl.php"
+    ]
+  },
+  "97": {
+    "name": "御姐系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/yjxl.php"
+    ]
+  },
+  "98": {
+    "name": "女仆系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/npxl.php"
+    ]
+  },
+  "99": {
+    "name": "微胖系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/wpxl.php"
+    ]
+  },
+  "100": {
+    "name": "硬气卡点",
+    "urls": [
+      "https://api.317ak.com/API/sp/yqkd.php"
+    ]
+  },
+  "101": {
+    "name": "火车摇系",
+    "urls": [
+      "https://api.317ak.com/API/sp/hcyx.php"
+    ]
+  },
+  "102": {
+    "name": "安慕希系",
+    "urls": [
+      "https://api.317ak.com/API/sp/amxx.php",
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=吊带系列"
+    ]
+  },
+  "103": {
+    "name": "擦玻璃系",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=擦玻璃系",
+      "https://api.317ak.com/API/sp/cblx.php"
+    ]
+  },
+  "104": {
+    "name": "蹲下变装",
+    "urls": [
+      "https://api.bi71t5.cn/api/wbsphj.php?xuanze=蹲下变装",
+      "https://api.317ak.com/API/sp/dxbz.php"
+    ]
+  },
+  "105": {
+    "name": "背影变装",
+    "urls": [
+      "https://api.317ak.com/API/sp/bybz.php"
+    ]
+  },
+  "106": {
+    "name": "猫系女友",
+    "urls": [
+      "https://api.317ak.com/API/sp/mxny.php"
+    ]
+  },
+  "107": {
+    "name": "丝滑舞蹈",
+    "urls": [
+      "http://api.yujn.cn/api/shwd.php?type=video"
+    ]
+  },
+  "108": {
+    "name": "又纯又欲",
+    "urls": [
+      "https://api.317ak.com/API/sp/ycyy.php"
+    ]
+  },
+  "109": {
+    "name": "腹肌变装",
+    "urls": [
+      "https://api.317ak.com/API/sp/fjbz.php"
+    ]
+  },
+  "110": {
+    "name": "完美身材",
+    "urls": [
+      "http://api.yujn.cn/api/wmsc.php?type=video",
+      "https://api.317ak.com/API/sp/wmsc.php"
+    ]
+  },
+  "111": {
+    "name": "蛇姐系列",
+    "urls": [
+      "http://api.yujn.cn/api/shejie.php?type=video"
+    ]
+  },
+  "112": {
+    "name": "章若楠系",
+    "urls": [
+      "http://api.yujn.cn/api/zrn.php?type=video"
+    ]
+  },
+  "113": {
+    "name": "汉服系列",
+    "urls": [
+      "http://api.yujn.cn/api/hanfu.php?type=video"
+    ]
+  },
+  "114": {
+    "name": "杂鱼川系",
+    "urls": [
+      "https://api.317ak.com/API/sp/zycx.php"
+    ]
+  },
+  "115": {
+    "name": "慢摇系列",
+    "urls": [
+      "http://api.yujn.cn/api/manyao.php?type=video",
+      "https://api.317ak.com/API/sp/myxl.php"
+    ]
+  },
+  "116": {
+    "name": "清纯系列",
+    "urls": [
+      "http://api.yujn.cn/api/qingchun.php?type=video",
+      "https://api.317ak.com/API/sp/qcxl.php"
+    ]
+  },
+  "117": {
+    "name": "COS系列",
+    "urls": [
+      "http://api.yujn.cn/api/COS.php?type=video",
+      "https://api.317ak.com/API/sp/cosxl.php"
+    ]
+  },
+  "118": {
+    "name": "街拍系列",
+    "urls": [
+      "http://api.yujn.cn/api/jiepai.php?type=video"
+    ]
+  },
+  "119": {
+    "name": "余震系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/yzxl.php"
+    ]
+  },
+  "120": {
+    "name": "你的欲梦",
+    "urls": [
+      "http://api.yujn.cn/api/ndym.php?type=video",
+      "https://api.317ak.com/API/sp/ndym.php"
+    ]
+  },
+  "121": {
+    "name": "洛丽塔系",
+    "urls": [
+      "http://api.yujn.cn/api/jksp.php?type=video"
+    ]
+  },
+  "122": {
+    "name": "玉足美腿",
+    "urls": [
+      "http://api.yujn.cn/api/yuzu.php?type=video",
+      "https://api.317ak.com/API/sp/yzmt.php"
+    ]
+  },
+  "123": {
+    "name": "清风皓月",
+    "urls": [
+      "https://api.317ak.com/API/sp/qfhy.php"
+    ]
+  },
+  "124": {
+    "name": "帅哥系列",
+    "urls": [
+      "http://api.yujn.cn/api/xgg.php?type=video",
+      "https://api.317ak.com/API/sp/sgxl.php"
+    ]
+  },
+  "125": {
+    "name": "潇潇系列",
+    "urls": [
+      "http://api.yujn.cn/api/xiaoxiao.php?",
+      "https://api.317ak.com/API/sp/xxxl.php"
+    ]
+  },
+  "126": {
+    "name": "倾梦推荐",
+    "urls": [
+      "https://api.317ak.com/API/sp/qmtj.php"
+    ]
+  },
+  "127": {
+    "name": "晴天推荐",
+    "urls": [
+      "https://api.317ak.com/API/sp/qttj.php"
+    ]
+  },
+  "128": {
+    "name": "琳铛系列",
+    "urls": [
+      "https://api.317ak.com/API/sp/ldxl.php"
+    ]
+  }
+}

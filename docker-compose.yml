@@ -1,0 +1,28 @@
+services:
+  allbot:
+    image: sxkiss/allbot:latest
+    pull_policy: always
+    container_name: allbot
+    restart: unless-stopped
+    ports:
+      - "9090:9090"  # 管理后台
+    volumes:
+      - redis_data:/data/redis
+      # 配置
+      - ./main_config.toml:/app/main_config.toml
+      # 插件（含各插件的 config.toml）
+      - ./plugins:/app/plugins
+      # 适配器（含各适配器的 config.toml）
+      - ./adapter:/app/adapter
+      # 运行时数据（accounts、头像、robot_stat 等）
+      - ./resource:/app/resource
+      # SQLite 数据库
+      - ./database:/app/database
+      # redis 缓存目录
+      - ./data:/app/data
+      # 日志
+      - ./logs:/app/logs
+
+volumes:
+  redis_data:
+    name: redis_data

@@ -1,0 +1,18 @@
+AllBot 机器人项目
+Copyright (c) 2025 sxkiss
+项目仓库：https://github.com/sxkiss/allbot
+
+本项目包含以下开源项目的代码或受其启发：
+
+1. XYBotV2 (https://github.com/HenryXiaoYang/XYBotV2)
+   Copyright (c) HenryXiaoYang
+   本项目的重要参考源，提供了微信机器人的基础架构和核心功能。
+
+2. 其他贡献者：
+   - heaven2028 (https://github.com/heaven2028)
+   在功能扩展、界面设计和系统优化方面做出了重要贡献。
+
+同时感谢以下项目和作者的支持：
+- NanSsye (https://github.com/NanSsye/xbot)
+
+本项目使用的第三方库和组件受其各自的许可证约束。

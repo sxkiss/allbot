@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}AllBot管理后台{% endblock %}</title>
+
+    <!-- Favicon图标 -->
+    <link rel="icon" href="/static/img/favicon.ico" type="image/x-icon">
+    <link rel="shortcut icon" href="/static/img/favicon.ico" type="image/x-icon">
+
+    <!-- 使用本地的bootstrap -->
+    <link href="/static/css/lib/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Bootstrap图标 -->
+    <link href="/static/css/lib/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- 添加动画库 -->
+    <link href="/static/css/lib/animate.min.css" rel="stylesheet">
+
+    <!-- 添加AOS滚动动画库 -->
+    <link href="/static/css/lib/aos.css" rel="stylesheet">
+
+    <!-- 设计系统字体 - 使用本地字体 -->
+    <link href="/static/css/lib/inter.css" rel="stylesheet">
+    <link href="/static/css/lib/roboto.css" rel="stylesheet">
+
+    <!-- 添加自定义CSS -->
+    <link href="/static/css/admin.css" rel="stylesheet">
+
+    <!-- 添加渐变色背景和设计元素 -->
+    <style>
+        body {
+            background: linear-gradient(135deg, #F8F9FA 0%, #ECF0F1 100%);
+            min-height: 100vh;
+            position: relative;
+        }
+
+        .gradient-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+            background:
+                radial-gradient(circle at 10% 20%, rgba(52, 152, 219, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 90% 80%, rgba(46, 204, 113, 0.05) 0%, transparent 70%),
+                radial-gradient(circle at 50% 50%, rgba(236, 240, 241, 0.1) 0%, transparent 60%);
+        }
+
+        .design-circle {
+            position: fixed;
+            border-radius: 50%;
+            z-index: -1;
+        }
+
+        .design-circle-1 {
+            width: 300px;
+            height: 300px;
+            background: linear-gradient(135deg, rgba(52, 152, 219, 0.1) 0%, rgba(44, 62, 80, 0.05) 100%);
+            top: -150px;
+            right: -150px;
+        }
+
+        .design-circle-2 {
+            width: 200px;
+            height: 200px;
+            background: linear-gradient(135deg, rgba(46, 204, 113, 0.05) 0%, rgba(241, 196, 15, 0.03) 100%);
+            bottom: -100px;
+            left: -100px;
+        }
+
+        .logo-text {
+            font-weight: 700;
+            background: linear-gradient(45deg, #3498DB, #2C3E50);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Material Design inspired card */
+        .mat-card {
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .mat-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(-2px);
+        }
+    </style>
+
+    <!-- 自定义组件样式 -->
+    <style>
+        .version-info {
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+        }
+
+        /* 版本号标签样式 */
+        #version-info .badge {
+            font-size: 0.9rem;
+            padding: 0.35rem 0.6rem;
+        }
+
+        #check-update-btn {
+            padding: 0.35rem 0.6rem;
+            font-size: 0.9rem;
+            border-radius: 0.25rem;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .animate__rotateIn {
+            animation: spin 1s linear infinite;
+        }
+
+        /* 更新内容样式 */
+        .markdown-body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #24292e;
+        }
+
+        .markdown-body h1 {
+            font-size: 1.8rem;
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            color: #0d6efd;
+        }
+
+        .markdown-body h2 {
+            font-size: 1.5rem;
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            border-bottom: 1px solid #eaecef;
+            padding-bottom: 0.5rem;
+            color: #0d6efd;
+        }
+
+        .markdown-body h3 {
+            font-size: 1.2rem;
+            margin-top: 1.2rem;
+            margin-bottom: 0.8rem;
+            font-weight: 600;
+            color: #0d6efd;
+        }
+
+        .markdown-body p {
+            margin-bottom: 1rem;
+            line-height: 1.7;
+        }
+
+        .markdown-body ul {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
+
+        .markdown-body li {
+            margin-bottom: 0.5rem;
+            position: relative;
+            list-style-type: none;
+        }
+
+        .markdown-body li:before {
+            content: '•';
+            color: #0d6efd;
+            font-weight: bold;
+            position: absolute;
+            left: -1.2rem;
+        }
+
+        .markdown-body br + li:before {
+            content: '•';
+            color: #0d6efd;
+            font-weight: bold;
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+
+        /* 更新弹窗颜色和样式 */
+        .rounded-pill {
+            border-radius: 50rem !important;
+        }
+
+        /* 添加渐变效果 */
+        .bg-primary.bg-gradient {
+            background-image: linear-gradient(to right, #0d6efd, #0a58ca) !important;
+        }
+
+        /* 更新列表样式 */
+        .update-list {
+            padding-left: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .update-list li {
+            margin-bottom: 0.7rem;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .update-list li:before {
+            content: '•';
+            color: #0d6efd;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+            font-size: 1.2rem;
+        }
+
+        .update-content h1:first-child,
+        .update-content h2:first-child,
+        .update-content h3:first-child {
+            margin-top: 0 !important;
+        }
+
+        /* 添加动画效果 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-content {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        /* 弹窗居中样式 */
+        .modal-dialog-centered {
+            display: flex;
+            align-items: center;
+            min-height: calc(100% - 3.5rem);
+        }
+
+        /* 确保弹窗在显示时居中 */
+        .modal.show {
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            padding-top: 0 !important;
+        }
+
+       /* 确保弹窗内容完全可见 */
+       .modal-dialog {
+           max-height: 90vh;
+           margin: 1.75rem auto;
+           width: auto;
+           min-width: 500px;
+       }
+
+       /* 确保模态框大小合适 */
+       .modal-dialog.modal-lg {
+            max-width: 80%;
+            width: 800px;
+        }
+
+        .modal-body {
+            max-height: calc(90vh - 120px);
+            overflow-y: auto;
+        }
+
+        /* 确保模态框层级正确 */
+        .modal {
+            z-index: 1050 !important;
+        }
+
+        .modal-backdrop {
+            z-index: 1040 !important;
+        }
+
+        /* 按钮悬停效果 */
+        .btn-primary {
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(13, 110, 253, 0.25);
+        }
+
+        /* Web 对话悬浮组件 */
+        .webchat-widget-fab {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            z-index: 2147483000;
+        }
+
+        .webchat-widget-fab button {
+            width: 56px;
+            height: 56px;
+            border-radius: 999px;
+            border: none;
+            background: #0d6efd;
+            color: #fff;
+            box-shadow: 0 10px 24px rgba(13, 110, 253, 0.35);
+        }
+
+        .webchat-widget-fab button:hover {
+            filter: brightness(0.95);
+        }
+
+        .webchat-widget-window {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            width: 420px;
+            height: 620px;
+            background: #fff;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+            z-index: 2147483001;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            resize: both;
+            min-width: 340px;
+            min-height: 420px;
+        }
+
+        .webchat-widget-hidden {
+            display: none;
+        }
+
+        .webchat-widget-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: linear-gradient(135deg, rgba(13, 110, 253, 0.12), rgba(13, 110, 253, 0.03));
+            cursor: move;
+            user-select: none;
+        }
+
+        .webchat-widget-title {
+            font-weight: 600;
+        }
+
+        .webchat-widget-body {
+            flex: 1;
+            overflow: auto;
+            background: #f8f9fa;
+            padding: 12px;
+        }
+
+        .webchat-widget-footer {
+            display: flex;
+            gap: 8px;
+            padding: 10px;
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+            background: #fff;
+        }
+
+        .webchat-widget-messages {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .webchat-widget-msg {
+            max-width: 80%;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: #fff;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        .webchat-widget-msg.user {
+            margin-left: auto;
+            background: #0d6efd;
+            color: #fff;
+            border-color: transparent;
+        }
+
+        .webchat-widget-time {
+            margin-top: 6px;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .webchat-widget-media {
+            max-width: 100%;
+            border-radius: 10px;
+        }
+
+        .webchat-widget-input {
+            flex: 1;
+        }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="animate__animated animate__fadeIn">
+
+    <!-- 侧边栏遮罩层 -->
+    <div class="gradient-overlay"></div>
+    <div class="design-circle design-circle-1"></div>
+    <div class="design-circle design-circle-2"></div>
+
+   <!-- 侧边栏 -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h3 class="mb-0">
+                <i class="bi bi-pause-circle"></i>
+                <span>allbot</span>
+            </h3>
+        </div>
+
+        <div class="sidebar-menu">
+            <div class="sidebar-menu-section">
+                <div class="sidebar-menu-title">主要功能</div>
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
+                            <i class="bi bi-house-door"></i>
+                            <span>控制台</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/system" class="nav-link {% if request.path == '/system' %}active{% endif %}">
+                            <i class="bi bi-gear"></i>
+                            <span>系统管理</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/plugins" class="nav-link {% if request.path == '/plugins' %}active{% endif %}">
+                            <i class="bi bi-puzzle"></i>
+                            <span>插件管理</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/plugin-market" class="nav-link {% if request.path == '/plugin-market' %}active{% endif %}">
+                            <i class="bi bi-shop"></i>
+                            <span>插件市场</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/files" class="nav-link {% if request.path == '/files' %}active{% endif %}">
+                            <i class="bi bi-folder"></i>
+                            <span>文件管理</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/accounts" class="nav-link {% if request.path == '/accounts' %}active{% endif %}">
+                            <i class="bi bi-person-badge"></i>
+                            <span>账号管理</span>
+                        </a>
+                   </li>
+                    <li class="nav-item">
+                        <a href="/adapters" class="nav-link {% if request.path == '/adapters' %}active{% endif %}">
+                            <i class="bi bi-hdd-network"></i>
+                            <span>适配器管理</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/notification" class="nav-link {% if request.path == '/notification' %}active{% endif %}">
+                            <i class="bi bi-bell"></i>
+                            <span>通知管理</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sidebar-menu-section">
+                <div class="sidebar-menu-title">高级功能</div>
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a href="/contacts" class="nav-link {% if request.path == '/contacts' %}active{% endif %}">
+                            <i class="bi bi-people"></i>
+                            <span>联系人</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/friend_circle" class="nav-link {% if request.path == '/friend_circle' %}active{% endif %}">
+                            <i class="bi bi-image"></i>
+                            <span>朋友圈</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/reminders" class="nav-link {% if request.path == '/reminders' %}active{% endif %}">
+                            <i class="bi bi-alarm"></i>
+                            <span>定时提醒</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/ai-platforms" class="nav-link {% if request.path == '/ai-platforms' %}active{% endif %}">
+                            <i class="bi bi-robot"></i>
+                            <span>AI平台管理</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sidebar-menu-section">
+                <div class="sidebar-menu-title">设置</div>
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a href="/settings" class="nav-link {% if request.path == '/settings' %}active{% endif %}">
+                            <i class="bi bi-sliders"></i>
+                            <span>设置</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/github-proxy" class="nav-link {% if request.path == '/github-proxy' %}active{% endif %}">
+                            <i class="bi bi-git"></i>
+                            <span>Git反代列表</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/about" class="nav-link {% if request.path == '/about' %}active{% endif %}">
+                            <i class="bi bi-info-circle"></i>
+                            <span>关于</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="sidebar-menu-section">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a href="/qrcode" class="nav-link special-link">
+                            <i class="bi bi-qr-code"></i>
+                            <span>登录二维码</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="sidebar-footer">
+            <span>© 2025 老夏的金库</span>
+        </div>
+    </nav>
+
+    <!-- 主内容区域 -->
+    <div class="main-content">
+        <!-- 顶部导航栏 -->
+        <nav class="navbar navbar-expand navbar-light topbar mb-4 shadow-sm animate__animated animate__fadeInDown">
+            <div class="container-fluid">
+               <div class="topbar-left">
+                    <button class="sidebar-toggler me-2" id="sidebar-toggler" type="button">
+                        <i class="bi bi-list"></i>
+                    </button>
+                    <h1 class="h4 mb-0 text-gray-800">{% block page_title %}控制面板{% endblock %}</h1>
+                    <div class="ms-3">{% block page_actions %}{% endblock %}</div>
+                </div>
+
+                <div class="topbar-right">
+                    <!-- 版本信息 -->
+                    <div class="topbar-version" id="version-display" onclick="manualCheckUpdate(event)" title="点击检查更新" style="cursor: pointer;">
+                        <span id="current-version">{{ version }}</span>
+                    </div>
+
+                    <!-- 更新按钮 -->
+                    <div id="update-container" style="display: none !important;">
+                        <button class="topbar-update-btn" onclick="updateNow()" data-bs-toggle="tooltip" title="立即更新到最新版本">
+                            <i class="bi bi-arrow-up-circle-fill me-1"></i>更新到 <span id="latest-version">{{ latest_version }}</span>
+                        </button>
+                    </div>
+
+                    <!-- 用户信息 -->
+                    <div class="topbar-user" onclick="showUserMenu()">
+                        <div class="topbar-user-avatar">
+                            <i class="bi bi-person"></i>
+                        </div>
+                        <span class="topbar-user-name d-none d-md-inline">管理员</span>
+                    </div>
+                    <a href="/logout" class="btn btn-sm btn-outline-danger ms-2">
+                        <i class="bi bi-box-arrow-right"></i>
+                        <span class="d-none d-md-inline">退出</span>
+                    </a>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 主要内容区 -->
+        <div class="content-wrapper" data-aos="fade-up">
+            {% block content %}{% endblock %}
+        </div>
+
+        <!-- 页脚 -->
+        <footer class="footer mt-5 py-3 text-center animate__animated animate__fadeInUp">
+            <div class="container">
+                <div class="disclaimer-banner bg-warning bg-opacity-10 p-2 mb-3 rounded shadow-sm">
+                    <p class="mb-0 fw-bold text-warning">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i> 免责声明：本项目仅供学习交流使用，严禁用于商业用途！
+                    </p>
+                </div>
+                <span class="text-muted">allbot © 2025 - 技术支持 <a href="https://github.com/sxkiss/allbot/" class="text-decoration-none" target="_blank">sxkissTeam</a></span>
+                <div class="mt-2">
+                    <a href="https://github.com/sxkiss/allbot/" class="btn btn-sm btn-outline-secondary me-1" title="GitHub">
+                        <i class="bi bi-github"></i> GitHub
+                    </a>
+                    <a href="#" class="btn btn-sm btn-outline-secondary me-1" title="Discord">
+                        <i class="bi bi-discord"></i> Discord
+                    </a>
+                <div class="mt-3 d-flex justify-content-center gap-3 flex-wrap">
+                    <div class="text-center">
+                        <img src="/static/img/tg.jpg" alt="Telegram 交流群" class="img-thumbnail" style="max-height: 80px;" onerror="this.style.display=none;" />
+                        <div class="small text-muted mt-1">Telegram 群</div>
+                    <div class="text-center">
+                        <div class="small text-muted mt-1">感谢赞助</div>
+                </div>
+            </div>
+                    </div>
+                </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Toast通知组件 -->
+    <div class="toast-container position-fixed top-0 end-0 p-3">
+        <!-- 通知会动态添加到这里 -->
+    </div>
+
+    <!-- Web 对话悬浮入口与窗口（单会话） -->
+    <div class="webchat-widget-fab" id="webchat-widget-fab">
+        <button type="button" id="webchat-widget-open" aria-label="打开 Web 对话" title="Web 对话">
+            <i class="bi bi-chat-dots"></i>
+        </button>
+    </div>
+
+    <div class="webchat-widget-window webchat-widget-hidden" id="webchat-widget-window" aria-hidden="true">
+        <div class="webchat-widget-header" id="webchat-widget-header">
+            <div class="webchat-widget-title">
+                <i class="bi bi-chat-dots me-1"></i>Web 对话
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="webchat-widget-minimize" title="最小化">
+                    <i class="bi bi-dash-lg"></i>
+                </button>
+            </div>
+        </div>
+        <div class="webchat-widget-body" id="webchat-widget-body">
+            <div class="webchat-widget-messages" id="webchat-widget-messages">
+                <div class="text-center text-muted py-4">
+                    <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                    <div class="mt-2">正在加载对话...</div>
+                </div>
+            </div>
+        </div>
+        <div class="webchat-widget-footer">
+            <button type="button" class="btn btn-outline-secondary" id="webchat-widget-upload" title="上传文件">
+                <i class="bi bi-paperclip"></i>
+            </button>
+            <input type="file" id="webchat-widget-file" style="display:none" />
+            <input type="text" class="form-control webchat-widget-input" id="webchat-widget-input" placeholder="输入消息..." />
+            <button type="button" class="btn btn-primary" id="webchat-widget-send">发送</button>
+        </div>
+    </div>
+
+    <!-- 本地JS库 -->
+    <script src="/static/js/lib/bootstrap.bundle.min.js"></script>
+
+    <!-- AOS滚动动画库 -->
+    <script src="/static/js/lib/aos.js"></script>
+
+    <!-- Chart.js图表库 -->
+    <script src="/static/js/lib/chart.umd.min.js"></script>
+
+    <!-- 自定义JS -->
+    <script>
+        // 用户菜单显示函数
+        function showUserMenu() {
+            // 检查是否已存在用户菜单
+            let userMenu = document.getElementById('user-dropdown-menu');
+
+            // 如果不存在，创建一个
+            if (!userMenu) {
+                userMenu = document.createElement('div');
+                userMenu.id = 'user-dropdown-menu';
+                userMenu.className = 'dropdown-menu shadow-lg animate__animated animate__fadeIn';
+                userMenu.style.position = 'absolute';
+                userMenu.style.right = '20px';
+                userMenu.style.top = '60px';
+                userMenu.style.zIndex = '1000';
+                userMenu.style.minWidth = '200px';
+                userMenu.style.padding = '8px 0';
+                userMenu.style.backgroundColor = '#fff';
+                userMenu.style.borderRadius = '4px';
+                userMenu.style.boxShadow = '0 0.5rem 1rem rgba(0, 0, 0, 0.15)';
+
+                // 添加菜单项
+                userMenu.innerHTML = `
+                    <div class="px-4 py-3 border-bottom">
+                        <h6 class="mb-0">管理员账户</h6>
+                        <small class="text-muted">admin@example.com</small>
+                    </div>
+                    <a class="dropdown-item py-2" href="/settings">
+                        <i class="bi bi-gear me-2"></i>系统设置
+                    </a>
+                    <a class="dropdown-item py-2" href="/about">
+                        <i class="bi bi-info-circle me-2"></i>关于系统
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <a class="dropdown-item py-2 text-danger" href="/logout">
+                        <i class="bi bi-box-arrow-right me-2"></i>退出登录
+                    </a>
+                `;
+
+                document.body.appendChild(userMenu);
+
+                // 点击其他区域关闭菜单
+                document.addEventListener('click', function(event) {
+                    if (!event.target.closest('.topbar-user') && !event.target.closest('#user-dropdown-menu')) {
+                        const menu = document.getElementById('user-dropdown-menu');
+                        if (menu) {
+                            menu.remove();
+                        }
+                    }
+                });
+            } else {
+                // 如果已存在，则移除它
+                userMenu.remove();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化AOS动画
+            AOS.init({
+                duration: 800,
+                easing: 'ease-in-out',
+                once: true,
+                offset: 50
+            });
+
+            // 初始化所有提示框
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+
+            // 显示通知函数
+            window.showToast = function(title, message, type = 'info') {
+                const toastContainer = document.querySelector('.toast-container');
+
+                const toastEl = document.createElement('div');
+                toastEl.className = `toast animate__animated animate__fadeInRight bg-${type} text-white`;
+                toastEl.setAttribute('role', 'alert');
+                toastEl.setAttribute('aria-live', 'assertive');
+                toastEl.setAttribute('aria-atomic', 'true');
+
+                const toastHeader = document.createElement('div');
+                toastHeader.className = 'toast-header bg-transparent text-white';
+
+                const strongEl = document.createElement('strong');
+                strongEl.className = 'me-auto';
+                strongEl.textContent = title;
+
+                const timeEl = document.createElement('small');
+                timeEl.textContent = '刚刚';
+
+                const closeButton = document.createElement('button');
+                closeButton.type = 'button';
+                closeButton.className = 'btn-close btn-close-white';
+                closeButton.setAttribute('data-bs-dismiss', 'toast');
+                closeButton.setAttribute('aria-label', '关闭');
+
+                toastHeader.appendChild(strongEl);
+                toastHeader.appendChild(timeEl);
+                toastHeader.appendChild(closeButton);
+
+                const toastBody = document.createElement('div');
+                toastBody.className = 'toast-body';
+                toastBody.textContent = message;
+
+                toastEl.appendChild(toastHeader);
+                toastEl.appendChild(toastBody);
+
+                toastContainer.appendChild(toastEl);
+
+                const toast = new bootstrap.Toast(toastEl);
+                toast.show();
+
+                toastEl.addEventListener('hidden.bs.toast', function() {
+                    toastEl.remove();
+                });
+            };
+
+            // 重启容器函数
+            window.restartContainer = function() {
+                console.log('重启容器按钮被点击 (内联函数)');
+
+                if (confirm('确定要重启容器吗？这将导致服务短暂中断。')) {
+                    console.log('用户确认重启');
+
+                    // 显示加载状态
+                    const restartBtn = document.getElementById('restart-container-btn');
+                    if (restartBtn) {
+                        restartBtn.disabled = true;
+                        restartBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>重启中...';
+                    }
+
+                    // 使用当前主机名和端口构建正确的URL
+                    const apiUrl = window.location.origin + '/api/system/restart';
+                    console.log('发送重启请求到:', apiUrl);
+
+                    // 调用重启API
+                    fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        credentials: 'include',  // 确保发送认证Cookie
+                        body: JSON.stringify({})
+                    })
+                    .then(response => {
+                        console.log('收到重启API响应:', response);
+                        if (!response.ok) {
+                            throw new Error('API响应状态码: ' + response.status);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log('重启API响应数据:', data);
+
+                        if (data.success) {
+                            // 显示成功消息
+                            showToast('重启已开始', data.message || '容器正在重启，页面将在几秒后自动刷新...', 'success');
+
+                            // 5秒后刷新页面
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 5000);
+                        } else {
+                            // 显示错误
+                            showToast('重启失败', data.error || '重启请求失败', 'error');
+                            // 恢复按钮状态
+                            if (restartBtn) {
+                                restartBtn.disabled = false;
+                                restartBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>重启容器';
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('重启请求失败:', error);
+                        showToast('重启失败', '请求发送失败: ' + error.message, 'error');
+                        // 恢复按钮状态
+                        const restartBtn = document.getElementById('restart-container-btn');
+                        if (restartBtn) {
+                            restartBtn.disabled = false;
+                            restartBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>重启容器';
+                        }
+                    });
+                }
+            };
+        });
+    </script>
+
+    <!-- 通用模态窗口管理 -->
+    <script src="/admin/static/js/custom.js?v={{ version }}"></script>
+
+    <!-- Web 对话悬浮窗口 -->
+    <script src="/static/js/webchat_widget.js?v={{ version }}"></script>
+
+    <!-- 版本检查脚本 -->
+    <script>
+        // 手动检查更新函数
+        function manualCheckUpdate(event) {
+            // 阻止事件冒泡
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
+            console.log('开始手动检查更新');
+
+            const versionDisplay = document.getElementById('version-display');
+            const currentVersionElement = document.getElementById('current-version');
+
+            if (!currentVersionElement) {
+                console.error("Element with ID 'current-version' not found when starting manual check.");
+                showToast('错误', '无法检查更新：版本元素丢失。', 'danger');
+                return;
+            }
+
+            const currentVersionText = currentVersionElement.innerText; // 读取当前版本号
+            const originalDisplayHTML = versionDisplay.innerHTML; // 保存原始显示内容
+
+            // 显示加载状态
+            versionDisplay.innerHTML = '<i class="bi bi-arrow-repeat animate__animated animate__rotateIn"></i> 检查中...';
+
+            // 默认隐藏更新容器
+            const updateContainer = document.getElementById('update-container');
+            if (updateContainer) {
+                updateContainer.style.display = 'none'; // 先隐藏
+            }
+
+            // 隐藏可能存在的tooltip
+            const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltips.forEach(el => {
+                const tooltipInstance = bootstrap.Tooltip.getInstance(el);
+                if (tooltipInstance) {
+                    tooltipInstance.hide();
+                }
+            });
+
+            // 调用检查函数，并传入当前版本号
+            checkForUpdates(true, currentVersionText)
+                .then(hasUpdate => {
+                    console.log('检查更新完成，是否有更新:', hasUpdate);
+                    // 恢复版本显示
+                    setTimeout(() => {
+                        versionDisplay.innerHTML = originalDisplayHTML;
+                    }, 1000);
+                })
+                .catch(error => {
+                    console.error('手动检查更新失败:', error);
+                    // 恢复版本显示
+                    setTimeout(() => {
+                        versionDisplay.innerHTML = originalDisplayHTML;
+                        // checkForUpdates 内部的 catch 应该已经显示了 Toast，这里避免重复
+                        // 但如果错误发生在 checkForUpdates 调用之前或之外，则可能需要一个通用的 Toast
+                        if (error && error.message && !error.message.includes("HTTP error") && !error.message.includes("无法读取当前版本信息")) {
+                             showToast('检查失败', '操作未能完成: ' + error.message, 'danger');
+                        }
+                    }, 1000);
+                });
+        }
+
+        // 立即更新函数
+        function updateNow() {
+            if (!confirm('确定要立即更新到最新版本吗？更新过程中可能会导致服务短暂中断。')) {
+                return;
+            }
+
+            // 显示加载状态
+            const updateBtn = document.querySelector('.topbar-update-btn');
+            const originalHTML = updateBtn.innerHTML;
+            updateBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 更新中...';
+            updateBtn.disabled = true;
+
+            // 发送更新请求
+            fetch('/api/version/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    current_version: document.getElementById('current-version').innerText
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // 显示成功消息
+                    showToast('更新已开始', data.message || '系统正在更新并重启，请稍候...', 'success');
+
+                    // 显示加载中的提示
+                    const loadingDiv = document.createElement('div');
+                    loadingDiv.className = 'position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center bg-dark bg-opacity-75';
+                    loadingDiv.style.zIndex = '9999';
+                    loadingDiv.innerHTML = `
+                        <div class="card shadow p-4 text-center">
+                            <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                                <span class="visually-hidden">加载中...</span>
+                            </div>
+                            <h5 class="mb-2">系统正在更新并重启</h5>
+                            <p class="text-muted mb-2">请稍候，这可能需要几秒钟时间...</p>
+                            <div class="progress mb-3">
+                                <div id="restart-progress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <p class="small text-muted">更新完成后将自动跳转到登录页面</p>
+                        </div>
+                    `;
+                    document.body.appendChild(loadingDiv);
+
+                    // 进度条动画
+                    const progressBar = document.getElementById('restart-progress');
+                    let progress = 0;
+                    const progressInterval = setInterval(() => {
+                        progress += 2;
+                        if (progress > 100) {
+                            clearInterval(progressInterval);
+                            // 重启完成，跳转到登录页面
+                            window.location.href = '/qrcode';
+                        } else {
+                            progressBar.style.width = `${progress}%`;
+                        }
+                    }, 200); // 20秒完成进度条
+                } else {
+                    // 显示错误
+                    showToast('更新失败', data.error || '更新请求失败', 'danger');
+                    // 恢复按钮状态
+                    updateBtn.disabled = false;
+                    updateBtn.innerHTML = originalHTML;
+                }
+            })
+            .catch(error => {
+                console.error('更新请求失败:', error);
+                showToast('更新失败', '请求发送失败: ' + error.message, 'danger');
+                // 恢复按钮状态
+                updateBtn.disabled = false;
+                updateBtn.innerHTML = originalHTML;
+            });
+        }
+
+        // 版本检查函数 - 修改后接受 versionFromCaller
+        function checkForUpdates(isManualCheck = false, versionFromCaller = null) {
+            // 获取当前版本: 如果 versionFromCaller 有值，则用它；否则从 DOM 读取
+            const currentVersion = versionFromCaller || document.getElementById('current-version')?.innerText;
+
+            if (!currentVersion) {
+                console.error("checkForUpdates: 无法确定当前版本。");
+                if (isManualCheck) { // 只有手动检查时，如果版本号读不到才弹toast，自动检查时静默失败
+                    showToast('错误', '无法读取当前版本信息。', 'danger');
+                }
+                return Promise.reject(new Error("无法读取当前版本信息。")); // 必须 reject promise
+            }
+
+            console.log('当前版本 (用于检查):', currentVersion);
+
+            // 返回一个Promise
+            return new Promise((resolve, reject) => {
+                // 发送版本检查请求
+                fetch('/api/version/check', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        current_version: currentVersion // 使用确定的 currentVersion
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('版本检查响应:', data);
+
+                    const forceUpdate = Boolean(data.force_update || data.forceUpdate);
+
+                    // 不需要从DOM重新获取currentVersion，我们已经有了正确的currentVersion变量
+
+                    // 检查是否有更新（支持强制更新：版本号相同也提示更新）
+                    if (data.success && (forceUpdate || (data.update_available && data.latest_version !== currentVersion))) {
+                        console.log('发现新版本:', data.latest_version);
+
+                        // 检查是否已经选择"不再提醒"此版本
+                        const ignoredVersion = localStorage.getItem('ignoreUpdateVersion');
+                        const shouldShowModal = !ignoredVersion || ignoredVersion !== data.latest_version;
+
+                        // 更新版本信息显示
+                        const updateContainer = document.getElementById('update-container');
+                        const latestVersionSpan = document.getElementById('latest-version');
+
+                        // 更新版本号
+                        if (latestVersionSpan) {
+                            latestVersionSpan.textContent = data.latest_version;
+                        } else {
+                            console.error('latest-version span element not found');
+                        }
+
+                        // 显示更新容器
+                        if (updateContainer) {
+                            updateContainer.removeAttribute('style');
+                            updateContainer.setAttribute('style', 'display: flex !important;');
+                            updateContainer.classList.add('d-flex');
+                        } else {
+                            console.error('更新容器元素不存在');
+                        }
+
+                        // 只有在未选择"不再提醒"或手动检查时才显示更新内容弹窗
+                        if (shouldShowModal || isManualCheck) {
+                            // 显示更新内容弹窗，并传递正确的当前版本号
+                            console.log('准备显示更新内容弹窗，当前版本:', currentVersion, '最新版本:', data.latest_version);
+                            showUpdateContentModal(currentVersion, data.latest_version, data.update_description);
+
+                            // 如果是手动检查，清除弹窗显示状态和忽略标记
+                            if (isManualCheck) {
+                                localStorage.removeItem('updateModalShown');
+                                localStorage.removeItem('ignoreUpdateVersion'); // 手动检查时清除忽略标记
+                                showToast('发现新版本', `有新版本可用: ${data.latest_version}`, 'success');
+                            }
+                        } else {
+                            console.log('用户已选择不再提醒此版本更新:', data.latest_version);
+                        }
+
+                        // 初始化工具提示
+                        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                        tooltipTriggerList.map(function (tooltipTriggerEl) {
+                            return new bootstrap.Tooltip(tooltipTriggerEl);
+                        });
+
+                        // 保存更新信息到本地存储
+                        localStorage.setItem('updateInfo', JSON.stringify({
+                            latest_version: data.latest_version,
+                            update_url: data.update_url,
+                            update_description: data.update_description
+                        }));
+
+                        // 返回有更新
+                        resolve(true);
+                    } else {
+                        console.log('没有新版本或版本相同');
+
+                        // 如果版本相同且非强制更新，隐藏更新容器
+                        if (data.success && data.latest_version === currentVersion && !forceUpdate) {
+                            // 隐藏更新容器
+                            const updateContainer = document.getElementById('update-container');
+                            if (updateContainer) {
+                                updateContainer.removeAttribute('style');
+                                updateContainer.setAttribute('style', 'display: none !important;');
+                                updateContainer.classList.remove('d-flex');
+                            }
+                            // 清除本地存储的更新信息
+                            localStorage.removeItem('updateInfo');
+                        }
+
+                        // 显示消息（如果是手动检查）
+                        if (isManualCheck) {
+                            showToast('检查完成', '当前已经是最新版本', 'info');
+                        }
+
+                        // 返回没有更新
+                        resolve(false);
+                    }
+                })
+                .catch(error => {
+                    console.error('版本检查API请求失败:', error);
+                    if (isManualCheck) { // 仅在手动检查时，API失败也提示用户
+                       showToast('检查失败', '无法连接到更新服务器: ' + error.message, 'danger');
+                    }
+                    reject(error); //确保Promise被拒绝
+                });
+            });
+        }
+
+        // 立即更新函数已在上面定义
+
+        // 显示更新内容弹窗函数 - 修改后接受 currentVersionFromCaller
+        function showUpdateContentModal(currentVersionFromCaller, latestVersion, updateDescription) {
+            console.log('显示更新内容弹窗，接收到的当前版本:', currentVersionFromCaller, '最新版本:', latestVersion);
+
+            try {
+                // 检查模态框元素是否存在
+                const modalElement = document.getElementById('update-content-modal');
+                if (!modalElement) {
+                    console.error('更新内容模态框元素不存在');
+                    alert('无法显示更新内容，请刷新页面后重试');
+                    return;
+                }
+
+                // 更新模态框中的版本信息
+                const modalCurrentVersionElement = document.getElementById('modal-current-version');
+                const modalLatestVersionElement = document.getElementById('modal-latest-version');
+
+                if (!modalCurrentVersionElement || !modalLatestVersionElement) {
+                    console.error('模态框内的版本信息元素不存在');
+                    alert('无法显示更新内容，请刷新页面后重试');
+                    return;
+                }
+
+                modalCurrentVersionElement.textContent = currentVersionFromCaller; // 使用传入的当前版本
+                modalLatestVersionElement.textContent = latestVersion;
+
+                // 处理更新内容
+                const updateContentElement = document.getElementById('update-description-content');
+                if (!updateContentElement) {
+                    console.error('更新内容元素不存在');
+                    alert('无法显示更新内容，请刷新页面后重试');
+                    return;
+                }
+
+                // 将更新描述转换为HTML
+                if (updateDescription) {
+                    // 简化处理，避免复杂的正则表达式
+                    let htmlContent = '';
+
+                    // 将更新描述按行分割
+                    const lines = updateDescription.split('\n');
+                    let inList = false;
+                    let inSection = false;
+
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+
+                        // 空行处理
+                        if (line === '') {
+                            if (inList) {
+                                htmlContent += '</ul>';
+                                inList = false;
+                            }
+                            if (inSection) {
+                                // 不添加额外的空行，保持段落结构
+                            } else {
+                                htmlContent += '<div class="my-3"></div>'; // 添加间距而不是空行
+                                inSection = true;
+                            }
+                            continue;
+                        } else {
+                            inSection = false;
+                        }
+
+                        // 标题处理
+                        if (line.startsWith('# ')) {
+                            if (inList) {
+                                htmlContent += '</ul>';
+                                inList = false;
+                            }
+                            htmlContent += `<h1 class="mt-4">${line.substring(2)}</h1>`;
+                        } else if (line.startsWith('## ')) {
+                            if (inList) {
+                                htmlContent += '</ul>';
+                                inList = false;
+                            }
+                            htmlContent += `<h2 class="mt-4">${line.substring(3)}</h2>`;
+                        } else if (line.startsWith('### ')) {
+                            if (inList) {
+                                htmlContent += '</ul>';
+                                inList = false;
+                            }
+                            htmlContent += `<h3 class="mt-3">${line.substring(4)}</h3>`;
+                        }
+                        // 列表项处理
+                        else if (line.startsWith('- ')) {
+                            if (!inList) {
+                                htmlContent += '<ul class="update-list">';
+                                inList = true;
+                            }
+                            htmlContent += `<li>${line.substring(2)}</li>`;
+                        }
+                        // 数字列表处理
+                        else if (/^\d+\.\s/.test(line)) {
+                            const textContent = line.replace(/^\d+\.\s/, '');
+                            if (!inList) {
+                                htmlContent += '<ul class="update-list">';
+                                inList = true;
+                            }
+                            htmlContent += `<li>${textContent}</li>`;
+                        }
+                        // 普通文本
+                        else {
+                            if (inList) {
+                                htmlContent += '</ul>';
+                                inList = false;
+                            }
+                            htmlContent += `<p>${line}</p>`;
+                        }
+                    }
+
+                    // 确保列表正确关闭
+                    if (inList) {
+                        htmlContent += '</ul>';
+                    }
+
+                    // 添加额外的样式类
+                    htmlContent = `<div class="update-content">${htmlContent}</div>`;
+
+                    updateContentElement.innerHTML = htmlContent;
+                } else {
+                    updateContentElement.innerHTML = '<div class="text-center py-4"><i class="bi bi-info-circle text-muted fs-1 mb-3"></i><p class="text-muted">暂无详细的更新内容描述</p></div>';
+                }
+
+                // 重置"不再提醒"复选框
+                const dontRemindCheckbox = document.getElementById('dont-remind-again');
+                if (dontRemindCheckbox) {
+                    dontRemindCheckbox.checked = false;
+                } else {
+                    console.error('不再提醒复选框元素不存在');
+                }
+
+                // 显示模态框
+                try {
+                    // 检查是否已经存在模态框实例
+                    let modal = bootstrap.Modal.getInstance(modalElement);
+
+                    // 如果已存在，先销毁它
+                    if (modal) {
+                        modal.dispose();
+                    }
+
+                    // 创建新的模态框实例
+                    modal = new bootstrap.Modal(modalElement, {
+                        backdrop: 'static',  // 点击背景不关闭
+                        keyboard: true       // 允许按ESC关闭
+                    });
+
+                    // 添加模态框关闭事件监听器
+                    modalElement.addEventListener('hidden.bs.modal', function () {
+                        // 检查"不再提醒"复选框是否被勾选
+                        const checkbox = document.getElementById('dont-remind-again');
+                        if (checkbox && checkbox.checked) {
+                            // 保存当前版本信息到localStorage，标记为"不再提醒"
+                            localStorage.setItem('ignoreUpdateVersion', latestVersion);
+                            console.log('用户选择不再提醒此版本更新:', latestVersion);
+                        }
+                    }, { once: true }); // 只执行一次
+
+                    // 显示模态框
+                    modal.show();
+                    console.log('更新内容弹窗已显示');
+                } catch (e) {
+                    console.error('显示模态框失败:', e);
+                    alert('显示更新内容弹窗失败，请刷新页面后重试');
+                }
+            } catch (e) {
+                console.error('显示更新内容弹窗失败:', e);
+                alert('显示更新内容弹窗失败，请刷新页面后重试');
+            }
+        }
+
+        // 获取Cookie函数
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    // 判断这个cookie的名称是否是我们想要的
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化工具提示
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+
+            // 隐藏更新容器（默认状态）
+            const updateContainer = document.getElementById('update-container');
+            if (updateContainer) {
+                updateContainer.removeAttribute('style');
+                updateContainer.setAttribute('style', 'display: none !important;');
+                updateContainer.classList.remove('d-flex');
+            }
+
+            // 检查是否有存储的更新信息
+            const storedUpdateInfo = localStorage.getItem('updateInfo');
+            if (storedUpdateInfo) {
+                try {
+                    const updateInfo = JSON.parse(storedUpdateInfo);
+                    const currentVersion = document.getElementById('current-version').innerText;
+
+                    // 只有当存储的版本与当前版本不同时才显示更新标记
+                    if (updateInfo.latest_version !== currentVersion) {
+                        // 更新版本信息显示
+                        const latestVersionSpan = document.getElementById('latest-version');
+                        const updateBadge = document.getElementById('update-badge');
+
+                        // 更新版本号和描述
+                        latestVersionSpan.textContent = updateInfo.latest_version;
+                        updateBadge.setAttribute('title', updateInfo.update_description || '有新版本可用');
+                        updateBadge.setAttribute('href', updateInfo.update_url || '#');
+
+                        // 显示更新容器
+                        updateContainer.removeAttribute('style');
+                        updateContainer.setAttribute('style', 'display: flex !important;');
+                        updateContainer.classList.add('d-flex');
+
+                        // 检查是否已经选择"不再提醒"此版本
+                        const ignoredVersion = localStorage.getItem('ignoreUpdateVersion');
+                        const shouldShowModal = !ignoredVersion || ignoredVersion !== updateInfo.latest_version;
+
+                        // 显示更新内容弹窗，延迟3秒显示，确保页面已完全加载
+                        // 并且仅在首次加载时显示一次，且未选择"不再提醒"
+                        if (!localStorage.getItem('updateModalShown') && shouldShowModal) {
+                            setTimeout(() => {
+                                // 检查必要的元素是否存在
+                                const modalElement = document.getElementById('update-content-modal');
+                                const currentVersionElement = document.getElementById('current-version');
+
+                                if (modalElement && currentVersionElement) {
+                                    showUpdateContentModal(currentVersion, updateInfo.latest_version, updateInfo.update_description);
+                                    // 记录已经显示过弹窗
+                                    localStorage.setItem('updateModalShown', 'true');
+                                }
+                            }, 3000);
+                        } else if (!shouldShowModal) {
+                            console.log('用户已选择不再提醒此版本更新:', updateInfo.latest_version);
+                        }
+                    } else {
+                        // 如果版本相同，清除存储的更新信息
+                        localStorage.removeItem('updateInfo');
+                    }
+                } catch (e) {
+                    console.error('解析存储的更新信息失败:', e);
+                    localStorage.removeItem('updateInfo');
+                }
+            }
+
+            // 每小时检查一次更新
+            checkForUpdates().catch(error => console.error('自动检查更新失败 (每小时):', error));
+            setInterval(() => {
+                checkForUpdates().catch(error => console.error('自动检查更新失败 (每小时 interval):', error));
+            }, 3600000); // 3600000毫秒 = 1小时
+
+            // 添加更新按钮的事件监听器
+            document.getElementById('modal-update-now-btn').addEventListener('click', updateNow);
+        });
+    </script>
+
+    <!-- 页面特定的JS -->
+    {% block extra_js %}{% endblock %}
+
+    <!-- 模态框容器 -->
+    {% block modals %}{% endblock %}
+
+    <!-- 更新内容弹窗 -->
+    <div class="modal fade" id="update-content-modal" tabindex="-1" aria-labelledby="updateContentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg" style="max-width: 650px; margin: 0 auto; transform: translateY(-5vh);">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-light text-dark">
+                    <h5 class="modal-title" id="updateContentModalLabel">
+                        <i class="bi bi-arrow-up-circle-fill me-2 text-primary"></i>系统更新提示
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body p-4" style="max-height: 60vh; overflow-y: auto;">
+                    <div class="d-flex align-items-center justify-content-center mb-4">
+                        <div class="me-4">
+                            <span class="badge bg-secondary fs-6 p-2 px-3 rounded-pill">
+                                <i class="bi bi-code-slash me-1"></i>当前版本: <span id="modal-current-version" class="fw-bold">{{ version }}</span>
+                            </span>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <div class="arrow-right me-2">
+                                <i class="bi bi-arrow-right fs-4 text-muted"></i>
+                            </div>
+                            <span class="badge bg-primary fs-6 p-2 px-3 rounded-pill">
+                                <i class="bi bi-arrow-up-circle-fill me-1"></i>新版本: <span id="modal-latest-version" class="fw-bold">{{ latest_version }}</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3 border-0 shadow-sm">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0 d-flex align-items-center">
+                                <i class="bi bi-list-check me-2 text-primary"></i>更新内容
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="update-description-content" class="markdown-body">
+                                <!-- 更新内容将通过JavaScript动态加载 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer justify-content-between border-0 pt-0 pb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="dont-remind-again">
+                        <label class="form-check-label" for="dont-remind-again">
+                            不再提醒此版本
+                        </label>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="padding: 0.375rem 0.75rem;">
+                            <i class="bi bi-x-circle me-1"></i>关闭
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" id="modal-update-now-btn" style="padding: 0.375rem 0.75rem;">
+                            <i class="bi bi-cloud-download me-1"></i>立即更新
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 免责声明弹窗 -->
+    <div class="modal fade" id="disclaimerModal" tabindex="-1" aria-labelledby="disclaimerModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-warning bg-opacity-10 text-dark">
+                    <h5 class="modal-title" id="disclaimerModalLabel">
+                        <i class="bi bi-exclamation-triangle-fill me-2 text-warning"></i>免责声明
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="alert alert-warning mb-4">
+                        <h5 class="alert-heading"><i class="bi bi-exclamation-circle me-2"></i>重要提示</h5>
+                        <p class="mb-0"><strong>本项目仅供学习交流使用，严禁用于任何商业用途！</strong></p>
+                    </div>
+
+                    <div class="card mb-3 border-0 shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3">免责声明详情</h5>
+                            <ol class="ps-3">
+                                <li class="mb-2">本项目是一个开源的学习和研究工具，仅用于技术研究和学习交流目的。</li>
+                                <li class="mb-2">使用本项目所产生的一切法律责任和风险，由使用者自行承担，与项目作者和贡献者无关。</li>
+                                <li class="mb-2">使用本项目前，请确保您的行为符合当地法律法规，并遵守相关服务条款。</li>
+                                <li class="mb-2">严禁将本项目用于任何商业用途或违法活动。</li>
+                                <li class="mb-2">项目作者保留随时修改本声明的权利。</li>
+                            </ol>
+                            <p class="mt-3 mb-0 text-muted small">使用本项目即表示您已阅读并同意上述免责声明。</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer justify-content-center border-0">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
+                        <i class="bi bi-check-circle me-1"></i>我已了解
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

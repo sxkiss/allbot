@@ -1,0 +1,43 @@
+[Hermes]
+# 插件总开关
+enable = true
+
+# === Gateway API (8642 端口) - OpenAI 兼容接口 ===
+api-base-url = "http://example.internal:8642"
+api-key = "e8745b717a6a883fa15e8392b0a7093219050da61c2a94faf2c35d8ddf822e44"
+
+request-timeout-seconds = 1800
+connect-timeout-seconds = 30
+model-name = "auto"
+stream-enable = true
+max-reply-chars = 1800
+session-prefix = "allbot-hermes"
+group-history-count = 0
+
+auto-trigger-enable = true
+trigger-words = ["hermes", "opencode"]
+trigger-match-mode = "contains"
+trigger-strip-word = true
+trigger-timeout-seconds = 1800
+trigger-use-session-key = true
+task-start-ack-enable = false
+task-start-ack-text = "已收到，Hermes 正在处理中，请稍候…"
+task-timeout-notify-enable = true
+task-timeout-notify-text = "Hermes 任务超时未返回（超过 {timeout} 秒），请稍后重试或精简一下问题"
+private-auto-forward-enable = false
+slash-command-forward-enable = true
+propagate-to-other-plugins = true
+dedup-enable = true
+dedup-window-seconds = 3
+method-help-keywords = ["帮助", "命令", "命令列表", "常用命令"]
+at-auto-forward-enable = true
+image-auto-forward-enable = true
+image-forward-mode = "url"
+quote-include-enable = true
+image-base64-max-chars = 0
+image-public-base-url = "http://example.internal:9090"
+image-public-route-prefix = "/media/files"
+system-prompt = ""
+session-reset-commands = ["/new", "/reset"]
+pseudo-stream-enable = false
+pseudo-stream-chunk-size = 230

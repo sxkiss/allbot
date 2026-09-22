@@ -1,0 +1,828 @@
+{% extends "base.html" %}
+
+{% block title %}插件管理 - AllBot管理后台{% endblock %}
+
+{% block page_title %}插件管理{% endblock %}
+
+{% block extra_css %}
+<!-- Markdown渲染库 -->
+<link rel="stylesheet" href="/static/css/lib/github-markdown.min.css">
+<style>
+    /* Markdown内容样式 */
+    .markdown-body {
+        box-sizing: border-box;
+        min-width: 200px;
+        max-width: 100%;
+        padding: 15px;
+        background-color: #fff;
+        border-radius: 8px;
+    }
+
+    .markdown-body img {
+        max-width: 100%;
+        height: auto;
+    }
+
+    /* 插件过滤器优化样式 */
+    .filter-section {
+        margin-bottom: 0;
+    }
+    
+    .filter-section .btn-group {
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border-radius: 5px;
+        overflow: hidden;
+    }
+    
+    .filter-section .btn {
+        border-radius: 0;
+        font-weight: 500;
+        border-width: 1px;
+        border-right-width: 0;
+        font-size: 0.8rem;
+        padding: 0.3rem 0.7rem;
+        transition: all 0.15s ease;
+    }
+    
+    .filter-section .btn:first-child {
+        border-top-left-radius: 5px;
+        border-bottom-left-radius: 5px;
+    }
+    
+    .filter-section .btn:last-child {
+        border-top-right-radius: 5px;
+        border-bottom-right-radius: 5px;
+        border-right-width: 1px;
+    }
+    
+    .filter-section .btn.active {
+        position: relative;
+        z-index: 1;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    
+    .filter-section .btn-outline-primary.active {
+        background: linear-gradient(135deg, #0d6efd, #0a58ca);
+        border-color: #0a58ca;
+        color: white;
+    }
+    
+    .filter-section .btn-outline-secondary.active {
+        background: linear-gradient(135deg, #6c757d, #5a6268);
+        border-color: #5a6268;
+        color: white;
+    }
+    
+    .filter-section .btn:hover {
+        transform: translateY(-1px);
+        z-index: 2;
+    }
+    
+    /* 状态过滤按钮 */
+    .filter-section:first-child .btn-group {
+        box-shadow: 0 1px 3px rgba(13, 110, 253, 0.1);
+    }
+    
+    /* 框架过滤按钮 */
+    .filter-section:last-child .btn-group {
+        box-shadow: 0 1px 3px rgba(108, 117, 125, 0.1);
+    }
+    
+    /* 移除可能影响模态框层级的z-index */
+    .plugin-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+    }
+
+    /* 确保模态框和背景蒙版在正确的层级 */
+    .modal-backdrop {
+        z-index: 1040 !important;
+    }
+
+    .modal {
+        z-index: 1050 !important;
+    }
+
+    /* 修复模态框滚动问题 */
+    .modal-dialog {
+        max-height: 90vh;
+        margin: 1.75rem auto;
+    }
+
+    .modal-content {
+        max-height: calc(90vh - 3.5rem);
+    }
+
+    .modal-body {
+        overflow-y: auto;
+        max-height: calc(90vh - 12rem);
+        padding: 1rem;
+    }
+
+    /* 统一卡片样式 */
+    .plugin-card,
+    #market-list .card {
+        transition: all 0.3s ease;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    .plugin-card:hover,
+    #market-list .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .plugin-icon {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        color: white;
+        font-size: 1.5rem;
+        margin-right: 1rem;
+    }
+
+    #market-list .plugin-icon {
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+        border-radius: 12px;
+        margin-right: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.5rem;
+    }
+
+    .plugin-status {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+    }
+
+    .plugin-details {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+    }
+
+    .plugin-card.expanded .plugin-details {
+        max-height: 500px;
+    }
+
+    #market-list .card-body {
+        padding: 1rem;
+    }
+
+    #market-list .plugin-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    #market-list .plugin-title {
+        font-size: 1.1rem;
+        font-weight: 500;
+        margin: 0;
+        color: var(--bs-gray-800);
+        line-height: 1.2;
+    }
+
+    #market-list .plugin-meta {
+        font-size: 0.85rem;
+        color: var(--bs-gray-600);
+        margin-top: 0.25rem;
+    }
+
+    #market-list .plugin-description {
+        font-size: 0.8rem;
+        color: var(--bs-gray-700);
+        margin: 0.35rem 0;
+        display: -webkit-box;
+        display: -moz-box;
+        display: box;
+        -webkit-line-clamp: 2;
+        -moz-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        -moz-box-orient: vertical;
+        box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.3;
+        max-height: 2.6em;
+        /* 作为降级方案：2 行文字的高度 = line-height * 2 */
+    }
+
+    .plugin-tag {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+        border-radius: 1rem;
+        font-size: 0.8rem;
+        background-color: var(--bs-gray-100);
+        color: var(--bs-gray-700);
+    }
+
+    #market-list .plugin-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0.75rem 0;
+    }
+
+    .plugin-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+
+    #market-list .plugin-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    #market-list .plugin-actions .btn {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.9rem;
+    }
+
+    .plugin-config-section {
+        margin-bottom: 1.5rem;
+    }
+
+    .plugin-config-section h5 {
+        color: #0d6efd;
+        border-bottom: 1px solid #dee2e6;
+        padding-bottom: 10px;
+        margin-bottom: 15px;
+    }
+
+    #plugin-config-form label {
+        color: #495057;
+        font-weight: 500;
+    }
+
+
+    .config-section { margin-bottom: 1rem; }
+    .section-header {
+        background: linear-gradient(135deg, #3498DB 0%, #2ECC71 100%);
+        color: #fff;
+        padding: 0.75rem 1rem;
+        border-radius: 8px 8px 0 0;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .section-header.collapsed i.bi-chevron-down { transform: rotate(-90deg); }
+    .section-header i.bi-chevron-down { transition: transform .3s; }
+    .section-body {
+        border: 1px solid #dee2e6;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        padding: 1rem;
+        background: #fff;
+    }
+    #plugin-config-editor {
+        min-height: 360px;
+        font-size: 0.9rem;
+    }
+    .mode-btn.active {
+        background: #3498DB;
+        border-color: #3498DB;
+        color: #fff;
+    }
+    #plugin-config-form .form-control {
+        background-color: #f8f9fa;
+        border: 1px solid #ced4da;
+        color: #212529;
+    }
+
+    .plugin-config-section {
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    /* 插件市场卡片样式 */
+    #market-list .card {
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        height: 100%;
+        background: #fff;
+        max-width: 100%;
+    }
+
+    #market-list .card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    #market-list .card-body {
+        padding: 0.75rem;
+    }
+
+    #market-list .plugin-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.35rem;
+    }
+
+    #market-list .plugin-title {
+        font-size: 0.9rem;
+        font-weight: 500;
+        margin: 0;
+        color: var(--bs-gray-800);
+        line-height: 1.2;
+    }
+
+    #market-list .plugin-meta {
+        font-size: 0.75rem;
+        color: var(--bs-gray-600);
+        margin-top: 0.15rem;
+    }
+
+    #market-list .plugin-description {
+        font-size: 0.8rem;
+        color: var(--bs-gray-700);
+        margin: 0.35rem 0;
+        display: -webkit-box;
+        display: -moz-box;
+        display: box;
+        -webkit-line-clamp: 2;
+        -moz-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        -moz-box-orient: vertical;
+        box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.3;
+        max-height: 2.6em;
+        /* 作为降级方案：2 行文字的高度 = line-height * 2 */
+    }
+
+    #market-list .plugin-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        margin-top: 0.35rem;
+    }
+
+    #market-list .plugin-tag {
+        font-size: 0.7rem;
+        padding: 0.1rem 0.35rem;
+        background: var(--bs-gray-100);
+        color: var(--bs-gray-700);
+        border-radius: 4px;
+        margin: 0;
+    }
+
+    #market-list .plugin-actions {
+        margin-top: 0.5rem;
+        display: flex;
+        gap: 0.35rem;
+    }
+
+    #market-list .plugin-actions .btn {
+        padding: 0.2rem 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    /* 隐藏可更新标签和黄色背景 */
+    .badge:empty, .badge:not(.bg-primary):not(.bg-success):not(.bg-danger):not(.bg-info):not(.bg-secondary) {
+        display: none !important;
+    }
+
+    [class*="bg-warning"], [class*="bg-yellow"], [style*="background"][style*="ff"][style*="00"] {
+        background: none !important;
+        background-color: transparent !important;
+    }
+
+    .update-badge, .update-indicator, [class*="can-update"], .plugin-update-badge {
+        display: none !important;
+    }
+</style>
+{% endblock %}
+
+{% block page_actions %}
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- 插件管理卡片 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card dashboard-card" data-aos="fade-up">
+                <div class="card-header d-flex justify-content-between align-items-center py-3">
+                    <div class="d-flex align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-puzzle-fill me-2 text-primary"></i>已安装插件
+                            <span class="badge bg-primary ms-2" id="plugin-count">0</span>
+                        </h5>
+                    </div>
+                    
+                    <div class="d-flex flex-column flex-md-row gap-2 align-items-end">
+                        <!-- 状态过滤器 -->
+                        <div class="filter-section me-md-3">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="插件过滤">
+                                <button type="button" class="btn btn-outline-primary active" data-filter="all">全部插件</button>
+                                <button type="button" class="btn btn-outline-primary" data-filter="enabled">已启用</button>
+                                <button type="button" class="btn btn-outline-primary" data-filter="disabled">已禁用</button>
+                            </div>
+                        </div>
+
+                        <!-- 框架选择器 - 更小更靠右 -->
+                        <div class="filter-section">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="框架选择">
+                                <button type="button" class="btn btn-outline-secondary active"
+                                    data-framework="original">原始框架</button>
+                                <button type="button" class="btn btn-outline-secondary"
+                                    data-framework="dow">DOW框架</button>
+                                <button type="button" class="btn btn-outline-secondary"
+                                    data-framework="all">所有框架</button>
+                            </div>
+                        </div>
+                        
+                        <!-- 插件市场按钮 -->
+                        <div class="ms-md-2">
+                            <a href="/plugin-market" class="btn btn-sm btn-primary">
+                                <i class="bi bi-shop me-1"></i> 插件市场
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="plugin-search mb-4">
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-0">
+                                <i class="bi bi-search"></i>
+                            </span>
+                            <input type="text" class="form-control bg-light border-0" id="plugin-search-input"
+                                placeholder="搜索插件...">
+                        </div>
+                    </div>
+
+                    <div id="adapter-migration-alert" class="alert alert-warning d-none mb-4" role="alert">
+                        <i class="bi bi-plug me-2"></i>
+                        检测到 <strong class="adapter-count">0</strong> 个适配器，相关操作已迁移至
+                        <a href="/adapters" class="alert-link">适配器管理</a> 页面。
+                    </div>
+
+                    <div id="plugin-list" class="plugin-grid"
+                        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem;">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3 text-muted">加载插件中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 插件市场 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card dashboard-card" data-aos="fade-up" data-aos-delay="100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        <h5 class="m-0">插件市场</h5>
+                        <button class="btn btn-sm btn-outline-secondary ms-2" id="btn-refresh-market" title="刷新插件市场">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <div class="input-group" style="width: auto;">
+                            <input type="text" class="form-control form-control-sm" id="search-market"
+                                placeholder="搜索插件市场..." aria-label="搜索插件市场">
+                            <button class="btn btn-sm btn-outline-secondary" type="button">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                        <button class="btn btn-sm btn-primary ms-2" id="btn-upload-plugin" data-bs-toggle="modal"
+                            data-bs-target="#upload-plugin-modal">
+                            <i class="bi bi-cloud-upload me-1"></i>提交插件
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        从市场安装插件前，请确保已备份重要数据，并了解可能存在的安全风险。
+                    </div>
+
+                    <div id="market-list">
+                        <!-- 加载动画 -->
+                        <div class="col-12 text-center py-4 loading-placeholder">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3 text-muted">加载插件市场中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+<!-- 插件配置模态框 -->
+<div class="modal" id="plugin-config-modal" tabindex="-1" aria-labelledby="plugin-config-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="plugin-config-title"></h5>
+                    <div class="small text-muted" id="plugin-config-path-label"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div id="plugin-config-loading" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2">正在加载配置...</p>
+                </div>
+
+                <div id="plugin-config-error" class="alert alert-danger d-none" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <span></span>
+                </div>
+
+                <div id="plugin-config-form">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <div class="btn-group" role="group" aria-label="配置模式">
+                            <button type="button" class="btn btn-sm btn-outline-primary mode-btn active" id="plugin-btn-mode-visual">
+                                <i class="bi bi-sliders me-1"></i>可视化配置
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mode-btn" id="plugin-btn-mode-raw">
+                                <i class="bi bi-code-slash me-1"></i>高级原文
+                            </button>
+                        </div>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="plugin-toggle-advanced-fields">
+                            <label class="form-check-label" for="plugin-toggle-advanced-fields">显示高级项</label>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info py-2">
+                        <i class="bi bi-info-circle me-2"></i>
+                        按中文说明修改插件参数。若识别不全，可切换到“高级原文”。
+                    </div>
+
+                    <div id="plugin-visual-config-pane">
+                        <div id="plugin-config-form-root"></div>
+                    </div>
+                    <div id="plugin-raw-config-pane" class="d-none">
+                        <div class="alert alert-warning py-2">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            原文模式直接写入 TOML，语法错误会导致插件无法启动。
+                        </div>
+                        <textarea id="plugin-config-editor" class="form-control font-monospace" rows="16" spellcheck="false"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="plugin-config-save">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- README模态框 -->
+<div class="modal fade" id="plugin-readme-modal" tabindex="-1" aria-labelledby="plugin-readme-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="plugin-readme-title">插件使用说明</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 加载状态 -->
+                <div id="plugin-readme-loading" class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <p class="mt-2">正在加载使用说明...</p>
+                </div>
+
+                <!-- 错误提示 -->
+                <div id="plugin-readme-error" class="alert alert-danger d-none" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <span></span>
+                </div>
+
+                <!-- README内容容器 -->
+                <div id="plugin-readme-content" class="markdown-body"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 安装插件模态框 -->
+<div class="modal fade" id="add-plugin-modal" tabindex="-1" aria-labelledby="add-plugin-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="add-plugin-modal-label">安装插件</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="plugin-source" class="form-label">安装方式</label>
+                    <select class="form-select" id="plugin-source">
+                        <option value="file">本地文件</option>
+                        <option value="git">Git仓库</option>
+                        <option value="pip">Pip包</option>
+                    </select>
+                </div>
+
+                <div id="source-file" class="source-option">
+                    <div class="mb-3">
+                        <label for="plugin-file" class="form-label">插件文件 (ZIP)</label>
+                        <input class="form-control" type="file" id="plugin-file" accept=".zip">
+                    </div>
+                </div>
+
+                <div id="source-git" class="source-option" style="display: none;">
+                    <div class="mb-3">
+                        <label for="plugin-git-url" class="form-label">Git仓库地址</label>
+                        <input type="text" class="form-control" id="plugin-git-url"
+                            placeholder="https://github.com/username/repo.git">
+                    </div>
+                    <div class="mb-3">
+                        <label for="plugin-git-branch" class="form-label">分支/标签 (可选)</label>
+                        <input type="text" class="form-control" id="plugin-git-branch" placeholder="main">
+                    </div>
+                </div>
+
+                <div id="source-pip" class="source-option" style="display: none;">
+                    <div class="mb-3">
+                        <label for="plugin-pip-name" class="form-label">包名称</label>
+                        <input type="text" class="form-control" id="plugin-pip-name" placeholder="plugin-name">
+                    </div>
+                    <div class="mb-3">
+                        <label for="plugin-pip-version" class="form-label">版本 (可选)</label>
+                        <input type="text" class="form-control" id="plugin-pip-version" placeholder="latest">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btn-install-plugin">安装</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 提交插件到市场模态框 -->
+<div class="modal" id="upload-plugin-modal" tabindex="-1" aria-labelledby="upload-plugin-modal-label"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="upload-plugin-modal-label">提交插件到市场</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    提交的插件将发送到服务器进行审核，审核通过后将出现在插件市场中。
+                </div>
+
+                <form id="upload-plugin-form" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="plugin-name" class="form-label">插件名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="plugin-name" name="name" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="plugin-description" class="form-label">插件描述 <span
+                                class="text-danger">*</span></label>
+                        <textarea class="form-control" id="plugin-description" name="description" rows="3"
+                            required></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="plugin-author" class="form-label">作者 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="plugin-author" name="author" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="plugin-version" class="form-label">版本 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="plugin-version" name="version" placeholder="1.0.0"
+                            required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="plugin-github" class="form-label">GitHub地址 <span
+                                class="text-danger">*</span></label>
+                        <input type="url" class="form-control" id="plugin-github" name="github_url"
+                            placeholder="https://github.com/username/repo" required>
+                        <div class="form-text">请确保链接是插件的GitHub仓库或发布页面</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="plugin-tags" class="form-label">标签</label>
+                        <input type="text" class="form-control" id="plugin-tags" name="tags" placeholder="聊天,工具,游戏">
+                        <div class="form-text">用逗号分隔多个标签</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="plugin-requirements" class="form-label">依赖项</label>
+                        <textarea class="form-control" id="plugin-requirements" name="requirements" rows="2"
+                            placeholder="requests>=2.25.1,pillow>=8.0.0"></textarea>
+                        <div class="form-text">插件的Python依赖，用逗号分隔</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">插件图标</label>
+                        <div class="input-group">
+                            <input type="file" class="form-control" id="plugin-icon" name="icon" accept="image/*">
+                            <label class="input-group-text" for="plugin-icon">上传</label>
+                        </div>
+                        <div class="form-text">可选，推荐使用正方形PNG图片</div>
+                    </div>
+                </form>
+
+                <div id="upload-error" class="alert alert-danger mt-3" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="btn-submit-plugin">
+                    <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                    提交审核
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 引入插件管理JS -->
+<!-- Markdown渲染库 -->
+<script src="/static/js/lib/marked.min.js"></script>
+<script src="/static/js/config_form.js"></script>
+<script src="/static/js/plugins.js"></script>
+<script src="/admin/static/js/custom.js?v={{ version }}"></script>
+<!-- 引入插件显示修复脚本 -->
+<script src="/static/js/fix_plugins_display.js?v={{ version }}"></script>
+<!-- 引入DOW框架插件专用修复脚本 -->
+<script src="/admin/static/js/fix_dow_plugins.js?v={{ version }}"></script>
+<script>
+// 轻量级脚本，只处理"可更新"标签和黄色背景
+(function() {
+    // 立即执行一次
+    hideUpdateBadges();
+    
+    // DOM加载后再次执行
+    document.addEventListener('DOMContentLoaded', function() {
+        hideUpdateBadges();
+        
+        // 使用MutationObserver持续监控变化
+        const observer = new MutationObserver(hideUpdateBadges);
+        observer.observe(document.body, { 
+            childList: true, 
+            subtree: true 
+        });
+    });
+    
+    function hideUpdateBadges() {
+        // 隐藏包含"可更新"文本的元素
+        document.querySelectorAll('.badge, span, div').forEach(el => {
+            if (el.textContent && el.textContent.trim() === '可更新') {
+                el.style.display = 'none';
+            }
+        });
+        
+        // 移除黄色背景
+        document.querySelectorAll('[class*="bg-warning"], [class*="bg-yellow"]').forEach(el => {
+            el.style.backgroundColor = 'transparent';
+        });
+    }
+})();
+</script>
+{% endblock %}

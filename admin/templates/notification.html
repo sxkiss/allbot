@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block title %}通知设置{% endblock %}
+
+{% block content %}
+<div class="container-fluid" id="app">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="bi bi-bell me-2"></i>系统通知设置
+                    </h5>
+                </div>
+
+                <div class="card-body">
+                    <div class="row">
+                        <!-- 左侧：基本设置 -->
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="enable-notification" v-model="config.enabled">
+                                <label class="form-check-label" for="enable-notification">启用系统状态通知</label>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="xxtui-token" class="form-label">xx-tui API Key</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="xxtui-token" v-model="config.token"
+                                           placeholder="输入您的 xx-tui API Key">
+                                    <a href="https://www.xxtui.com/start" target="_blank" class="btn btn-outline-secondary">
+                                        <i class="bi bi-box-arrow-up-right me-1"></i>获取Token
+                                    </a>
+                                </div>
+                                <div class="form-text">在 xx-tui 网站注册并获取 API Key</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">通知渠道</label>
+                                <select class="form-select" v-model="config.channel">
+                                    <option value="wechat">微信公众号</option>
+                                    <option value="sms">短信</option>
+                                    <option value="mail">邮件</option>
+                                    <option value="webhook">Webhook</option>
+                                    <option value="cp">企业微信</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="topic" class="form-label">群组编码</label>
+                                <input type="text" class="form-control" id="topic" v-model="config.topic"
+                                       placeholder="不填仅发送给自己">
+                                <div class="form-text">用于群发通知，不填仅发送给token拥有者</div>
+                            </div>
+                        </div>
+
+                        <!-- 右侧：通知触发条件 -->
+                        <div class="col-md-6">
+                            <h6 class="mb-3">通知触发条件</h6>
+
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-offline" v-model="config.triggers.offline">
+                                <label class="form-check-label" for="notify-offline">微信离线</label>
+                            </div>
+
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-reconnect" v-model="config.triggers.reconnect">
+                                <label class="form-check-label" for="notify-reconnect">微信重新连接</label>
+                            </div>
+
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-restart" v-model="config.triggers.restart">
+                                <label class="form-check-label" for="notify-restart">系统重启</label>
+                            </div>
+
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-error" v-model="config.triggers.error">
+                                <label class="form-check-label" for="notify-error">系统错误</label>
+                            </div>
+
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-login-qrcode" v-model="config.triggers.login_qrcode">
+                                <label class="form-check-label" for="notify-login-qrcode">登录二维码</label>
+                            </div>
+
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-adapter-retry" v-model="config.triggers.adapter_retry">
+                                <label class="form-check-label" for="notify-adapter-retry">适配器断线重试</label>
+                            </div>
+
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="notify-adapter-error" v-model="config.triggers.adapter_error">
+                                <label class="form-check-label" for="notify-adapter-error">适配器错误</label>
+                            </div>
+
+                            <div class="mb-3 mt-3">
+                                <label for="heartbeat-threshold" class="form-label">心跳失败阈值</label>
+                                <input type="number" class="form-control" id="heartbeat-threshold"
+                                       v-model="config.heartbeatThreshold" min="1">
+                                <div class="form-text">连续失败多少次判定为离线</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 通知模板设置 -->
+                    <div class="mt-4">
+                        <h6 class="mb-3">通知模板设置</h6>
+                        <div class="mb-3">
+                            <label for="offline-title" class="form-label">离线通知标题</label>
+                            <input type="text" class="form-control" id="offline-title"
+                                   v-model="config.templates.offlineTitle" placeholder="例如：警告：微信离线通知 - {time}">
+                        </div>
+                        <div class="mb-3">
+                            <label for="offline-content" class="form-label">离线通知内容</label>
+                            <textarea class="form-control" id="offline-content" rows="3"
+                                      v-model="config.templates.offlineContent"
+                                      placeholder="例如：您的微信账号 {wxid} 已于 {time} 离线，请尽快检查。"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- 注意事项 -->
+                    <div class="alert alert-info mt-3">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        <strong>提示：</strong>在HTML模板中使用双引号(")时，系统会自动将其转义，您无需手动处理。
+                    </div>
+
+                    <!-- 测试区域 -->
+                    <div class="mt-4 p-3 bg-light rounded">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">测试通知</h6>
+                            <button class="btn btn-primary btn-sm" @click="sendTestNotification">
+                                <i class="bi bi-send me-1"></i>发送测试通知
+                            </button>
+                        </div>
+                        <div class="small text-muted mt-2">
+                            点击按钮发送测试通知，验证配置是否正确
+                        </div>
+                        <div v-if="testResult" class="alert mt-2" :class="testResult.success ? 'alert-success' : 'alert-danger'">
+                            {% raw %}{{ testResult.message }}{% endraw %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-footer d-flex justify-content-between">
+                    <button class="btn btn-secondary" @click="resetConfig">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>重置
+                    </button>
+                    <button class="btn btn-success" @click="saveConfig">
+                        <i class="bi bi-save me-1"></i>保存设置
+                    </button>
+                </div>
+            </div>
+
+            <!-- 通知历史记录 -->
+            <div class="card mt-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-clock-history me-2"></i>通知历史
+                    </h5>
+                    <button class="btn btn-sm btn-outline-secondary" @click="refreshHistory">
+                        <i class="bi bi-arrow-repeat me-1"></i>刷新
+                    </button>
+                </div>
+
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>时间</th>
+                                    <th>类型</th>
+                                    <th>状态</th>
+                                    <th>内容</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="record in notificationHistory" :key="record.id">
+                                    <td>{% raw %}{{ formatTime(record.timestamp) }}{% endraw %}</td>
+                                    <td>
+                                        <span class="badge" :class="getTypeBadgeClass(record.type)">
+                                            {% raw %}{{ getTypeLabel(record.type) }}{% endraw %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge" :class="record.success ? 'bg-success' : 'bg-danger'">
+                                            {% raw %}{{ record.success ? '成功' : '失败' }}{% endraw %}
+                                        </span>
+                                    </td>
+                                    <td>{% raw %}{{ record.content }}{% endraw %}</td>
+                                </tr>
+                                <tr v-if="notificationHistory.length === 0">
+                                    <td colspan="4" class="text-center text-muted">暂无通知记录</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- 引入Vue.js -->
+<script src="/static/js/lib/vue.global.min.js"></script>
+
+<script>
+    const app = Vue.createApp({
+        data() {
+            return {
+                config: {
+                    enabled: false,
+                    token: "",
+                    channel: "wechat",
+                    template: "html",
+                    topic: "",
+                    heartbeatThreshold: 3,
+                    triggers: {
+                        offline: true,
+                        reconnect: false,
+                        restart: true,
+                        error: true,
+                        login_qrcode: true,
+                        adapter_retry: true,
+                        adapter_error: true
+                    },
+                    templates: {
+                        offlineTitle: "警告：微信离线通知 - {time}",
+                        offlineContent: "您的微信账号 <b>{wxid}</b> 已于 <span style=\"color:#ff4757;font-weight:bold;\">{time}</span> 离线，请尽快检查您的设备连接状态或重新登录。"
+                    }
+                },
+                originalConfig: null,
+                notificationHistory: [],
+                testResult: null,
+                loading: false
+            };
+        },
+        mounted() {
+            this.loadConfig();
+            this.refreshHistory();
+        },
+        methods: {
+            normalizeTriggers(triggers) {
+                const defaults = {
+                    offline: true,
+                    reconnect: false,
+                    restart: true,
+                    error: true,
+                    login_qrcode: true,
+                    adapter_retry: true,
+                    adapter_error: true
+                };
+                return Object.assign({}, defaults, triggers || {});
+            },
+            async loadConfig() {
+                try {
+                    this.loading = true;
+                    const response = await fetch('/api/notification/settings');
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.success) {
+                            this.config = data.config;
+                            this.config.triggers = this.normalizeTriggers(this.config.triggers);
+                            // 保存原始配置用于重置
+                            this.originalConfig = JSON.parse(JSON.stringify(data.config));
+                        } else {
+                            showToast('加载失败', data.message, 'error');
+                        }
+                    } else {
+                        showToast('加载失败', '无法获取通知设置', 'error');
+                    }
+                } catch (error) {
+                    console.error('加载通知设置失败:', error);
+                    showToast('加载失败', '加载通知设置时出错', 'error');
+                } finally {
+                    this.loading = false;
+                }
+            },
+            async saveConfig() {
+                try {
+                    this.loading = true;
+                    const response = await fetch('/api/notification/settings', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(this.config)
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.success) {
+                            showToast('保存成功', '通知设置已保存', 'success');
+                            // 更新原始配置
+                            this.originalConfig = JSON.parse(JSON.stringify(this.config));
+                        } else {
+                            showToast('保存失败', data.message, 'error');
+                        }
+                    } else {
+                        showToast('保存失败', '无法保存通知设置', 'error');
+                    }
+                } catch (error) {
+                    console.error('保存通知设置失败:', error);
+                    showToast('保存失败', '保存通知设置时出错', 'error');
+                } finally {
+                    this.loading = false;
+                }
+            },
+            resetConfig() {
+                if (this.originalConfig) {
+                    this.config = JSON.parse(JSON.stringify(this.originalConfig));
+                    showToast('已重置', '通知设置已重置为上次保存的值', 'info');
+                } else {
+                    showToast('重置失败', '没有可用的原始配置', 'error');
+                }
+            },
+            async sendTestNotification() {
+                try {
+                    this.loading = true;
+                    this.testResult = null;
+
+                    const response = await fetch('/api/notification/test', {
+                        method: 'POST'
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.testResult = {
+                            success: data.success,
+                            message: data.message
+                        };
+
+                        if (data.success) {
+                            showToast('测试成功', '测试通知已发送', 'success');
+                        } else {
+                            showToast('测试失败', data.message, 'error');
+                        }
+                    } else {
+                        this.testResult = {
+                            success: false,
+                            message: '发送测试通知失败，请检查服务器状态'
+                        };
+                        showToast('测试失败', '无法发送测试通知', 'error');
+                    }
+                } catch (error) {
+                    console.error('发送测试通知失败:', error);
+                    this.testResult = {
+                        success: false,
+                        message: '发送测试通知时出错: ' + error.message
+                    };
+                    showToast('测试失败', '发送测试通知时出错', 'error');
+                } finally {
+                    this.loading = false;
+                }
+            },
+            async refreshHistory() {
+                try {
+                    const response = await fetch('/api/notification/history');
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.success) {
+                            this.notificationHistory = data.history;
+                        } else {
+                            showToast('加载失败', data.message, 'error');
+                        }
+                    } else {
+                        showToast('加载失败', '无法获取通知历史', 'error');
+                    }
+                } catch (error) {
+                    console.error('加载通知历史失败:', error);
+                    showToast('加载失败', '加载通知历史时出错', 'error');
+                }
+            },
+            formatTime(timestamp) {
+                const date = new Date(timestamp * 1000);
+                return date.toLocaleString();
+            },
+            getTypeBadgeClass(type) {
+                switch (type) {
+                    case 'offline':
+                        return 'bg-danger';
+                    case 'reconnect':
+                        return 'bg-success';
+                    case 'restart':
+                        return 'bg-primary';
+                    case 'error':
+                        return 'bg-warning';
+                    case 'login_qrcode':
+                        return 'bg-info';
+                    case 'adapter_retry':
+                        return 'bg-warning';
+                    case 'adapter_error':
+                        return 'bg-danger';
+                    case 'test':
+                        return 'bg-info';
+                    default:
+                        return 'bg-secondary';
+                }
+            },
+            getTypeLabel(type) {
+                switch (type) {
+                    case 'offline':
+                        return '离线';
+                    case 'reconnect':
+                        return '重连';
+                    case 'restart':
+                        return '重启';
+                    case 'error':
+                        return '错误';
+                    case 'login_qrcode':
+                        return '登录二维码';
+                    case 'adapter_retry':
+                        return '适配器重试';
+                    case 'adapter_error':
+                        return '适配器错误';
+                    case 'test':
+                        return '测试';
+                    default:
+                        return type;
+                }
+            }
+        }
+    });
+
+    app.mount('#app');
+</script>
+{% endblock %}

@@ -1,0 +1,1900 @@
+{% extends "base.html" %}
+
+{% block title %}定时提醒管理 - AllBot管理后台{% endblock %}
+
+{% block page_title %}定时提醒管理{% endblock %}
+
+{% block page_subtitle_content %}
+<p class="text-muted mb-0">设置和管理微信聊天的定时提醒，支持一次性、每日、每周和每月定时发送消息</p>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 全局变量 */
+    :root {
+        --primary-color: #4361ee;
+        --primary-light: #4895ef;
+        --primary-dark: #3f37c9;
+        --secondary-color: #4cc9f0;
+        --success-color: #4ade80;
+        --warning-color: #fcd34d;
+        --danger-color: #f87171;
+        --info-color: #60a5fa;
+        --light-bg: #f8fafc;
+        --card-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        --hover-shadow: 0 10px 30px rgba(67, 97, 238, 0.15);
+        --border-radius: 12px;
+        --transition-speed: 0.3s;
+    }
+
+    /* 卡片样式 */
+    .reminder-card {
+        transition: all var(--transition-speed) ease;
+        border-radius: var(--border-radius);
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
+        border: none;
+        background: linear-gradient(145deg, #ffffff, #f8fafc);
+    }
+    .reminder-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--hover-shadow);
+    }
+    .reminder-card .card-header {
+        padding: 1.2rem 1.5rem;
+        border-bottom: none;
+        background: transparent;
+    }
+    .reminder-card .card-body {
+        padding: 1.5rem;
+    }
+
+    /* 提醒区域样式 */
+    .reminder-section {
+        background: linear-gradient(145deg, #ffffff, #f8fafc);
+        border-radius: var(--border-radius);
+        box-shadow: var(--card-shadow);
+        padding: 28px;
+        margin-bottom: 2rem;
+        border: none;
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* 添加装饰元素 */
+    .reminder-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 4px;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    }
+
+    /* 提醒头部样式 */
+    .reminder-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.8rem;
+        padding-bottom: 1.2rem;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+
+    .reminder-header h5 {
+        font-weight: 600;
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+    }
+
+    .reminder-header h5 i {
+        color: var(--primary-color);
+        margin-right: 0.5rem;
+    }
+
+    /* 提醒类型标签样式 */
+    .reminder-type-badge {
+        font-size: 0.8rem;
+        padding: 0.5em 1em;
+        border-radius: 50px;
+        font-weight: 600;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+    }
+
+    /* 不同类型的提醒标签颜色 */
+    .badge-one-time {
+        background-color: var(--danger-color);
+        color: white;
+    }
+
+    .badge-every-day {
+        background-color: var(--primary-color);
+        color: white;
+    }
+
+    .badge-weekly {
+        background-color: var(--success-color);
+        color: white;
+    }
+
+    .badge-monthly {
+        background-color: var(--warning-color);
+        color: #1e293b;
+    }
+
+    /* 联系人选择区域样式 */
+    .contact-select-area {
+        max-height: 300px;
+        overflow-y: auto;
+        border-radius: var(--border-radius);
+        background-color: var(--light-bg);
+        padding: 0.75rem;
+        scrollbar-width: thin;
+        scrollbar-color: var(--primary-light) #f1f5f9;
+    }
+
+    .contact-select-area::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .contact-select-area::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 10px;
+    }
+
+    .contact-select-area::-webkit-scrollbar-thumb {
+        background-color: var(--primary-light);
+        border-radius: 10px;
+    }
+
+    /* 提醒时间样式 */
+    .reminder-time {
+        font-weight: 600;
+        color: #334155;
+        display: flex;
+        align-items: center;
+        margin-top: 0.5rem;
+    }
+
+    .reminder-time i {
+        margin-right: 0.5rem;
+        color: var(--primary-color);
+    }
+
+    /* 搜索框样式 */
+    .search-input-group {
+        position: relative;
+        margin-bottom: 1.75rem;
+    }
+    .search-input-group .form-control {
+        padding-left: 3rem;
+        border-radius: 50px;
+        border: 1px solid rgba(0,0,0,0.08);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+        height: 48px;
+        transition: all var(--transition-speed) ease;
+        font-size: 0.95rem;
+    }
+    .search-input-group .form-control:focus {
+        box-shadow: 0 4px 20px rgba(67, 97, 238, 0.15);
+        border-color: var(--primary-light);
+    }
+    .search-input-group .search-icon {
+        position: absolute;
+        left: 1.2rem;
+        top: calc(50% - 0.5rem);
+        z-index: 4;
+        color: var(--primary-color);
+        font-size: 1.1rem;
+    }
+
+    /* 联系人项样式 */
+    .contact-item {
+        padding: 0.75rem;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+        transition: all var(--transition-speed) ease;
+        background-color: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+
+    .contact-item:hover {
+        background-color: #f1f5f9;
+    }
+
+    .contact-item .form-check-label {
+        font-weight: 500;
+        color: #334155;
+    }
+
+    /* 进度条容器样式 */
+    #reminder-progress-container {
+        display: none;
+        margin-top: 1.8rem;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .progress {
+        height: 10px !important;
+        border-radius: 8px;
+        background-color: #e2e8f0;
+    }
+
+    .progress-bar {
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    }
+
+    /* 标签页样式 */
+    .nav-tabs {
+        border-bottom: none;
+        margin-bottom: 1.8rem;
+        gap: 0.5rem;
+    }
+    .nav-tabs .nav-link {
+        border-radius: 50px;
+        font-weight: 600;
+        padding: 0.6rem 1.8rem;
+        transition: all var(--transition-speed) ease;
+        margin-right: 0.5rem;
+        border: none;
+        letter-spacing: 0.3px;
+        position: relative;
+        overflow: hidden;
+    }
+    .nav-tabs .nav-link.active {
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+        color: white;
+        box-shadow: 0 5px 15px rgba(67, 97, 238, 0.3);
+    }
+    .nav-tabs .nav-link.active::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: linear-gradient(90deg, var(--primary-light), var(--secondary-color));
+    }
+    .nav-tabs .nav-link:not(.active) {
+        color: #334155;
+        background-color: #f1f5f9;
+    }
+    .nav-tabs .nav-link:not(.active):hover {
+        background-color: #e2e8f0;
+        color: var(--primary-color);
+        transform: translateY(-2px);
+    }
+
+    /* 表单控件样式 */
+    .form-control, .form-select {
+        border-radius: 10px;
+        border: 1px solid rgba(0,0,0,0.08);
+        padding: 0.65rem 1.2rem;
+        transition: all var(--transition-speed) ease;
+        font-size: 0.95rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+        background-color: #fcfcfd;
+    }
+    .form-control:focus, .form-select:focus {
+        box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+        border-color: var(--primary-light);
+        background-color: white;
+    }
+
+    .form-label {
+        font-weight: 600;
+        color: #334155;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+    }
+
+    .form-label i {
+        margin-right: 0.5rem;
+    }
+
+    .form-text {
+        color: #64748b;
+        font-size: 0.85rem;
+        margin-top: 0.5rem;
+    }
+
+    /* 按钮样式 */
+    .btn {
+        border-radius: 10px;
+        padding: 0.65rem 1.5rem;
+        font-weight: 600;
+        transition: all var(--transition-speed) ease;
+        letter-spacing: 0.3px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .btn::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(rgba(255,255,255,0.1), rgba(255,255,255,0));
+        opacity: 0;
+        transition: opacity var(--transition-speed) ease;
+    }
+
+    .btn:hover::after {
+        opacity: 1;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+        border: none;
+        box-shadow: 0 5px 15px rgba(67, 97, 238, 0.3);
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 20px rgba(67, 97, 238, 0.4);
+    }
+
+    .btn-outline-secondary {
+        border-color: #cbd5e1;
+        color: #475569;
+    }
+
+    .btn-outline-secondary:hover {
+        background-color: #f1f5f9;
+        color: #334155;
+        border-color: #94a3b8;
+    }
+
+    /* 复选框样式 */
+    .form-check-input {
+        width: 1.2em;
+        height: 1.2em;
+        margin-top: 0.2em;
+        border-radius: 6px;
+        border: 2px solid rgba(67, 97, 238, 0.3);
+        transition: all var(--transition-speed) ease;
+        cursor: pointer;
+    }
+
+    .form-check-input:checked {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(67, 97, 238, 0.2);
+    }
+
+    .form-check-label {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    /* 动画效果 */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(15px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes slideInRight {
+        from { opacity: 0; transform: translateX(20px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+
+    .reminder-card {
+        animation: fadeIn 0.6s ease forwards;
+    }
+
+    .reminder-card:nth-child(odd) {
+        animation-delay: 0.1s;
+    }
+
+    .reminder-card:nth-child(even) {
+        animation-delay: 0.2s;
+    }
+
+    /* 空状态动画 */
+    #no-reminders i, #no-my-reminders i {
+        animation: pulse 2s infinite ease-in-out;
+    }
+
+    /* 功能说明样式 */
+    .feature-info {
+        background: linear-gradient(145deg, #f1f5f9, #e2e8f0);
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        position: relative;
+        overflow: hidden;
+        border-left: 4px solid var(--primary-color);
+    }
+
+    .feature-info h6 {
+        color: #1e293b;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        display: flex;
+        align-items: center;
+    }
+
+    .feature-info h6 i {
+        color: var(--primary-color);
+        margin-right: 0.5rem;
+        font-size: 1.1rem;
+    }
+
+    .feature-info p {
+        color: #475569;
+        margin-bottom: 0.5rem;
+        line-height: 1.6;
+    }
+
+    .feature-info ul {
+        padding-left: 1.5rem;
+        margin-bottom: 0;
+    }
+
+    .feature-info ul li {
+        color: #475569;
+        margin-bottom: 0.5rem;
+    }
+
+    .feature-info ul li:last-child {
+        margin-bottom: 0;
+    }
+
+    /* 模态框样式调整 */
+    .modal-backdrop {
+        z-index: 1055 !important;
+    }
+
+    /* 确保模态框内容可见 */
+    .modal-open {
+        overflow: hidden;
+        padding-right: 0 !important;
+    }
+
+    /* 修复模态框滚动问题 */
+    .modal-open .modal {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+</style>
+{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group">
+    <button class="btn btn-primary" id="add-reminder-btn">
+        <i class="bi bi-plus-circle me-1"></i>添加提醒
+    </button>
+    <button class="btn btn-outline-secondary" id="refresh-reminders-btn">
+        <i class="bi bi-arrow-clockwise me-1"></i>刷新
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-md-4 py-4">
+    <!-- 提醒管理界面 -->
+    <div class="row">
+        <!-- 左侧过滤和搜索区域 -->
+        <div class="col-12 col-xl-3 mb-4">
+            <div class="reminder-section h-100">
+                <div class="mb-3">
+                    <h5 class="mb-3"><i class="bi bi-filter me-2"></i>查看选项</h5>
+
+                    <ul class="nav nav-tabs nav-fill mb-4" id="reminder-view-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="all-reminders-tab" data-bs-toggle="tab" data-bs-target="#all-reminders" type="button" role="tab" aria-selected="true">所有提醒</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="my-reminders-tab" data-bs-toggle="tab" data-bs-target="#my-reminders" type="button" role="tab" aria-selected="false">我创建的</button>
+                        </li>
+                    </ul>
+
+                    <div class="search-input-group mb-4">
+                        <span class="search-icon">
+                            <i class="bi bi-search"></i>
+                        </span>
+                        <input type="text" class="form-control" id="reminder-search" placeholder="搜索提醒...">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">筛选联系人</label>
+                        <select class="form-select" id="contact-filter">
+                            <option value="">全部联系人</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">提醒类型</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="one_time" id="type-one-time" checked>
+                                <label class="form-check-label" for="type-one-time">一次性</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="every_day" id="type-every-day" checked>
+                                <label class="form-check-label" for="type-every-day">每日</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="weekly" id="type-weekly" checked>
+                                <label class="form-check-label" for="type-weekly">每周</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="monthly" id="type-monthly" checked>
+                                <label class="form-check-label" for="type-monthly">每月</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧提醒列表区域 -->
+        <div class="col-12 col-xl-9">
+            <div class="reminder-section">
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="all-reminders" role="tabpanel">
+                        <div id="all-reminders-content">
+                            <div class="reminder-header">
+                                <h5 class="mb-0"><i class="bi bi-alarm me-2"></i>所有提醒</h5>
+                                <span class="badge bg-primary rounded-pill" id="reminder-count">0</span>
+                            </div>
+
+                            <div id="reminders-loading" class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">加载中...</span>
+                                </div>
+                                <p class="mt-2 text-muted">正在加载提醒...</p>
+                            </div>
+
+                            <div id="no-reminders" class="text-center py-5 d-none">
+                                <i class="bi bi-calendar-x" style="font-size: 3rem; color: #dee2e6;"></i>
+                                <p class="mt-3 text-muted">暂无提醒内容</p>
+                                <button class="btn btn-primary mt-2" id="create-first-reminder">
+                                    <i class="bi bi-plus-circle me-1"></i>创建第一个提醒
+                                </button>
+                            </div>
+
+                            <div id="reminders-list" class="row row-cols-1 row-cols-md-2 g-4 mt-2 d-none">
+                                <!-- 提醒卡片将在这里动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="my-reminders" role="tabpanel">
+                        <div id="my-reminders-content">
+                            <div class="reminder-header">
+                                <h5 class="mb-0"><i class="bi bi-person-check me-2"></i>我创建的提醒</h5>
+                                <span class="badge bg-primary rounded-pill" id="my-reminder-count">0</span>
+                            </div>
+
+                            <div id="my-reminders-loading" class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">加载中...</span>
+                                </div>
+                                <p class="mt-2 text-muted">正在加载提醒...</p>
+                            </div>
+
+                            <div id="no-my-reminders" class="text-center py-5 d-none">
+                                <i class="bi bi-calendar-x" style="font-size: 3rem; color: #dee2e6;"></i>
+                                <p class="mt-3 text-muted">您还没有创建任何提醒</p>
+                                <button class="btn btn-primary mt-2" id="create-my-reminder">
+                                    <i class="bi bi-plus-circle me-1"></i>创建提醒
+                                </button>
+                            </div>
+
+                            <div id="my-reminders-list" class="row row-cols-1 row-cols-md-2 g-4 mt-2 d-none">
+                                <!-- 我的提醒卡片将在这里动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加/编辑提醒的模态框 -->
+<div class="modal fade" id="reminder-modal" tabindex="-1" aria-labelledby="reminderModalLabel" aria-hidden="true" style="z-index: 1060 !important; padding: 0 !important;">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" style="margin: 20px auto; max-width: 90%; height: auto;">
+        <div class="modal-content" style="border-radius: 15px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(0,0,0,0.05); padding: 1.25rem 1.5rem;">
+                <h5 class="modal-title" id="reminderModalLabel">
+                    <i class="bi bi-alarm me-2 text-primary"></i>添加定时提醒
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="padding: 1.5rem; overflow-y: auto; max-height: 70vh;">
+                <form id="reminder-form">
+                    <input type="hidden" id="reminder-id" value="">
+                    <input type="hidden" id="reminder-owner" value="">
+
+                    <div class="row g-4">
+                        <!-- 联系人选择区域 -->
+                        <div class="col-md-5">
+                            <div class="card h-100" style="border-radius: 12px; border: none; box-shadow: 0 2px 15px rgba(0,0,0,0.05);">
+                                <div class="card-header bg-light" style="border-bottom: 1px solid rgba(0,0,0,0.05); border-radius: 12px 12px 0 0;">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-people me-2"></i>选择联系人</span>
+                                        <span class="badge bg-primary rounded-pill">已选: <span id="reminder-selected-count">0</span></span>
+                                    </div>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="p-3 border-bottom">
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white border-end-0">
+                                                <i class="bi bi-search text-muted"></i>
+                                            </span>
+                                            <input type="text" class="form-control border-start-0" id="reminder-contact-search" placeholder="搜索联系人...">
+                                        </div>
+                                    </div>
+                                    <div class="p-2 border-bottom d-flex justify-content-between">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" id="reminder-select-all">
+                                            <i class="bi bi-check-all me-1"></i>全选
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" id="reminder-deselect-all">
+                                            <i class="bi bi-x-lg me-1"></i>取消全选
+                                        </button>
+                                    </div>
+                                    <div class="contact-select-area p-3" id="reminder-contacts-list" style="max-height: 250px; overflow-y: auto;">
+                                        <!-- 联系人列表将通过JavaScript加载 -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 提醒设置区域 -->
+                        <div class="col-md-7">
+                            <div class="card h-100" style="border-radius: 12px; border: none; box-shadow: 0 2px 15px rgba(0,0,0,0.05);">
+                                <div class="card-header bg-light" style="border-bottom: 1px solid rgba(0,0,0,0.05); border-radius: 12px 12px 0 0;">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-gear me-2"></i>提醒设置</span>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-4">
+                                        <label for="reminder-content" class="form-label fw-medium">提醒内容</label>
+                                        <textarea class="form-control" id="reminder-content" rows="3" placeholder="输入提醒内容..."></textarea>
+                                        <div class="form-text">请输入要发送的提醒消息内容</div>
+                                    </div>
+
+                                    <div class="mb-4">
+                                        <label for="reminder-type" class="form-label fw-medium">提醒类型</label>
+                                        <select class="form-select" id="reminder-type">
+                                            <option value="one_time">一次性提醒</option>
+                                            <option value="every_day">每天提醒</option>
+                                            <option value="weekly">每周提醒</option>
+                                            <option value="monthly">每月提醒</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 一次性提醒 -->
+                                    <div id="one-time-inputs" class="reminder-type-input">
+                                        <div class="mb-4">
+                                            <label for="one-time-date" class="form-label fw-medium">
+                                                <i class="bi bi-calendar-event me-1 text-danger"></i>提醒时间
+                                            </label>
+                                            <input type="datetime-local" class="form-control" id="one-time-date">
+                                            <div class="form-text">选择一次性提醒的具体日期和时间</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 每天提醒 -->
+                                    <div id="every-day-inputs" class="reminder-type-input d-none">
+                                        <div class="mb-4">
+                                            <label for="daily-time" class="form-label fw-medium">
+                                                <i class="bi bi-calendar-day me-1 text-primary"></i>提醒时间
+                                            </label>
+                                            <input type="time" class="form-control" id="daily-time">
+                                            <div class="form-text">选择每天提醒的时间点</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 每周提醒 -->
+                                    <div id="weekly-inputs" class="reminder-type-input d-none">
+                                        <div class="mb-3">
+                                            <label class="form-label fw-medium">
+                                                <i class="bi bi-calendar-week me-1 text-success"></i>星期
+                                            </label>
+                                            <div id="weekly-days-group" class="d-flex flex-wrap gap-2">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="1" id="weekly-day-1">
+                                                    <label class="form-check-label" for="weekly-day-1">星期一</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="2" id="weekly-day-2">
+                                                    <label class="form-check-label" for="weekly-day-2">星期二</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="3" id="weekly-day-3">
+                                                    <label class="form-check-label" for="weekly-day-3">星期三</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="4" id="weekly-day-4">
+                                                    <label class="form-check-label" for="weekly-day-4">星期四</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="5" id="weekly-day-5">
+                                                    <label class="form-check-label" for="weekly-day-5">星期五</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="6" id="weekly-day-6">
+                                                    <label class="form-check-label" for="weekly-day-6">星期六</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="0" id="weekly-day-0">
+                                                    <label class="form-check-label" for="weekly-day-0">星期日</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="mb-4">
+                                            <label for="weekly-time" class="form-label fw-medium">时间</label>
+                                            <input type="time" class="form-control" id="weekly-time">
+                                            <div class="form-text">选择每周提醒的星期几和时间点</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 每月提醒 -->
+                                    <div id="monthly-inputs" class="reminder-type-input d-none">
+                                        <div class="mb-3">
+                                            <label for="monthly-day" class="form-label fw-medium">
+                                                <i class="bi bi-calendar-month me-1 text-warning"></i>日期
+                                            </label>
+                                            <select class="form-select" id="monthly-day">
+                                                {% for i in range(1, 32) %}
+                                                <option value="{{ i }}">{{ i }}日</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="mb-4">
+                                            <label for="monthly-time" class="form-label fw-medium">时间</label>
+                                            <input type="time" class="form-control" id="monthly-time">
+                                            <div class="form-text">选择每月提醒的日期和时间点</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 进度显示 -->
+                                    <div id="reminder-progress-container" class="mb-3 d-none">
+                                        <div class="progress" style="height: 8px; border-radius: 4px; overflow: hidden;">
+                                            <div id="reminder-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                        <div id="reminder-status" class="text-center mt-2 small text-muted"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid rgba(0,0,0,0.05); padding: 1.25rem 1.5rem;">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i>取消
+                </button>
+                <button type="button" class="btn btn-primary" id="save-reminder">
+                    <i class="bi bi-check-lg me-1"></i>保存提醒
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 确认删除模态框 -->
+<div class="modal fade" id="delete-reminder-modal" tabindex="-1" aria-hidden="true" style="z-index: 1070 !important;">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 15px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="border-bottom: 1px solid rgba(0,0,0,0.05); padding: 1.25rem 1.5rem;">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle-fill me-2 text-danger"></i>确认删除
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center p-4">
+                <div class="mb-4">
+                    <div class="d-inline-flex align-items-center justify-content-center bg-danger bg-opacity-10 rounded-circle mb-3" style="width: 80px; height: 80px;">
+                        <i class="bi bi-trash text-danger" style="font-size: 2rem;"></i>
+                    </div>
+                    <h5 class="mb-3">删除提醒</h5>
+                    <p class="text-muted mb-0">确定要删除此提醒吗？此操作不可撤销。</p>
+                </div>
+                <input type="hidden" id="delete-reminder-id">
+                <input type="hidden" id="delete-reminder-wxid">
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid rgba(0,0,0,0.05); padding: 1.25rem 1.5rem;">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg me-1"></i>取消
+                </button>
+                <button type="button" class="btn btn-danger" id="confirm-delete-reminder">
+                    <i class="bi bi-trash me-1"></i>确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 使用说明区域 -->
+<div class="feature-info mt-5 mb-4">
+    <h6><i class="bi bi-info-circle"></i>使用说明</h6>
+    <p>本页面用于设置和管理微信聊天的定时提醒，支持一次性、每日、每周和每月定时发送消息。您可以为不同联系人或群聊设置多种类型的提醒，提升工作和生活效率。</p>
+    <ul>
+        <li><strong>一次性提醒：</strong> 在指定的日期和时间仅发送一次。</li>
+        <li><strong>每日提醒：</strong> 每天在指定时间自动发送。</li>
+        <li><strong>每周提醒：</strong> 每周指定星期几和时间自动发送。</li>
+        <li><strong>每月提醒：</strong> 每月指定日期和时间自动发送。</li>
+    </ul>
+    <p class="mb-1"><strong>注意事项：</strong></p>
+    <ul>
+        <li>提醒内容不能为空，且需选择至少一个联系人。</li>
+        <li>一次性提醒请确保时间晚于当前时间。</li>
+        <li>如需批量为多个联系人设置相同提醒，可在联系人列表中多选。</li>
+        <li>如遇提醒未按时发送，请检查网络或联系管理员。</li>
+    </ul>
+    <p class="text-muted small mb-0">如有疑问或建议，请联系系统管理员。</p>
+</div>
+<!-- 结束使用说明区域 -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 全局变量
+    let contacts = [];
+    let allReminders = [];
+    let myReminders = [];
+    let filteredReminders = [];
+    let currentUserId = '';
+
+    // 处理存储的更新信息
+    function handleStoredUpdateInfo() {
+        try {
+            // 清除localStorage中的updateModalShown标记，确保更新提示能正常显示
+            localStorage.removeItem('updateModalShown');
+
+            // 检查是否有存储的更新信息
+            const storedUpdateInfo = localStorage.getItem('updateInfo');
+            if (storedUpdateInfo) {
+                console.log('发现存储的更新信息');
+                // 不在这里处理更新信息，让base.html中的代码处理
+            }
+        } catch (e) {
+            console.error('处理存储的更新信息失败:', e);
+        }
+    }
+
+    // 获取当前用户ID
+    function getCurrentUserId() {
+        // 直接使用默认值，避免不必要的API请求
+        currentUserId = 'admin';
+        console.log('当前用户ID:', currentUserId);
+    }
+
+    // 设置UI交互事件
+    function setupUIEvents() {
+        // 添加提醒按钮点击事件
+        $('#add-reminder-btn, #create-first-reminder, #create-my-reminder').click(function() {
+            resetReminderModal();
+            $('#reminder-modal').modal('show');
+        });
+
+        // 刷新按钮点击事件
+        $('#refresh-reminders-btn').click(function() {
+            loadAllReminders();
+        });
+
+        // 保存提醒按钮点击事件
+        $('#save-reminder').click(function() {
+            saveReminder();
+        });
+
+        // 确认删除按钮点击事件
+        $('#confirm-delete-reminder').click(function() {
+            const id = $('#delete-reminder-id').val();
+            const wxid = $('#delete-reminder-wxid').val();
+
+            if (id && wxid) {
+                deleteReminder(wxid, id);
+            }
+        });
+
+        // 搜索提醒
+        $('#reminder-search').on('input', function() {
+            const searchTerm = $(this).val().toLowerCase();
+            filterReminders();
+        });
+
+        // 联系人筛选
+        $('#contact-filter').change(function() {
+            filterReminders();
+        });
+
+        // 提醒类型筛选
+        $('.form-check-input[type="checkbox"]').change(function() {
+            filterReminders();
+        });
+
+        // 标签页切换
+        $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function(e) {
+            if (e.target.id === 'all-reminders-tab') {
+                // 显示所有提醒
+                renderReminders(allReminders, $('#reminders-list'), $('#reminder-count'), $('#no-reminders'));
+            } else if (e.target.id === 'my-reminders-tab') {
+                // 显示我的提醒
+                loadMyReminders();
+            }
+        });
+
+        // 模态框中的联系人搜索
+        $('#reminder-contact-search').on('input', function() {
+            const searchTerm = $(this).val().toLowerCase();
+            filterModalContacts(searchTerm);
+        });
+
+        // 全选联系人
+        $('#reminder-select-all').click(function() {
+            $('.reminder-contact-checkbox').prop('checked', true);
+            updateSelectedContactsCount();
+        });
+
+        // 取消全选联系人
+        $('#reminder-deselect-all').click(function() {
+            $('.reminder-contact-checkbox').prop('checked', false);
+            updateSelectedContactsCount();
+        });
+    }
+
+    // 加载联系人列表
+    function loadContacts() {
+        console.log("加载联系人列表...");
+
+        $.ajax({
+            url: '/api/contacts',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    // 提取联系人数据
+                    if (response.data) {
+                        contacts = response.data;
+                    } else if (response.contacts) {
+                        contacts = response.contacts;
+                    } else {
+                        contacts = [];
+                    }
+
+                    console.log(`成功加载 ${contacts.length} 个联系人`);
+
+                    // 更新联系人筛选下拉框
+                    updateContactFilter();
+                } else {
+                    console.error("获取联系人失败:", response.error);
+                    showToast('错误', '获取联系人列表失败: ' + (response.error || '未知错误'), 'danger');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error("联系人请求失败:", status, error);
+                showToast('错误', '联系人请求失败: ' + error, 'danger');
+            }
+        });
+    }
+
+    // 更新联系人筛选下拉框
+    function updateContactFilter() {
+        const selectElement = $('#contact-filter');
+        selectElement.empty();
+
+        // 添加"全部联系人"选项
+        selectElement.append('<option value="">全部联系人</option>');
+
+        // 分组添加好友和群聊
+        const friends = contacts.filter(c => c.type === 'friend' || (!c.type && !c.wxid.endsWith('@chatroom')));
+        const groups = contacts.filter(c => c.type === 'group' || c.wxid.endsWith('@chatroom'));
+
+        if (friends.length > 0) {
+            const friendsGroup = $('<optgroup label="好友"></optgroup>');
+            friends.forEach(contact => {
+                friendsGroup.append(`<option value="${contact.wxid}">${contact.nickname || contact.name || contact.wxid}</option>`);
+            });
+            selectElement.append(friendsGroup);
+        }
+
+        if (groups.length > 0) {
+            const groupsGroup = $('<optgroup label="群聊"></optgroup>');
+            groups.forEach(contact => {
+                groupsGroup.append(`<option value="${contact.wxid}">${contact.nickname || contact.name || contact.wxid}</option>`);
+            });
+            selectElement.append(groupsGroup);
+        }
+    }
+
+    // 加载所有提醒
+    function loadAllReminders() {
+        console.log("加载所有提醒...");
+
+        $('#reminders-loading').removeClass('d-none');
+        $('#reminders-list').addClass('d-none');
+        $('#no-reminders').addClass('d-none');
+
+        // 发送AJAX请求获取所有提醒
+        $.ajax({
+            url: '/api/reminders',
+            method: 'GET',
+            success: function(response) {
+                $('#reminders-loading').addClass('d-none');
+
+                if (response.success && response.reminders && response.reminders.length > 0) {
+                    allReminders = response.reminders;
+                    console.log(`成功加载 ${allReminders.length} 个提醒`);
+
+                    // 渲染提醒列表
+                    renderReminders(allReminders, $('#reminders-list'), $('#reminder-count'), $('#no-reminders'));
+
+                    // 筛选出我的提醒
+                    myReminders = allReminders.filter(r => r.owner === currentUserId);
+
+                    // 如果当前在"我的提醒"标签页，也更新该视图
+                    if ($('#my-reminders-tab').hasClass('active')) {
+                        renderReminders(myReminders, $('#my-reminders-list'), $('#my-reminder-count'), $('#no-my-reminders'));
+                    }
+                } else {
+                    console.log('没有找到提醒或API返回错误');
+                    allReminders = [];
+                    $('#no-reminders').removeClass('d-none');
+                }
+            },
+            error: function(xhr, status, error) {
+                $('#reminders-loading').addClass('d-none');
+                console.error("提醒列表请求失败:", status, error);
+                showToast('错误', '提醒列表请求失败: ' + error, 'danger');
+
+                $('#no-reminders').removeClass('d-none').find('p').text('加载提醒失败：网络错误');
+            }
+        });
+    }
+
+    // 加载我的提醒
+    function loadMyReminders() {
+        console.log("加载我的提醒...");
+
+        $('#my-reminders-loading').removeClass('d-none');
+        $('#my-reminders-list').addClass('d-none');
+        $('#no-my-reminders').addClass('d-none');
+
+        // 如果已经加载了所有提醒，可以直接筛选
+        if (allReminders.length > 0) {
+            myReminders = allReminders.filter(r => r.owner === currentUserId);
+            $('#my-reminders-loading').addClass('d-none');
+            renderReminders(myReminders, $('#my-reminders-list'), $('#my-reminder-count'), $('#no-my-reminders'));
+            return;
+        }
+
+        // 否则需要加载所有提醒
+        loadAllReminders();
+
+        // 延迟一下，确保allReminders已经加载完成
+        setTimeout(() => {
+            myReminders = allReminders.filter(r => r.owner === currentUserId);
+            $('#my-reminders-loading').addClass('d-none');
+            renderReminders(myReminders, $('#my-reminders-list'), $('#my-reminder-count'), $('#no-my-reminders'));
+        }, 600);
+    }
+
+    // 渲染提醒列表
+    function renderReminders(reminders, container, countElement, emptyElement) {
+        // 更新提醒数量
+        countElement.text(reminders.length);
+
+        // 如果没有提醒，显示空提示
+        if (reminders.length === 0) {
+            container.addClass('d-none');
+            emptyElement.removeClass('d-none');
+            return;
+        }
+
+        // 清空容器
+        container.empty().removeClass('d-none');
+        emptyElement.addClass('d-none');
+
+        // 按提醒类型和时间排序
+        reminders.sort((a, b) => {
+            // 按类型排序：一次性 > 每日 > 每周 > 每月
+            const typeOrder = { 'one_time': 1, 'every_day': 2, 'weekly': 3, 'monthly': 4 };
+            const typeA = typeOrder[a.reminder_type] || 99;
+            const typeB = typeOrder[b.reminder_type] || 99;
+
+            if (typeA !== typeB) {
+                return typeA - typeB;
+            }
+
+            // 同类型按时间排序
+            return a.reminder_time.localeCompare(b.reminder_time);
+        });
+
+        // 创建提醒卡片
+        reminders.forEach(reminder => {
+            const card = createReminderCard(reminder);
+            container.append(card);
+        });
+
+        // 添加删除按钮事件
+        $('.btn-delete-reminder').click(function() {
+            const id = $(this).data('id');
+            const wxid = $(this).data('wxid');
+
+            $('#delete-reminder-id').val(id);
+            $('#delete-reminder-wxid').val(wxid);
+            $('#delete-reminder-modal').modal('show');
+        });
+
+        // 添加编辑按钮事件
+        $('.btn-edit-reminder').click(function() {
+            const id = $(this).data('id');
+            const wxid = $(this).data('wxid');
+
+            editReminder(wxid, id);
+        });
+    }
+
+    // 创建提醒卡片
+    function createReminderCard(reminder) {
+        // 获取联系人信息
+        let contactInfo = getContactInfo(reminder.chat_id);
+
+        // 获取提醒类型和时间信息
+        const typeInfo = getReminderTypeInfo(reminder.reminder_type);
+        const timeDisplay = formatReminderTime(reminder.reminder_type, reminder.reminder_time);
+
+        // 获取背景渐变色
+        const gradientBg = getTypeGradient(reminder.reminder_type);
+
+        // 创建卡片元素
+        const card = $(`
+            <div class="col">
+                <div class="card reminder-card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center" style="${gradientBg}">
+                        <div>
+                            <span class="badge bg-white text-${typeInfo.color} reminder-type-badge shadow-sm">
+                                <i class="bi bi-${typeInfo.icon} me-1"></i>${typeInfo.label}
+                            </span>
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-light rounded-circle shadow-sm" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow">
+                                <li><button class="dropdown-item btn-edit-reminder" data-id="${reminder.id}" data-wxid="${reminder.chat_id}">
+                                    <i class="bi bi-pencil me-2"></i>编辑
+                                </button></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><button class="dropdown-item text-danger btn-delete-reminder" data-id="${reminder.id}" data-wxid="${reminder.chat_id}">
+                                    <i class="bi bi-trash me-2"></i>删除
+                                </button></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title mb-3">${reminder.content}</h5>
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="rounded-circle bg-light p-1 me-2 d-flex align-items-center justify-content-center" style="width: 28px; height: 28px;">
+                                <i class="bi bi-clock text-${typeInfo.color}"></i>
+                            </div>
+                            <span class="reminder-time">${timeDisplay}</span>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <img src="${contactInfo.avatar}" class="rounded-circle me-2 border" width="28" height="28" alt="联系人头像">
+                            <span class="text-muted">${contactInfo.name}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        return card;
+    }
+
+    // 获取提醒类型的渐变背景
+    function getTypeGradient(type) {
+        switch (type) {
+            case 'one_time':
+                return 'background: linear-gradient(135deg, #dc3545, #e74c3c); color: white;';
+            case 'every_day':
+                return 'background: linear-gradient(135deg, #007bff, #0056b3); color: white;';
+            case 'weekly':
+                return 'background: linear-gradient(135deg, #28a745, #20c997); color: white;';
+            case 'monthly':
+                return 'background: linear-gradient(135deg, #fd7e14, #f39c12); color: white;';
+            default:
+                return 'background: linear-gradient(135deg, #6c757d, #495057); color: white;';
+        }
+    }
+
+    // 获取联系人信息
+    function getContactInfo(wxid) {
+        const contact = contacts.find(c => c.wxid === wxid);
+
+        if (contact) {
+            return {
+                name: contact.nickname || contact.name || wxid,
+                avatar: contact.avatar || '/admin/static/img/default-avatar.png'
+            };
+        }
+
+        return {
+            name: wxid,
+            avatar: '/admin/static/img/default-avatar.png'
+        };
+    }
+
+    // 获取提醒类型信息
+    function getReminderTypeInfo(type) {
+        switch (type) {
+            case 'one_time':
+                return { label: '一次性', color: 'danger', icon: 'calendar-event' };
+            case 'every_day':
+                return { label: '每日', color: 'primary', icon: 'calendar-day' };
+            case 'weekly':
+                return { label: '每周', color: 'success', icon: 'calendar-week' };
+            case 'monthly':
+                return { label: '每月', color: 'warning', icon: 'calendar-month' };
+            default:
+                return { label: type, color: 'secondary', icon: 'calendar' };
+        }
+    }
+
+    // 格式化提醒时间
+    function formatReminderTime(type, time) {
+        try {
+            if (!time) return '未指定时间';
+
+            // 处理不同的时间格式
+            if (type === 'one_time') {
+                // 一次性提醒: YYYY-MM-DD HH:MM:SS
+                return new Date(time).toLocaleString('zh-CN');
+            } else if (type === 'every_day') {
+                // 每日提醒: HH:MM
+                return `每天 ${time}`;
+            } else if (type === 'weekly') {
+                // 每周提醒: 1,3,5 HH:MM
+                const parts = time.split(' ');
+                if (parts.length === 2) {
+                    const dayArr = parts[0].split(',');
+                    const weekdays = {
+                        '1': '周一', '2': '周二', '3': '周三', '4': '周四', '5': '周五', '6': '周六', '0': '周日'
+                    };
+                    const dayStr = dayArr.map(d => weekdays[d] || `周${d}`).join('、');
+                    return `${dayStr} ${parts[1]}`;
+                }
+                return time;
+            } else if (type === 'monthly') {
+                // 每月提醒: DD HH:MM
+                const parts = time.split(' ');
+                return `每月${parts[0]}日 ${parts[1]}`;
+            }
+
+            return time;
+        } catch (e) {
+            console.error('格式化时间出错:', e);
+            return time;
+        }
+    }
+
+    // 重置提醒模态框
+    function resetReminderModal() {
+        // 清空表单
+        $('#reminder-id').val('');
+        $('#reminder-owner').val(currentUserId);
+        $('#reminder-content').val('');
+
+        // 重置提醒类型为一次性
+        $('#reminder-type').val('one_time').trigger('change');
+
+        // 设置默认时间（使用本地时区）
+        const now = new Date();
+        now.setMinutes(now.getMinutes() + 5); // 默认5分钟后
+
+        // 使用本地时区格式化日期时间
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+
+        const defaultDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
+        console.log('默认提醒时间（本地时区）:', defaultDateTime);
+
+        $('#one-time-date').val(defaultDateTime);
+
+        // 设置默认每日时间
+        const defaultTime = now.toTimeString().substr(0, 5);
+        $('#daily-time').val(defaultTime);
+        $('#weekly-time').val(defaultTime);
+        $('#monthly-time').val(defaultTime);
+
+        // 重置联系人选择
+        initReminderContactsList();
+
+        // 隐藏进度条
+        $('#reminder-progress-container').addClass('d-none');
+        $('#reminder-progress-bar').css('width', '0%');
+        $('#reminder-status').text('');
+
+        // 设置模态框标题
+        $('#reminderModalLabel').text('添加定时提醒');
+    }
+
+    // 初始化提醒联系人列表
+    function initReminderContactsList(preSelectedWxids = []) {
+        const contactsList = $('#reminder-contacts-list');
+        contactsList.empty();
+
+        if (contacts.length === 0) {
+            contactsList.html('<div class="text-center py-3 text-muted">没有可用的联系人</div>');
+            return;
+        }
+
+        // 分组显示联系人
+        const friends = contacts.filter(c => c.type === 'friend' || (!c.type && !c.wxid.endsWith('@chatroom')));
+        const groups = contacts.filter(c => c.type === 'group' || c.wxid.endsWith('@chatroom'));
+
+        // 添加好友
+        if (friends.length > 0) {
+            contactsList.append('<div class="fw-bold mb-2">好友</div>');
+            friends.forEach(contact => {
+                const isChecked = preSelectedWxids.includes(contact.wxid) ? 'checked' : '';
+                const contactItem = `
+                    <div class="form-check mb-2">
+                        <input class="form-check-input reminder-contact-checkbox" type="checkbox" value="${contact.wxid}" id="contact-${contact.wxid}" ${isChecked}>
+                        <label class="form-check-label d-flex align-items-center" for="contact-${contact.wxid}">
+                            <img src="${contact.avatar || '/static/img/default-avatar.png'}" class="rounded-circle me-2" width="24" height="24">
+                            <span>${contact.nickname || contact.name || contact.wxid}</span>
+                        </label>
+                    </div>
+                `;
+                contactsList.append(contactItem);
+            });
+        }
+
+        // 添加群聊
+        if (groups.length > 0) {
+            contactsList.append('<div class="fw-bold mb-2 mt-3">群聊</div>');
+            groups.forEach(contact => {
+                const isChecked = preSelectedWxids.includes(contact.wxid) ? 'checked' : '';
+                const contactItem = `
+                    <div class="form-check mb-2">
+                        <input class="form-check-input reminder-contact-checkbox" type="checkbox" value="${contact.wxid}" id="contact-${contact.wxid}" ${isChecked}>
+                        <label class="form-check-label d-flex align-items-center" for="contact-${contact.wxid}">
+                            <img src="${contact.avatar || '/admin/static/img/default-avatar.png'}" class="rounded-circle me-2" width="24" height="24">
+                            <span>${contact.nickname || contact.name || contact.wxid}</span>
+                        </label>
+                    </div>
+                `;
+                contactsList.append(contactItem);
+            });
+        }
+
+        // 添加复选框变更事件
+        $('.reminder-contact-checkbox').change(function() {
+            updateSelectedContactsCount();
+        });
+
+        // 更新已选择的联系人数量
+        updateSelectedContactsCount();
+    }
+
+    // 更新已选择的联系人数量
+    function updateSelectedContactsCount() {
+        const count = $('.reminder-contact-checkbox:checked').length;
+        $('#reminder-selected-count').text(count);
+    }
+
+    // 过滤模态框中的联系人
+    function filterModalContacts(searchTerm) {
+        if (!searchTerm) {
+            $('.form-check').show();
+            return;
+        }
+
+        $('.form-check').each(function() {
+            const contactName = $(this).find('span').text().toLowerCase();
+            if (contactName.includes(searchTerm)) {
+                $(this).show();
+            } else {
+                $(this).hide();
+            }
+        });
+    }
+
+    // 保存提醒
+    function saveReminder() {
+        // 获取选中的联系人
+        const selectedContacts = $('.reminder-contact-checkbox:checked').map(function() {
+            return $(this).val();
+        }).get();
+
+        if (selectedContacts.length === 0) {
+            showToast('警告', '请至少选择一个联系人', 'warning');
+            return;
+        }
+
+        // 获取提醒内容
+        const content = $('#reminder-content').val().trim();
+        if (!content) {
+            showToast('警告', '请输入提醒内容', 'warning');
+            return;
+        }
+
+        // 获取提醒类型和时间
+        const reminderType = $('#reminder-type').val();
+        let reminderTime = '';
+
+        if (reminderType === 'one_time') {
+            const dateTime = $('#one-time-date').val();
+            if (!dateTime) {
+                showToast('警告', '请选择提醒时间', 'warning');
+                return;
+            }
+            // 创建本地时间对象，保留用户选择的时区
+            const localDate = new Date(dateTime);
+            console.log('用户选择的本地时间:', localDate.toString());
+
+            // 转换为ISO字符串时，确保时区信息正确
+            const isoString = localDate.toISOString();
+            console.log('转换后的ISO时间:', isoString);
+
+            reminderTime = isoString;
+        } else if (reminderType === 'every_day') {
+            const time = $('#daily-time').val();
+            if (!time) {
+                showToast('警告', '请选择提醒时间', 'warning');
+                return;
+            }
+            reminderTime = time;
+        } else if (reminderType === 'weekly') {
+            const selectedDays = $('#weekly-days-group input[type="checkbox"]:checked').map(function() {
+                return $(this).val();
+            }).get();
+            const time = $('#weekly-time').val();
+            if (!time) {
+                showToast('警告', '请选择提醒时间', 'warning');
+                return;
+            }
+            if (selectedDays.length === 0) {
+                showToast('警告', '请至少选择一个星期', 'warning');
+                return;
+            }
+            reminderTime = `${selectedDays.join(',')} ${time}`;
+        } else if (reminderType === 'monthly') {
+            const day = $('#monthly-day').val();
+            const time = $('#monthly-time').val();
+            if (!time) {
+                showToast('警告', '请选择提醒时间', 'warning');
+                return;
+            }
+            reminderTime = `${day} ${time}`;
+        }
+
+        // 获取提醒ID（如果是编辑）
+        const reminderId = $('#reminder-id').val();
+
+        // 显示进度条
+        $('#reminder-progress-container').removeClass('d-none');
+        $('#reminder-progress-bar').css('width', '0%');
+        $('#reminder-status').text('准备保存提醒...');
+
+        // 禁用保存按钮
+        $('#save-reminder').prop('disabled', true);
+
+        // 准备请求数据
+        const requestData = {
+            content: content,
+            reminder_type: reminderType,
+            reminder_time: reminderTime,
+            owner: currentUserId
+        };
+
+        // 如果是编辑，添加ID
+        if (reminderId) {
+            requestData.id = reminderId;
+        }
+
+        // 保存提醒
+        saveReminderForContacts(selectedContacts, requestData);
+    }
+
+    // 为多个联系人保存提醒
+    function saveReminderForContacts(contacts, reminderData) {
+        const totalContacts = contacts.length;
+        let processedCount = 0;
+        let successCount = 0;
+        let errorCount = 0;
+
+        // 更新进度条
+        function updateProgress() {
+            const percent = Math.round((processedCount / totalContacts) * 100);
+            $('#reminder-progress-bar').css('width', `${percent}%`);
+            $('#reminder-status').text(`处理中... ${processedCount}/${totalContacts}`);
+        }
+
+        // 递归处理联系人
+        function processNextContact(index) {
+            if (index >= contacts.length) {
+                // 所有联系人处理完成
+                $('#reminder-status').text(`完成: 成功 ${successCount}, 失败 ${errorCount}`);
+
+                // 延迟关闭模态框
+                setTimeout(() => {
+                    $('#reminder-modal').modal('hide');
+
+                    // 重新加载提醒列表
+                    loadAllReminders();
+
+                    // 显示结果通知
+                    if (errorCount === 0) {
+                        showToast('成功', '提醒保存成功', 'success');
+                    } else if (successCount === 0) {
+                        showToast('错误', '提醒保存失败', 'danger');
+                    } else {
+                        showToast('警告', `部分提醒保存成功: ${successCount}/${totalContacts}`, 'warning');
+                    }
+
+                    // 启用保存按钮
+                    $('#save-reminder').prop('disabled', false);
+                }, 1000);
+
+                return;
+            }
+
+            // 获取当前联系人
+            const wxid = contacts[index];
+
+            // 准备请求数据
+            const requestData = {...reminderData, chat_id: wxid};
+
+            // 判断是新增还是更新
+            const isUpdate = reminderData.id ? true : false;
+            const url = isUpdate ? `/api/reminders/${wxid}/${reminderData.id}` : `/api/reminders/${wxid}`;
+            const method = isUpdate ? 'PUT' : 'POST';
+
+            // 发送请求
+            $.ajax({
+                url: url,
+                method: method,
+                contentType: 'application/json',
+                data: JSON.stringify(requestData),
+                success: function(response) {
+                    processedCount++;
+
+                    if (response.success) {
+                        successCount++;
+                    } else {
+                        errorCount++;
+                        console.error(`保存提醒失败 (${wxid}):`, response.error);
+                    }
+
+                    // 更新进度
+                    updateProgress();
+
+                    // 处理下一个联系人
+                    processNextContact(index + 1);
+                },
+                error: function(xhr, status, error) {
+                    processedCount++;
+                    errorCount++;
+                    console.error(`保存提醒请求失败 (${wxid}):`, status, error);
+
+                    // 更新进度
+                    updateProgress();
+
+                    // 处理下一个联系人
+                    processNextContact(index + 1);
+                }
+            });
+        }
+
+        // 开始处理第一个联系人
+        processNextContact(0);
+    }
+
+    // 编辑提醒
+    function editReminder(wxid, reminderId) {
+        console.log(`编辑提醒: ${reminderId} (${wxid})`);
+
+        // 显示加载状态
+        $('#reminder-progress-container').removeClass('d-none');
+        $('#reminder-progress-bar').css('width', '100%');
+        $('#reminder-status').text('加载提醒数据...');
+
+        // 获取提醒详情
+        $.ajax({
+            url: `/api/reminders/${wxid}/${reminderId}`,
+            method: 'GET',
+            success: function(response) {
+                // 隐藏加载状态
+                $('#reminder-progress-container').addClass('d-none');
+
+                if (response.success && (response.reminder || response.data)) {
+                    const reminder = response.reminder || response.data;
+
+                    // 重置模态窗口
+                    resetReminderModal();
+
+                    // 设置提醒ID
+                    $('#reminder-id').val(reminder.id);
+
+                    // 设置提醒内容
+                    $('#reminder-content').val(reminder.content);
+
+                    // 设置提醒类型
+                    $('#reminder-type').val(reminder.reminder_type).trigger('change');
+
+                    // 设置提醒时间
+                    if (reminder.reminder_type === 'one_time') {
+                        // 处理日期时间格式
+                        if (reminder.reminder_time.includes(':') && reminder.reminder_time.includes('-')) {
+                            // 转换为HTML日期时间选择器的格式 YYYY-MM-DDTHH:MM
+                            const date = new Date(reminder.reminder_time);
+
+                            // 使用本地时区格式化日期时间
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const hours = String(date.getHours()).padStart(2, '0');
+                            const minutes = String(date.getMinutes()).padStart(2, '0');
+
+                            const formattedDate = `${year}-${month}-${day}T${hours}:${minutes}`;
+                            console.log('编辑提醒 - 原始时间:', reminder.reminder_time);
+                            console.log('编辑提醒 - 格式化后的本地时间:', formattedDate);
+
+                            $('#one-time-date').val(formattedDate);
+                        }
+                    } else if (reminder.reminder_type === 'every_day') {
+                        $('#daily-time').val(reminder.reminder_time);
+                    } else if (reminder.reminder_type === 'weekly') {
+                        const parts = reminder.reminder_time.split(' ');
+                        if (parts.length === 2) {
+                            const days = parts[0].split(',');
+                            $('#weekly-days-group input[type="checkbox"]').each(function() {
+                                if (days.includes($(this).val())) {
+                                    $(this).prop('checked', true);
+                                } else {
+                                    $(this).prop('checked', false);
+                                }
+                            });
+                            $('#weekly-time').val(parts[1]);
+                        }
+                    } else if (reminder.reminder_type === 'monthly') {
+                        const parts = reminder.reminder_time.split(' ');
+                        if (parts.length === 2) {
+                            $('#monthly-day').val(parts[0]);
+                            $('#monthly-time').val(parts[1]);
+                        }
+                    }
+
+                    // 预选联系人
+                    initReminderContactsList([wxid]);
+
+                    // 设置模态框标题
+                    $('#reminderModalLabel').text('修改提醒');
+
+                    // 显示模态框
+                    $('#reminder-modal').modal('show');
+                } else {
+                    console.error('获取提醒详情失败:', response.error);
+                    showToast('错误', '获取提醒详情失败: ' + (response.error || '未知错误'), 'danger');
+                }
+            },
+            error: function(xhr, status, error) {
+                // 隐藏加载状态
+                $('#reminder-progress-container').addClass('d-none');
+
+                console.error('提醒详情请求失败:', status, error);
+                showToast('错误', '提醒详情请求失败: ' + error, 'danger');
+            }
+        });
+    }
+
+    // 删除提醒
+    function deleteReminder(wxid, reminderId) {
+        console.log(`删除提醒: ${reminderId} (${wxid})`);
+
+        // 关闭确认对话框
+        $('#delete-reminder-modal').modal('hide');
+
+        // 显示加载状态
+        showToast('处理中', '正在删除提醒...', 'info');
+
+        // 发送删除请求
+        $.ajax({
+            url: `/api/reminders/${wxid}/${reminderId}`,
+            method: 'DELETE',
+            contentType: 'application/json',
+            success: function(response) {
+                if (response.success) {
+                    showToast('成功', '提醒已删除', 'success');
+
+                    // 重新加载提醒列表
+                    loadAllReminders();
+
+                    // 如果当前在"我的提醒"标签页，也更新该视图
+                    if ($('#my-reminders-tab').hasClass('active')) {
+                        loadMyReminders();
+                    }
+                } else {
+                    console.error('删除提醒失败:', response.error);
+                    showToast('错误', '删除提醒失败: ' + (response.error || '未知错误'), 'danger');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('删除提醒请求失败:', status, error);
+                showToast('错误', '删除提醒请求失败: ' + error, 'danger');
+            }
+        });
+    }
+
+    // 显示提示消息
+    function showToast(title, message, type = 'info') {
+        // 检查是否有Toastify库
+        if (typeof Toastify === 'function') {
+            Toastify({
+                text: message,
+                duration: 3000,
+                close: true,
+                gravity: 'top',
+                position: 'right',
+                backgroundColor: type === 'success' ? '#28a745' :
+                                type === 'danger' ? '#dc3545' :
+                                type === 'warning' ? '#ffc107' : '#17a2b8'
+            }).showToast();
+            return;
+        }
+
+        // 如果没有Toastify，使用Bootstrap的toast
+        if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+            // 创建或获取toast容器
+            let toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toast-container';
+                toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+                document.body.appendChild(toastContainer);
+            }
+
+            // 创建toast元素
+            const toastId = 'toast-' + Date.now();
+            const toastHtml = `
+                <div id="${toastId}" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header bg-${type} text-white">
+                        <strong class="me-auto">${title}</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                </div>
+            `;
+
+            // 添加到容器
+            toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+
+            // 显示toast
+            const toastElement = document.getElementById(toastId);
+            const toast = new bootstrap.Toast(toastElement);
+            toast.show();
+
+            // 自动移除
+            toastElement.addEventListener('hidden.bs.toast', function() {
+                toastElement.remove();
+            });
+
+            return;
+        }
+
+        // 如果都没有，使用alert
+        alert(`${title}: ${message}`);
+    }
+
+    // 过滤提醒列表
+    function filterReminders() {
+        // 获取搜索词
+        const searchTerm = $('#reminder-search').val().toLowerCase();
+
+        // 获取联系人筛选
+        const contactFilter = $('#contact-filter').val();
+
+        // 获取类型筛选
+        const typeFilters = $('.form-check-input[type="checkbox"]:checked').map(function() {
+            return $(this).val();
+        }).get();
+
+        // 确定当前标签页
+        const activeTab = $('button[data-bs-toggle="tab"].active').attr('id');
+
+        // 选择要过滤的提醒列表
+        let remindersToFilter = [];
+        let container, countElement, emptyElement;
+
+        if (activeTab === 'all-reminders-tab') {
+            remindersToFilter = allReminders;
+            container = $('#reminders-list');
+            countElement = $('#reminder-count');
+            emptyElement = $('#no-reminders');
+        } else if (activeTab === 'my-reminders-tab') {
+            remindersToFilter = myReminders;
+            container = $('#my-reminders-list');
+            countElement = $('#my-reminder-count');
+            emptyElement = $('#no-my-reminders');
+        }
+
+        // 应用过滤器
+        filteredReminders = remindersToFilter.filter(reminder => {
+            // 内容搜索
+            if (searchTerm && !reminder.content.toLowerCase().includes(searchTerm)) {
+                return false;
+            }
+
+            // 联系人筛选
+            if (contactFilter && reminder.chat_id !== contactFilter) {
+                return false;
+            }
+
+            // 类型筛选
+            if (typeFilters.length > 0 && !typeFilters.includes(reminder.reminder_type)) {
+                return false;
+            }
+
+            return true;
+        });
+
+        // 渲染过滤后的提醒
+        renderReminders(filteredReminders, container, countElement, emptyElement);
+    }
+</script>
+<!-- 引入jQuery -->
+<script src="/static/js/lib/jquery.min.js"></script>
+
+<!-- 页面初始化脚本 -->
+<script>
+    // 在jQuery加载完成后执行初始化
+    $(document).ready(function() {
+        console.log("定时提醒页面初始化...");
+
+        // 获取当前用户ID
+        getCurrentUserId();
+
+        // 加载联系人和提醒数据
+        loadContacts();
+        loadAllReminders();
+
+        // 设置UI交互事件
+        setupUIEvents();
+
+        // 根据提醒类型显示不同的时间选择框
+        $('#reminder-type').change(function() {
+            $('.reminder-type-input').addClass('d-none');
+
+            const type = $(this).val();
+            if (type === 'one_time') {
+                $('#one-time-inputs').removeClass('d-none');
+            } else if (type === 'every_day') {
+                $('#every-day-inputs').removeClass('d-none');
+            } else if (type === 'weekly') {
+                $('#weekly-inputs').removeClass('d-none');
+            } else if (type === 'monthly') {
+                $('#monthly-inputs').removeClass('d-none');
+            }
+        });
+
+        // 处理存储的更新信息
+        handleStoredUpdateInfo();
+    });
+</script>
+{% endblock %}

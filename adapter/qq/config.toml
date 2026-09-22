@@ -1,0 +1,31 @@
+[adapter]
+name = "qq"
+enabled = false
+module = "adapter.qq"
+class = "QQAdapter"
+replyQueue = "allbot_reply:qq"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = false
+logLevel = "INFO"
+
+[qq]
+enable = false
+platform = "qq"
+aliases = ["ntqq"]
+host = "0.0.0.0"
+port = 9011
+allowPrivate = true
+sessionTakeover = "auto"
+dedupCacheSize = 2000
+botWxid = ""
+allowedGroups = []
+maxClients = 1
+logRawMessage = true
+
+[qq.redis]
+queue = "allbot"
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""

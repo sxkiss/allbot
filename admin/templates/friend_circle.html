@@ -1,0 +1,1768 @@
+{% extends "base.html" %}
+
+{% block title %}朋友圈 - AllBot管理后台{% endblock %}
+
+{% block page_title %}朋友圈{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* 朋友圈特定样式 */
+    :root {
+        --fc-primary: #1890ff;
+        --fc-secondary: #f5f5f5;
+        --fc-text: #333;
+        --fc-text-light: #666;
+        --fc-text-lighter: #999;
+        --fc-border: #eaeaea;
+        --fc-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        --fc-radius: 12px;
+        --fc-transition: all 0.3s ease;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .page-title {
+        font-size: 24px;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .page-actions {
+        display: flex;
+        gap: 10px;
+        z-index: 100;
+        position: relative;
+        pointer-events: auto !important;
+    }
+
+    /* 确保所有按钮可点击 */
+    .btn, button, a, .nav-link, .friend-circle-filter-item, .friend-circle-actions-item {
+        pointer-events: auto !important;
+        position: relative;
+        z-index: 10;
+    }
+
+    .friend-circle-layout {
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        gap: 20px;
+    }
+
+   .friend-circle-sidebar {
+       position: sticky;
+       top: 20px;
+       height: fit-content;
+       z-index: 100;
+   }
+
+   /* 朋友圈页面特定样式，不修改全局导航栏 */
+
+   .friend-circle-container {
+       max-width: 100%;
+   }
+
+    .friend-circle-card {
+        margin-bottom: 20px;
+        border-radius: var(--fc-radius);
+        overflow: hidden;
+        transition: var(--fc-transition);
+        background-color: #fff;
+        box-shadow: var(--fc-shadow);
+        border: 1px solid var(--fc-border);
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    .friend-circle-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .friend-circle-header {
+        display: flex;
+        align-items: center;
+        padding: 16px;
+        border-bottom: 1px solid var(--fc-border);
+    }
+
+    .friend-circle-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        margin-right: 12px;
+        object-fit: cover;
+        border: 2px solid #fff;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .friend-circle-user-info {
+        flex: 1;
+    }
+
+    .friend-circle-username {
+        font-weight: 600;
+        margin-bottom: 4px;
+        font-size: 16px;
+        color: var(--fc-text);
+    }
+
+    .friend-circle-time {
+        font-size: 12px;
+        color: var(--fc-text-lighter);
+    }
+
+    .friend-circle-content {
+        padding: 18px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--fc-text);
+        line-height: 1.7;
+        font-size: 16px;
+        background-color: #fff;
+    }
+
+    .friend-circle-content p {
+        margin: 0 0 10px 0;
+        font-size: 16px;
+        line-height: 1.7;
+        letter-spacing: 0.3px;
+    }
+
+    .friend-circle-content p:last-child {
+        margin-bottom: 0;
+    }
+
+    .friend-circle-media {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        padding: 0 16px 16px;
+    }
+
+    .friend-circle-media.media-count-1 {
+        grid-template-columns: minmax(0, 400px);
+        justify-content: center;
+    }
+
+    .friend-circle-media.media-count-2,
+    .friend-circle-media.media-count-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .friend-circle-media-item {
+        position: relative;
+        padding-bottom: 100%;
+        overflow: hidden;
+        border-radius: 8px;
+        cursor: pointer;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        transition: var(--fc-transition);
+        pointer-events: auto;
+    }
+
+    .friend-circle-media-item:hover {
+        transform: scale(1.02);
+    }
+
+    .friend-circle-media-item img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        pointer-events: auto;
+    }
+
+    .friend-circle-actions {
+        display: flex;
+        padding: 12px 16px;
+        border-top: 1px solid var(--fc-border);
+        background-color: #fafafa;
+    }
+
+    .friend-circle-action {
+        display: flex;
+        align-items: center;
+        margin-right: 24px;
+        color: var(--fc-text-light);
+        cursor: pointer;
+        font-size: 14px;
+        transition: var(--fc-transition);
+        padding: 6px 10px;
+        border-radius: 20px;
+        user-select: none;
+        -webkit-user-select: none;
+        pointer-events: auto;
+    }
+
+    .friend-circle-action i {
+        margin-right: 6px;
+        font-size: 16px;
+    }
+
+    .friend-circle-action:hover {
+        color: var(--fc-primary);
+        background-color: rgba(24, 144, 255, 0.1);
+    }
+
+    .friend-circle-action.liked {
+        color: #e74c3c;
+    }
+
+    .friend-circle-action.liked i {
+        animation: heartBeat 0.3s ease-in-out;
+    }
+
+    @keyframes heartBeat {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.3); }
+        100% { transform: scale(1); }
+    }
+
+    .friend-circle-comments {
+        background-color: #f9f9f9;
+        padding: 12px 16px;
+        border-top: 1px solid var(--fc-border);
+    }
+
+    .friend-circle-comment {
+        margin-bottom: 10px;
+        font-size: 14px;
+        padding: 8px 12px;
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .friend-circle-comment-user {
+        font-weight: 600;
+        color: var(--fc-primary);
+        margin-right: 6px;
+    }
+
+    .comment-form {
+        display: flex;
+        margin-top: 10px;
+    }
+
+    .comment-input {
+        flex: 1;
+        border: 1px solid #ddd;
+        border-radius: 20px;
+        padding: 8px 15px;
+        margin-right: 10px;
+    }
+
+    .filter-card {
+        background-color: white;
+        border-radius: var(--fc-radius);
+        box-shadow: var(--fc-shadow);
+        margin-bottom: 20px;
+        overflow: hidden;
+        border: 1px solid var(--fc-border);
+    }
+
+    .filter-card-header {
+        padding: 16px;
+        background-color: #fafafa;
+        border-bottom: 1px solid var(--fc-border);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+    }
+
+    .filter-card-header i {
+        margin-right: 8px;
+        color: var(--fc-primary);
+    }
+
+    .filter-card-body {
+        padding: 16px;
+    }
+
+    .filter-item {
+        margin-bottom: 16px;
+    }
+
+    .filter-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .filter-label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: 500;
+        color: var(--fc-text-light);
+        font-size: 14px;
+    }
+
+    .filter-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 16px;
+        position: relative;
+        z-index: 100;
+        pointer-events: auto;
+    }
+
+    .btn-publish {
+        background-color: var(--fc-primary);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--fc-transition);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
+    .btn-publish i {
+        margin-right: 6px;
+    }
+
+    .btn-publish:hover {
+        background-color: #1483e0;
+        transform: translateY(-2px);
+    }
+
+    .btn-sync {
+        background-color: #52c41a;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--fc-transition);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
+    .btn-sync i {
+        margin-right: 6px;
+    }
+
+    .btn-sync:hover {
+        background-color: #49ad17;
+        transform: translateY(-2px);
+    }
+
+    .load-more-container {
+        text-align: center;
+        margin: 20px 0;
+    }
+
+    .load-more-btn {
+        padding: 10px 24px;
+        background-color: white;
+        border: 1px solid var(--fc-border);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: var(--fc-transition);
+        font-weight: 500;
+        color: var(--fc-text-light);
+        display: inline-flex;
+        align-items: center;
+        pointer-events: auto;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
+    .load-more-btn i {
+        margin-right: 6px;
+    }
+
+    .load-more-btn:hover {
+        background-color: #f5f5f5;
+        color: var(--fc-primary);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--fc-text-lighter);
+        background-color: white;
+        border-radius: var(--fc-radius);
+        box-shadow: var(--fc-shadow);
+    }
+
+    .empty-state i {
+        font-size: 64px;
+        margin-bottom: 20px;
+        color: #e0e0e0;
+    }
+
+    .empty-state h5 {
+        font-size: 18px;
+        margin-bottom: 10px;
+        color: var(--fc-text-light);
+    }
+
+    .empty-state p {
+        font-size: 14px;
+        max-width: 300px;
+        margin: 0 auto;
+    }
+
+    /* 发布朋友圈模态框样式 */
+    .publish-modal .modal-content {
+        border-radius: var(--fc-radius);
+        border: none;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    .publish-modal .modal-header {
+        border-bottom: 1px solid var(--fc-border);
+        padding: 16px 20px;
+    }
+
+    .publish-modal .modal-title {
+        font-weight: 600;
+        color: var(--fc-text);
+    }
+
+    .publish-modal .modal-body {
+        padding: 20px;
+    }
+
+    .publish-textarea {
+        border: 1px solid var(--fc-border);
+        border-radius: 8px;
+        padding: 12px;
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        margin-bottom: 16px;
+        transition: var(--fc-transition);
+    }
+
+    .publish-textarea:focus {
+        border-color: var(--fc-primary);
+        box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+        outline: none;
+    }
+
+    .publish-media-preview {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .publish-media-item {
+        position: relative;
+        padding-bottom: 100%;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--fc-border);
+    }
+
+    .publish-media-item img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .publish-media-remove {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background-color: rgba(0, 0, 0, 0.5);
+        color: white;
+        border: none;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 12px;
+    }
+
+    .publish-media-add {
+        border: 1px dashed var(--fc-border);
+        border-radius: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        cursor: pointer;
+        transition: var(--fc-transition);
+        background-color: #fafafa;
+    }
+
+    .publish-media-add:hover {
+        border-color: var(--fc-primary);
+        background-color: rgba(24, 144, 255, 0.05);
+    }
+
+    .publish-media-add i {
+        font-size: 24px;
+        color: var(--fc-text-lighter);
+        margin-bottom: 8px;
+    }
+
+    .publish-media-add span {
+        font-size: 14px;
+        color: var(--fc-text-light);
+    }
+
+    .publish-options {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 16px;
+    }
+
+    .publish-option {
+        display: flex;
+        align-items: center;
+        font-size: 14px;
+        color: var(--fc-text-light);
+        cursor: pointer;
+    }
+
+    .publish-option input {
+        margin-right: 6px;
+    }
+
+    .publish-modal .modal-footer {
+        border-top: 1px solid var(--fc-border);
+        padding: 16px 20px;
+    }
+
+    /* 动画效果 */
+    .fade-in {
+        animation: fadeIn 0.5s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 图片查看器 */
+    .image-viewer-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.9);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        pointer-events: none;
+    }
+
+    .image-viewer-overlay.active {
+        pointer-events: auto;
+        opacity: 1;
+    }
+
+    .image-viewer-content {
+        max-width: 90%;
+        max-height: 90%;
+        position: relative;
+    }
+
+    .image-viewer-img {
+        max-width: 100%;
+        max-height: 90vh;
+        box-shadow: 0 5px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .image-viewer-close {
+        position: absolute;
+        top: -40px;
+        right: 0;
+        color: white;
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        pointer-events: auto;
+        z-index: 10000;
+    }
+
+    .image-viewer-nav {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        color: white;
+        background: rgba(0, 0, 0, 0.5);
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 20px;
+        pointer-events: auto;
+        z-index: 10000;
+    }
+
+    .image-viewer-prev {
+        left: -60px;
+    }
+
+    .image-viewer-next {
+        right: -60px;
+    }
+
+    .spin {
+        animation: spin 1s linear infinite;
+        display: inline-block;
+    }
+
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- 页面标题和操作按钮 -->
+    <div class="page-header">
+        <h1 class="page-title">朋友圈</h1>
+        <div class="page-actions">
+            <button id="sync-btn" class="btn-sync">
+                <i class="bi bi-arrow-repeat"></i>
+                同步朋友圈
+            </button>
+            <button id="publish-btn" class="btn-publish" data-bs-toggle="modal" data-bs-target="#publish-modal">
+                <i class="bi bi-plus-lg"></i>
+                发布朋友圈
+            </button>
+        </div>
+    </div>
+
+    <!-- 两栏布局 -->
+    <div class="friend-circle-layout">
+        <!-- 左侧筛选栏 -->
+        <div class="friend-circle-sidebar">
+            <!-- 筛选卡片 -->
+            <div class="filter-card">
+                <div class="filter-card-header">
+                    <i class="bi bi-person"></i>
+                    好友朋友圈
+                </div>
+                <div class="filter-card-body">
+                    <div class="filter-item">
+                        <label class="filter-label" for="filter-wxid">选择好友</label>
+                        <select class="form-select" id="filter-wxid">
+                            <option value="">所有朋友圈</option>
+                            <option value="self">我的朋友圈</option>
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label" for="filter-keyword">关键词搜索</label>
+                        <input type="text" class="form-control" id="filter-keyword" placeholder="输入关键词">
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label" for="filter-date-start">开始日期</label>
+                        <input type="date" class="form-control" id="filter-date-start">
+                    </div>
+                    <div class="filter-item">
+                        <label class="filter-label" for="filter-date-end">结束日期</label>
+                        <input type="date" class="form-control" id="filter-date-end">
+                    </div>
+                    <div class="filter-buttons">
+                        <button id="reset-filter-btn" class="btn btn-light">重置</button>
+                        <button id="apply-filter-btn" class="btn btn-primary">查看</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 统计信息卡片 -->
+            <div class="filter-card">
+                <div class="filter-card-header">
+                    <i class="bi bi-bar-chart"></i>
+                    统计信息
+                </div>
+                <div class="filter-card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>总条数：</span>
+                        <span id="total-count">0</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>最近更新：</span>
+                        <span id="last-update">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧内容区 -->
+        <div class="friend-circle-container">
+            <!-- 朋友圈列表 -->
+            <div id="friend-circle-list">
+                <!-- 朋友圈内容将通过JavaScript动态加载 -->
+            </div>
+
+            <!-- 空状态提示 -->
+            <div id="empty-state" class="empty-state" style="display: none;">
+                <i class="bi bi-chat-square-text"></i>
+                <h5>暂无朋友圈内容</h5>
+                <p>该用户没有发布朋友圈或权限不足无法查看</p>
+                <button class="btn btn-outline-primary mt-3" onclick="loadFriendCircle(true)">
+                    <i class="bi bi-arrow-clockwise me-1"></i>刷新列表
+                </button>
+            </div>
+
+            <!-- 加载更多按钮 -->
+            <div id="load-more-container" class="load-more-container" style="display: none;">
+                <button id="load-more-btn" class="load-more-btn">
+                    <i class="bi bi-arrow-down-circle"></i>
+                    加载更多
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 评论模态框 -->
+<div class="modal fade" id="comment-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">发表评论</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="comment-post-id">
+                <div class="mb-3">
+                    <label for="comment-content" class="form-label">评论内容</label>
+                    <textarea class="form-control" id="comment-content" rows="3" placeholder="输入评论内容"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="submit-comment-btn">提交</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 发布朋友圈模态框 -->
+<div class="modal fade publish-modal" id="publish-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">发布朋友圈</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <textarea class="publish-textarea" id="publish-content" placeholder="分享此刻的想法..."></textarea>
+
+                <div class="publish-media-preview" id="media-preview">
+                    <!-- 预览图片将在这里显示 -->
+                </div>
+
+                <div class="publish-media-add" id="add-media">
+                    <i class="bi bi-image"></i>
+                    <span>添加图片</span>
+                    <input type="file" id="media-upload" multiple accept="image/*" style="display: none;">
+                </div>
+
+                <div class="publish-options">
+                    <div class="publish-option">
+                        <input type="checkbox" id="publish-public" checked>
+                        <label for="publish-public">公开</label>
+                    </div>
+                    <div class="publish-option">
+                        <input type="checkbox" id="publish-location">
+                        <label for="publish-location">添加位置</label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="submit-publish-btn">发布</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 图片查看器 -->
+<div class="image-viewer-overlay" id="image-viewer">
+    <div class="image-viewer-content">
+        <button class="image-viewer-close" id="viewer-close">
+            <i class="bi bi-x-lg"></i>
+        </button>
+        <img src="" alt="图片预览" class="image-viewer-img" id="viewer-img">
+        <button class="image-viewer-nav image-viewer-prev" id="viewer-prev">
+            <i class="bi bi-chevron-left"></i>
+        </button>
+        <button class="image-viewer-nav image-viewer-next" id="viewer-next">
+            <i class="bi bi-chevron-right"></i>
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- 加载jQuery库 -->
+<script src="/static/js/lib/jquery.min.js"></script>
+<script>
+    // API配置
+    const API_BASE_URL = '/api'; // 可以根据实际情况修改这个基础URL
+
+    // 全局变量
+    let currentPage = 1;
+    let currentLimit = 30; // 增加每页显示数量
+    let currentMaxId = 0;
+    let hasMore = false;
+    let isLoading = false;
+    let contacts = [];
+    let currentImageIndex = 0;
+    let currentImages = [];
+    let bot_wxid = ''; // 当前登录用户的wxid
+
+    // 页面加载完成后执行
+    $(document).ready(function() {
+        // 初始化AOS动画
+        if (typeof AOS !== 'undefined') {
+            AOS.init();
+        }
+
+        // 获取当前登录用户的wxid
+        $.ajax({
+            url: '/api/bot/status',
+            type: 'GET',
+            success: function(response) {
+                if (response.success && response.data && response.data.wxid) {
+                    bot_wxid = response.data.wxid;
+                    console.log('当前登录用户wxid:', bot_wxid);
+                }
+
+                // 初始化数据
+                loadContacts();
+                loadFriendCircle();
+            },
+            error: function(error) {
+                console.error('获取机器人状态失败:', error);
+
+                // 即使获取失败也继续加载数据
+                loadContacts();
+                loadFriendCircle();
+            }
+        });
+
+        // 绑定事件
+        $('#apply-filter-btn').click(function() {
+            currentPage = 1;
+            currentMaxId = 0;
+            const wxid = $('#filter-wxid').val();
+            console.log('查看朋友圈: wxid =', wxid);
+
+            // 更新页面标题
+            if (wxid && wxid !== '' && wxid !== 'self') {
+                const selectedContact = contacts.find(c => c.wxid === wxid);
+                if (selectedContact) {
+                    $('.page-title').text(`${selectedContact.nickname} 的朋友圈`);
+                }
+            } else {
+                $('.page-title').text('朋友圈');
+            }
+
+            // 清空当前朋友圈列表
+            $('#friend-circle-list').empty();
+
+            loadFriendCircle(true);
+        });
+
+        // 同步朋友圈按钮
+        $('#sync-btn').click(function() {
+            const btn = $(this);
+            const originalHtml = btn.html();
+
+            btn.html('<i class="bi bi-arrow-repeat spin"></i> 同步中...');
+            btn.prop('disabled', true);
+
+            $.ajax({
+                url: '/api/friend_circle/sync',
+                type: 'POST',
+                success: function(response) {
+                    if (response.success) {
+                        showToast('朋友圈同步成功', 'success');
+                        loadFriendCircle(true);
+                    } else {
+                        showToast('朋友圈同步失败: ' + response.error, 'error');
+                    }
+                },
+                error: function(error) {
+                    console.error('同步失败:', error);
+                    showToast('朋友圈同步失败', 'error');
+                },
+                complete: function() {
+                    btn.html(originalHtml);
+                    btn.prop('disabled', false);
+                }
+            });
+        });
+
+        $('#reset-filter-btn').click(function() {
+            $('#filter-wxid').val('');
+            $('#filter-keyword').val('');
+            $('#filter-date-start').val('');
+            $('#filter-date-end').val('');
+            currentPage = 1;
+            currentMaxId = 0;
+            console.log('重置所有筛选条件');
+
+            // 重置页面标题
+            $('.page-title').text('朋友圈');
+
+            loadFriendCircle(true);
+        });
+
+        $('#load-more-btn').click(function() {
+            if (!isLoading && hasMore) {
+                currentPage++;
+                loadFriendCircle(false);
+            }
+        });
+
+        // 提交评论
+        $('#submit-comment-btn').click(function() {
+            const postId = $('#comment-post-id').val();
+            const content = $('#comment-content').val().trim();
+
+            if (!content) {
+                showToast('评论内容不能为空', 'warning');
+                return;
+            }
+
+            submitComment(postId, content);
+        });
+
+        // 发布朋友圈按钮
+        $('#submit-publish-btn').click(function() {
+            const content = $('#publish-content').val().trim();
+            const isPublic = $('#publish-public').is(':checked');
+
+            if (!content && $('#media-preview').children().length === 0) {
+                showToast('请输入内容或上传图片', 'warning');
+                return;
+            }
+
+            // 这里可以添加发布朋友圈的API调用
+            showToast('发布朋友圈功能开发中', 'info');
+        });
+
+        // 图片上传
+        $('#add-media').click(function() {
+            $('#media-upload').click();
+        });
+
+        // 图片查看器关闭按钮
+        $('#viewer-close').click(function() {
+            $('#image-viewer').removeClass('active');
+        });
+
+        // 图片查看器导航按钮
+        $('#viewer-prev').click(function() {
+            navigateImage(-1);
+        });
+
+        $('#viewer-next').click(function() {
+            navigateImage(1);
+        });
+    });
+
+    // 加载联系人列表
+    function loadContacts() {
+        $.ajax({
+            url: '/api/contacts',
+            type: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    // 处理联系人数据
+                    contacts = response.data || [];
+
+                    // 确保每个联系人都有正确的属性
+                    contacts = contacts.map(contact => ({
+                        wxid: contact.wxid,
+                        nickname: contact.nickname || contact.name || contact.wxid,
+                        avatar: contact.avatar || '/static/img/default-avatar.png',
+                        type: contact.type || (contact.wxid.indexOf('@chatroom') > -1 ? 'group' : 'friend')
+                    }));
+
+                    // 填充联系人下拉框
+                    const wxidSelect = $('#filter-wxid');
+                    // 按昵称排序联系人
+                    contacts.sort((a, b) => {
+                        const nameA = a.nickname || a.wxid;
+                        const nameB = b.nickname || b.wxid;
+                        return nameA.localeCompare(nameB);
+                    });
+
+                    contacts.forEach(contact => {
+                        if (contact.type === 'friend') {
+                            wxidSelect.append(`<option value="${contact.wxid}">${contact.nickname || contact.wxid}</option>`);
+                        }
+                    });
+
+                    // 绑定联系人下拉框变化事件
+                    wxidSelect.change(function() {
+                        const selectedWxid = $(this).val();
+                        if (selectedWxid && selectedWxid !== '' && selectedWxid !== 'self') {
+                            // 自动点击查看按钮
+                            $('#apply-filter-btn').click();
+                        }
+                    });
+                }
+            },
+            error: function(error) {
+                console.error('加载联系人失败:', error);
+                showToast('加载联系人失败', 'error');
+            }
+        });
+    }
+
+    // 加载朋友圈列表
+    function loadFriendCircle(reset = false) {
+        if (isLoading) return;
+
+        isLoading = true;
+
+        // 如果是重置，则清空列表
+        if (reset) {
+            $('#friend-circle-list').html('');
+            $('#empty-state').hide();
+            currentPage = 1;
+            currentMaxId = 0;
+        }
+
+        // 显示加载中
+        if (!$('#loading-indicator').length) {
+            $('#friend-circle-list').append('<div id="loading-indicator" class="text-center my-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">加载中...</span></div></div>');
+        }
+
+        // 获取筛选条件
+        const wxid = $('#filter-wxid').val();
+        const keyword = $('#filter-keyword').val();
+        const dateStart = $('#filter-date-start').val();
+        const dateEnd = $('#filter-date-end').val();
+        const maxId = reset ? 0 : currentMaxId;
+
+        console.log('Loading friend circle with wxid:', wxid, 'maxId:', maxId, 'reset:', reset);
+
+        // 发送请求
+        let apiUrl = '/api/friend_circle/list';
+        let requestData = {};
+        let requestType = 'GET';
+
+        // 如果指定了wxid且不是空或self，则使用用户朋友圈API
+        if (wxid && wxid !== 'self' && wxid !== '') {
+            // 使用朋友圈详情API，只获取指定用户的朋友圈
+            apiUrl = '/api/friend_circle/detail';
+            requestType = 'POST';
+            requestData = {
+                wxid: window.bot_wxid || '', // 当前登录用户
+                towxid: wxid,  // 要查看的好友
+                maxid: maxId
+            };
+            console.log(`获取用户 ${wxid} 的朋友圈，参数:`, requestData);
+
+            // 更新页面标题
+            const selectedContact = contacts.find(c => c.wxid === wxid);
+            if (selectedContact) {
+                $('.page-title').text(`${selectedContact.nickname} 的朋友圈`);
+            }
+        } else if (wxid === 'self') {
+            // 获取自己的朋友圈
+            apiUrl = '/api/friend_circle/list';
+            requestType = 'GET';
+            requestData = {
+                wxid: 'self',
+                max_id: maxId,
+                page: currentPage,
+                limit: currentLimit,
+                refresh: reset
+            };
+            console.log('获取自己的朋友圈');
+        } else {
+            // 获取所有朋友圈
+            apiUrl = '/api/friend_circle/list';
+            requestType = 'GET';
+            requestData = {
+                max_id: maxId,
+                page: currentPage,
+                limit: currentLimit,
+                refresh: reset,
+                keyword: keyword || null,
+                date_start: dateStart || null,
+                date_end: dateEnd || null
+            };
+            console.log('获取所有朋友圈');
+        }
+
+        $.ajax({
+            url: apiUrl,
+            type: requestType,
+            data: requestData,
+            contentType: requestType === 'POST' ? 'application/json' : 'application/x-www-form-urlencoded',
+            dataType: 'json',
+            processData: requestType !== 'POST',
+            beforeSend: function(xhr) {
+                if (requestType === 'POST') {
+                    // 如果是POST请求，将数据转换为JSON字符串
+                    xhr.setRequestHeader('Content-Type', 'application/json');
+                    this.data = JSON.stringify(requestData);
+                }
+            },
+            success: function(response) {
+                // 移除加载指示器
+                $('#loading-indicator').remove();
+
+                console.log('朋友圈API响应:', response);
+
+                // 添加调试信息
+                if (response && response.data) {
+                    console.log('朋友圈数据类型:', typeof response.data);
+                    console.log('朋友圈数据结构:', Object.keys(response.data));
+                }
+
+                if (response.success) {
+                    const data = response.data;
+                    // 保存当前响应到全局变量，供统计信息使用
+                    window.currentResponse = response;
+
+                    // 处理不同类型的API响应
+                    let items = [];
+                    let hasMoreItems = false;
+                    let lastId = 0;
+
+                    // 处理朋友圈API的不同响应格式
+                    if (Array.isArray(data)) {
+                        // 直接返回数组格式
+                        // 获取当前选中的用户wxid
+                        const selectedWxid = $('#filter-wxid').val();
+
+                        // 如果是查看特定用户的朋友圈，只显示该用户的朋友圈
+                        let filteredItems = data;
+                        if (selectedWxid && selectedWxid !== '' && selectedWxid !== 'self') {
+                            filteredItems = data.filter(obj => obj.wxid === selectedWxid || obj.Username === selectedWxid);
+                        }
+
+                        // 直接使用已经格式化的数据
+                        items = filteredItems;
+
+                        // 判断是否有更多数据
+                        hasMoreItems = data.length >= 10; // 假设如果返回10条数据，则可能有更多
+
+                        // 获取最后一条数据的ID作为下一页的起始点
+                        if (items.length > 0) {
+                            const lastItem = items[items.length - 1];
+                            lastId = lastItem.id || lastItem.Id;
+                        }
+                    } else if (data.ObjectList && Array.isArray(data.ObjectList)) {
+                        // 获取当前选中的用户wxid
+                        const selectedWxid = $('#filter-wxid').val();
+
+                        // 如果是查看特定用户的朋友圈，只显示该用户的朋友圈
+                        let filteredItems = data.ObjectList;
+                        if (selectedWxid && selectedWxid !== '' && selectedWxid !== 'self') {
+                            // 已经使用了GetDetail API，应该已经只返回了该用户的朋友圈
+                            // 但为了安全起见，还是再次过滤一下
+                            filteredItems = data.ObjectList.filter(obj => obj.Username === selectedWxid || obj.wxid === selectedWxid);
+                        }
+
+
+
+                        items = filteredItems.map(item => {
+                            // 从 raw_data 中提取数据
+                            const rawItem = item.raw_data || item;
+
+                            // 从 ObjectDesc 的 buffer 中提取内容
+                            let content = '';
+                            let mediaList = [];
+
+                            // 如果已经有内容，直接使用
+                            if (item.content) {
+                                content = item.content;
+                            } else if (rawItem.ObjectDesc && rawItem.ObjectDesc.buffer) {
+                                const buffer = rawItem.ObjectDesc.buffer;
+
+                                // 提取内容
+                                if (buffer.includes('<contentDesc>') && buffer.includes('</contentDesc>')) {
+                                    const contentStart = buffer.indexOf('<contentDesc>') + '<contentDesc>'.length;
+                                    const contentEnd = buffer.indexOf('</contentDesc>');
+                                    if (contentStart > 0 && contentEnd > contentStart) {
+                                        let extractedContent = buffer.substring(contentStart, contentEnd);
+
+                                        // 如果内容包含 CDATA
+                                        if (extractedContent.startsWith('<![CDATA[') && extractedContent.endsWith(']]>')) {
+                                            extractedContent = extractedContent.substring(9, extractedContent.length - 3);
+                                        }
+                                        content = extractedContent;
+                                    }
+                                }
+
+                                // 提取媒体列表
+                                if (buffer.includes('<mediaList>') && buffer.includes('</mediaList>')) {
+                                    const mediaStart = buffer.indexOf('<mediaList>') + '<mediaList>'.length;
+                                    const mediaEnd = buffer.indexOf('</mediaList>');
+                                    if (mediaStart > 0 && mediaEnd > mediaStart) {
+                                        const mediaContent = buffer.substring(mediaStart, mediaEnd);
+
+                                        // 提取所有媒体项
+                                        const mediaRegex = /<media>(.*?)<\/media>/gs;
+                                        let match;
+                                        while ((match = mediaRegex.exec(mediaContent)) !== null) {
+                                            const mediaItem = match[1];
+
+                                            // 提取URL
+                                            let url = '';
+                                            if (mediaItem.includes('<url') && mediaItem.includes('</url>')) {
+                                                const urlStart = mediaItem.indexOf('>', mediaItem.indexOf('<url')) + 1;
+                                                const urlEnd = mediaItem.indexOf('</url>');
+                                                if (urlStart > 0 && urlEnd > urlStart) {
+                                                    url = mediaItem.substring(urlStart, urlEnd);
+                                                }
+                                            } else if (mediaItem.includes('<thumb') && mediaItem.includes('</thumb>')) {
+                                                const thumbStart = mediaItem.indexOf('>', mediaItem.indexOf('<thumb')) + 1;
+                                                const thumbEnd = mediaItem.indexOf('</thumb>');
+                                                if (thumbStart > 0 && thumbEnd > thumbStart) {
+                                                    url = mediaItem.substring(thumbStart, thumbEnd);
+                                                }
+                                            }
+
+                                            // 确定媒体类型
+                                            let type = 1; // 默认图片
+                                            if (mediaItem.includes('<type>6</type>') || mediaItem.includes('<mediaType>4</mediaType>')) {
+                                                type = 2; // 视频
+                                            }
+
+                                            if (url) {
+                                                // 处理CDATA标记
+                                                if (url.startsWith('<![CDATA[') && url.endsWith(']]>')) {
+                                                    url = url.substring(9, url.length - 3);
+                                                }
+                                                mediaList.push({ url, type });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 如果已经有媒体列表，直接使用
+                            if (item.media_list && item.media_list.length > 0) {
+                                mediaList = item.media_list;
+                            }
+
+
+
+                            // 将API响应转换为标准格式
+                            const result = {
+                                id: item.id || rawItem.Id,
+                                wxid: item.wxid || rawItem.Username,
+                                nickname: item.nickname || rawItem.Nickname || '',
+                                content: content || item.content || rawItem.contentDesc || '',
+                                contentDesc: item.contentDesc || rawItem.contentDesc || '',
+                                create_time: item.create_time || rawItem.CreateTime,
+                                create_time_str: item.create_time_str || (rawItem.CreateTime ? new Date(rawItem.CreateTime * 1000).toLocaleString() : '-'),
+                                media_list: mediaList,
+                                like_count: item.like_count || rawItem.LikeCount || 0,
+                                comment_count: item.comment_count || rawItem.CommentCount || 0,
+                                comments: item.comments || [],
+                                raw: rawItem
+                            };
+
+                            console.log('处理后的朋友圈项目:', result);
+                            return result;
+                        });
+
+                        // 判断是否有更多数据
+                        hasMoreItems = data.ObjectList.length >= 10; // 假设如果返回10条数据，则可能有更多
+
+                        // 获取最后一条数据的ID作为下一页的maxId
+                        if (items.length > 0) {
+                            const lastItem = items[items.length - 1];
+                            lastId = lastItem.id || lastItem.Id;
+                        }
+                    } else if (data.items && Array.isArray(data.items)) {
+                        // 处理标准列表响应
+                        items = data.items;
+                        hasMoreItems = data.has_more;
+                        lastId = data.last_id;
+                    }
+
+                    // 更新全局变量
+                    hasMore = hasMoreItems;
+                    currentMaxId = lastId;
+
+                    // 渲染朋友圈列表
+                    if (items && items.length > 0) {
+                        renderFriendCircleList(items);
+                        $('#empty-state').hide();
+                    } else if (reset) {
+                        $('#empty-state').show();
+                    }
+
+                    // 显示/隐藏加载更多按钮
+                    $('#load-more-container').toggle(hasMore);
+                } else {
+                    showToast('加载朋友圈失败: ' + response.error, 'error');
+                }
+
+                isLoading = false;
+            },
+            error: function(error) {
+                // 移除加载指示器
+                $('#loading-indicator').remove();
+
+                console.error('加载朋友圈失败:', error);
+                showToast('加载朋友圈失败，请检查网络连接', 'error');
+
+                isLoading = false;
+            }
+        });
+    }
+
+    // 渲染朋友圈列表
+    function renderFriendCircleList(items) {
+        console.log('开始渲染朋友圈列表:', items);
+        const container = $('#friend-circle-list');
+
+        // 如果是重置，先清空容器
+        if (currentPage === 1) {
+            container.empty();
+        }
+
+        // 获取当前选中的用户wxid
+        const selectedWxid = $('#filter-wxid').val();
+
+        // 更新统计信息 - 使用response中的total而非当前页的items.length
+        if (window.currentResponse && window.currentResponse.data && window.currentResponse.data.total) {
+            $('#total-count').text(window.currentResponse.data.total);
+        } else {
+            $('#total-count').text(items.length);
+        }
+
+        // 更新最近更新时间
+        if (items.length > 0) {
+            const firstItem = items[0];
+            const timestamp = firstItem.create_time || firstItem.CreateTime;
+            if (timestamp) {
+                const latestTime = new Date(timestamp * 1000);
+                $('#last-update').text(latestTime.toLocaleString());
+            } else {
+                $('#last-update').text(firstItem.create_time_str || '-');
+            }
+        }
+
+        items.forEach(item => {
+            // 兼容两种数据格式
+            const wxid = item.wxid || item.Username;
+            const nickname = item.nickname || item.Nickname || wxid;
+
+            // 查找联系人信息
+            const contact = contacts.find(c => c.wxid === wxid) || { wxid: wxid, nickname: nickname };
+
+            // 如果是好友的朋友圈，添加点击事件查看该好友的朋友圈
+            const isClickable = contact.wxid && contact.type === 'friend';
+            // 使用相对路径而非绝对路径
+            const avatar = contact.avatar || '../static/img/default-avatar.png';
+            const displayName = contact.nickname || nickname || wxid;
+
+            // 构建媒体内容
+            let mediaHtml = '';
+            // 兼容两种数据格式
+            const mediaList = item.media_list || item.mediaList || [];
+
+            if (mediaList && mediaList.length > 0) {
+                const mediaCount = mediaList.length;
+                mediaHtml = `
+                    <div class="friend-circle-media media-count-${mediaCount}">
+                        ${mediaList.map(media => {
+                            // 兼容不同的URL字段名
+                            const url = media.url || media.thumb || media.thumbUrl || media.coverUrl || '';
+                            return `
+                                <div class="friend-circle-media-item">
+                                    <img src="${url}" alt="朋友圈图片" loading="lazy" onclick="openImageViewer('${url}')">
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+
+            // 构建评论内容
+            let commentsHtml = '';
+            if (item.comments && item.comments.length > 0) {
+                commentsHtml = `
+                    <div class="friend-circle-comments">
+                        ${item.comments.map(comment => `
+                            <div class="friend-circle-comment">
+                                <span class="friend-circle-comment-user">${comment.nickname || comment.wxid}:</span>
+                                <span>${comment.content}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            // 构建朋友圈卡片
+            console.log('渲染朋友圈卡片:', item);
+
+            // 处理内容
+            let contentHtml = '';
+            // 兼容两种数据格式
+            console.log('项目原始内容字段:', item.content, item.contentDesc, item.ObjectDesc);
+            const content = item.content || item.contentDesc || '';
+
+            if (content && content.trim() !== '') {
+                // 使用全局函数处理表情符号
+                let formattedContent = formatContent(content);
+                contentHtml = `<div class="friend-circle-content"><p>${formattedContent}</p></div>`;
+                console.log('渲染内容:', formattedContent);
+            } else if ((item.media_list && item.media_list.length > 0) || (item.mediaList && item.mediaList.length > 0)) {
+                contentHtml = `<div class="friend-circle-content"><p>分享了图片</p></div>`;
+                console.log('无内容，显示默认文本');
+            } else {
+                contentHtml = `<div class="friend-circle-content"><p>分享了朋友圈</p></div>`;
+                console.log('无内容无图片，显示默认文本');
+            }
+
+            // 打印卡片数据
+            console.log('卡片数据:', {
+                id: item.id || item.Id,
+                wxid: wxid,
+                nickname: displayName,
+                time: item.create_time_str || (item.CreateTime ? new Date(item.CreateTime * 1000).toLocaleString() : '-')
+            });
+
+            const cardHtml = `
+                <div class="card friend-circle-card fade-in" data-id="${item.id || item.Id}">
+                    <div class="friend-circle-header">
+                        <img src="${avatar}" class="friend-circle-avatar" alt="${displayName}" ${isClickable ? `onclick="viewUserFriendCircle('${contact.wxid}', '${displayName}')"` : ''}>
+                        <div class="friend-circle-user-info">
+                            <div class="friend-circle-username" ${isClickable ? `onclick="viewUserFriendCircle('${contact.wxid}', '${displayName}')" style="cursor: pointer;"` : ''}>${displayName}</div>
+                            <div class="friend-circle-time">${item.create_time_str || (item.CreateTime ? new Date(item.CreateTime * 1000).toLocaleString() : '-')}</div>
+                        </div>
+                    </div>
+
+                    ${contentHtml}
+
+                    ${mediaHtml}
+
+                    <div class="friend-circle-actions">
+                        <div class="friend-circle-action" onclick="likeFriendCircle('${item.id}')">
+                            <i class="bi bi-heart"></i>
+                            <span>点赞 (${item.like_count})</span>
+                        </div>
+                        <div class="friend-circle-action" onclick="openCommentModal('${item.id}')">
+                            <i class="bi bi-chat"></i>
+                            <span>评论 (${item.comment_count})</span>
+                        </div>
+                        <div class="friend-circle-action" onclick="shareFriendCircle('${item.id}')">
+                            <i class="bi bi-share"></i>
+                            <span>分享</span>
+                        </div>
+                    </div>
+
+                    ${commentsHtml}
+                </div>
+            `;
+
+            container.append(cardHtml);
+        });
+
+        // 初始化AOS动画
+        if (typeof AOS !== 'undefined') {
+            AOS.refresh();
+        }
+
+        // 更新统计信息
+        updateStats(items.length);
+    }
+
+    // 更新统计信息 - 不再累加计数，而是直接使用当前数据
+    function updateStats(count) {
+        // 不再累加计数，因为已在renderFriendCircleList中设置了准确的总数
+        // $('#total-count').text(count);
+        $('#last-update').text(new Date().toLocaleString());
+    }
+
+    // 查看用户朋友圈
+    function viewUserFriendCircle(wxid, nickname) {
+        if (!wxid) return;
+
+        console.log(`查看用户 ${nickname}(${wxid}) 的朋友圈`);
+
+        // 设置下拉框值
+        $('#filter-wxid').val(wxid);
+
+        // 更新页面标题
+        $('.page-title').text(`${nickname} 的朋友圈`);
+
+        // 清空当前朋友圈列表
+        $('#friend-circle-list').empty();
+
+        // 重置分页并加载
+        currentPage = 1;
+        currentMaxId = 0;
+        loadFriendCircle(true);
+    }
+
+    // 格式化时间戳
+    function formatTime(timestamp) {
+        if (!timestamp) return '-';
+        return new Date(timestamp * 1000).toLocaleString();
+    }
+
+    // 分享朋友圈
+    function shareFriendCircle(id) {
+        // 复制分享链接
+        const shareUrl = `${window.location.origin}/friend_circle?id=${id}`;
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            showToast('分享链接已复制到剪贴板', 'success');
+        }).catch(err => {
+            console.error('复制失败:', err);
+            showToast('复制分享链接失败', 'error');
+        });
+    }
+
+    // 打开图片查看器
+    function openImageViewer(url, index, urls) {
+        const viewer = $('#image-viewer');
+        const viewerImg = $('#viewer-img');
+
+        // 设置当前图片
+        viewerImg.attr('src', url);
+
+        // 如果有多张图片，设置导航按钮
+        if (urls && urls.length > 1) {
+            viewer.data('current-index', index);
+            viewer.data('urls', urls);
+            $('.image-viewer-nav').show();
+        } else {
+            $('.image-viewer-nav').hide();
+        }
+
+        // 显示查看器
+        viewer.addClass('active');
+    }
+
+    // 图片查看器导航
+    function navigateImage(direction) {
+        const viewer = $('#image-viewer');
+        const viewerImg = $('#viewer-img');
+        const urls = viewer.data('urls');
+        let currentIndex = viewer.data('current-index');
+
+        if (!urls || !urls.length) return;
+
+        // 计算新的索引
+        currentIndex = (currentIndex + direction + urls.length) % urls.length;
+
+        // 更新图片
+        viewerImg.attr('src', urls[currentIndex]);
+        viewer.data('current-index', currentIndex);
+    }
+
+    // 点赞朋友圈
+    function likeFriendCircle(id) {
+        $.ajax({
+            url: `/api/friend_circle/like/${id}`,
+            type: 'POST',
+            success: function(response) {
+                if (response.success) {
+                    showToast('点赞成功', 'success');
+
+                    // 更新点赞数量
+                    const likeAction = $(`.friend-circle-card[data-id="${id}"] .friend-circle-action:first-child`);
+                    const likeCount = parseInt(likeAction.find('span').text().match(/\d+/)[0]) + 1;
+                    likeAction.find('span').text(`点赞 (${likeCount})`);
+                    likeAction.addClass('liked');
+                } else {
+                    showToast('点赞失败: ' + response.error, 'error');
+                }
+            },
+            error: function(error) {
+                console.error('点赞失败:', error);
+                showToast('点赞失败，请检查网络连接', 'error');
+            }
+        });
+    }
+
+    // 打开评论模态框
+    function openCommentModal(id) {
+        $('#comment-post-id').val(id);
+        $('#comment-content').val('');
+
+        const commentModal = new bootstrap.Modal(document.getElementById('comment-modal'));
+        commentModal.show();
+    }
+
+    // 提交评论
+    function submitComment(id, content) {
+        $.ajax({
+            url: `/api/friend_circle/comment/${id}`,
+            type: 'POST',
+            data: { content: content },
+            success: function(response) {
+                if (response.success) {
+                    showToast('评论成功', 'success');
+
+                    // 关闭模态框
+                    bootstrap.Modal.getInstance(document.getElementById('comment-modal')).hide();
+
+                    // 更新评论数量
+                    const commentAction = $(`.friend-circle-card[data-id="${id}"] .friend-circle-action:nth-child(2)`);
+                    const commentCount = parseInt(commentAction.find('span').text().match(/\d+/)[0]) + 1;
+                    commentAction.find('span').text(`评论 (${commentCount})`);
+
+                    // 添加评论到列表
+                    const card = $(`.friend-circle-card[data-id="${id}"]`);
+                    let commentsContainer = card.find('.friend-circle-comments');
+
+                    if (commentsContainer.length === 0) {
+                        card.append(`<div class="friend-circle-comments"></div>`);
+                        commentsContainer = card.find('.friend-circle-comments');
+                    }
+
+                    commentsContainer.append(`
+                        <div class="friend-circle-comment">
+                            <span class="friend-circle-comment-user">我:</span>
+                            <span>${content}</span>
+                        </div>
+                    `);
+                } else {
+                    showToast('评论失败: ' + response.error, 'error');
+                }
+            },
+            error: function(error) {
+                console.error('评论失败:', error);
+                showToast('评论失败，请检查网络连接', 'error');
+            }
+        });
+    }
+
+    // 处理朋友圈内容中的表情符号
+    function formatContent(content) {
+        console.log('格式化内容前:', content);
+        if (!content) return '';
+
+        // 将常见的表情符号标记替换为 Unicode 表情
+        const formattedContent = content
+            .replace(/\[烟花\]/g, '🎆')
+            .replace(/\[奸笑\]/g, '😏')
+            .replace(/\[微笑\]/g, '😊')
+            .replace(/\[大笑\]/g, '😄')
+            .replace(/\[哭泣\]/g, '😢')
+            .replace(/\[生气\]/g, '😠')
+            .replace(/\[心\]/g, '❤️')
+            .replace(/\[心碎\]/g, '💔')
+            .replace(/\[龙\]/g, '🐉')
+            .replace(/\[蛋糕\]/g, '🎂')
+            .replace(/\[礼物\]/g, '🎁')
+            .replace(/\[鸡\]/g, '🐔')
+            .replace(/\[猪\]/g, '🐷');
+
+        console.log('格式化内容后:', formattedContent);
+        return formattedContent;
+    }
+
+    // 打开图片查看器
+    function openImageViewer(url) {
+        // 创建一个模态框来查看图片
+        const modal = $(`
+            <div class="modal fade" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered modal-lg">
+                    <div class="modal-content bg-transparent border-0">
+                        <div class="modal-body p-0 text-center">
+                            <img src="${url}" class="img-fluid" style="max-height: 80vh;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        $('body').append(modal);
+
+        // 显示模态框
+        const modalInstance = new bootstrap.Modal(modal[0]);
+        modalInstance.show();
+
+        // 模态框关闭后移除
+        modal.on('hidden.bs.modal', function() {
+            modal.remove();
+        });
+    }
+
+    // 显示Toast通知
+    function showToast(message, type = 'info') {
+        const toastContainer = $('.toast-container');
+
+        // 定义不同类型的图标和背景色
+        const types = {
+            success: { icon: 'bi-check-circle-fill', bg: 'bg-success' },
+            error: { icon: 'bi-exclamation-circle-fill', bg: 'bg-danger' },
+            warning: { icon: 'bi-exclamation-triangle-fill', bg: 'bg-warning' },
+            info: { icon: 'bi-info-circle-fill', bg: 'bg-info' }
+        };
+
+        const typeInfo = types[type] || types.info;
+
+        // 创建Toast元素
+        const toast = $(`
+            <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="toast-header ${typeInfo.bg} text-white">
+                    <i class="bi ${typeInfo.icon} me-2"></i>
+                    <strong class="me-auto">系统通知</strong>
+                    <small>刚刚</small>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+                <div class="toast-body">
+                    ${message}
+                </div>
+            </div>
+        `);
+
+        // 添加到容器
+        toastContainer.append(toast);
+
+        // 初始化并显示Toast
+        const toastInstance = new bootstrap.Toast(toast[0], {
+            delay: 3000
+        });
+        toastInstance.show();
+
+        // Toast隐藏后移除元素
+        toast.on('hidden.bs.toast', function() {
+            toast.remove();
+        });
+    }
+</script>
+{% endblock %}

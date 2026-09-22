@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Git反代列表 - AllBot管理后台{% endblock %}
+
+{% block page_title %}Git反代列表{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">
+                            <i class="bi bi-git me-2 text-primary"></i>GitHub 反代节点
+                        </h5>
+                        <div class="text-muted small mt-1">
+                            节点源：内置节点源
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" id="btn-refresh">
+                            <i class="bi bi-arrow-clockwise"></i> 刷新列表
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" id="btn-recheck-all">
+                            <i class="bi bi-activity"></i> 重新检测(抽样)
+                        </button>
+                        <button class="btn btn-sm btn-primary" id="btn-apply" disabled>
+                            <i class="bi bi-check2-circle"></i> 应用选中节点
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" id="btn-disable">
+                            <i class="bi bi-x-circle"></i> 直连(禁用反代)
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        选择节点后会写入 <code>[XYBot].github-proxy</code>，需要重启服务生效。
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex flex-wrap gap-3 align-items-center">
+                            <div>
+                                <span class="text-muted">当前配置：</span>
+                                <code id="current-proxy">加载中...</code>
+                            </div>
+                            <div class="text-muted small" id="last-updated"></div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle" id="nodes-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 56px;">选择</th>
+                                    <th>节点</th>
+                                    <th style="width: 120px;">上游延迟</th>
+                                    <th style="width: 120px;">检测结果</th>
+                                    <th style="width: 180px;">地域</th>
+                                    <th style="width: 120px;">标签</th>
+                                    <th style="width: 120px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="nodes-tbody">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-4">
+                                        <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                                        <div class="mt-2">加载节点列表中...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/github_proxy.js?v={{ version }}"></script>
+{% endblock %}

@@ -1,0 +1,168 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "allbot"
+version = "1.0.0"
+description = "智能微信机器人系统"
+authors = [
+    {name = "XXXBot Team"}
+]
+dependencies = [
+    "loguru~=0.7.3",
+    "APScheduler~=3.11.0",
+    "watchdog~=6.0.0",
+    "aiohttp~=3.11.11",
+    "nest-asyncio>=1.5.5",
+    "pydantic~=2.10.5",
+    "SQLAlchemy~=2.0.37",
+    "aiosqlite~=0.20.0",
+    "fastapi~=0.110.0",
+    "uvicorn~=0.30.0",
+    "python-multipart~=0.0.9",
+    "jinja2~=3.1.3",
+    "itsdangerous~=2.1.2",
+    "pillow~=10.4.0",
+    "filetype~=1.2.0",
+    "pydub~=0.25.1",
+    "moviepy~=2.1.2",
+    "pysilk-mod~=1.6.4",
+    "pymediainfo~=7.0.1",
+    "py7zr~=0.20.5",
+    "pyunpack~=0.3",
+    "xywechatpad-binary==1.1.0",
+    "requests~=2.32.3",
+    "httpx[http2]~=0.25.1",
+    "pytz~=2024.2",
+    "captcha~=0.6.0",
+    "tabulate~=0.9.0",
+    "jieba~=0.42.1",
+    "qrcode~=8.0",
+    "matplotlib~=3.10.0",
+    "numpy~=1.26.4",
+    "psutil~=5.9.8",
+    "tomli~=2.0.1",
+    "tomli_w~=1.0.0",
+    "SpeechRecognition~=3.10.1",
+    "gTTS~=2.5.1",
+    "newspaper3k>=0.2.8",
+    "lxml>=4.9.3",
+    "lxml-html-clean>=0.0.2",
+    "beautifulsoup4>=4.11.0",
+    "requests-html>=0.10.0",
+]
+requires-python = ">=3.11"
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+
+# 包发现配置
+[tool.setuptools.packages.find]
+include = ["utils*", "database*", "admin*", "WechatAPI*"]
+exclude = ["tests*", "docs*", "logs*", "temp*", "files*", "data*", "dow*", "mainn*", "plugins*", "resource*", "reminder_data*", "WechatAPIDocs*"]
+
+# Black 代码格式化配置
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # 排除自动生成的文件
+  \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | __pycache__
+)/
+'''
+
+# isort 导入排序配置
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+# pytest 测试配置
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=.",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+# mypy 类型检查配置
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # 渐进式类型检查
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = [
+    "WechatAPI.*",
+    "xywechatpad_binary.*",
+    "pysilk_mod.*",
+    "pymediainfo.*",
+]
+ignore_missing_imports = true
+
+# Coverage.py 配置
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/.venv/*",
+    "*/env/*",
+    "*/.env/*",
+    "*/site-packages/*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+    "setup.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+] 
