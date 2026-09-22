@@ -61,13 +61,21 @@ class SSEClient:
     """轻量 SSE 客户端，按 event 逐条 yield"""
 
     def __init__(self, base_url: str, api_key: str, connect_timeout: float = 15.0,
-                 max_reconnect: int = 3, reconnect_interval: float = 2.0):
+                 max_reconnect: int = 3, reconnect_interval: float = 2.0,
+                 gateway_token: str = ""):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.connect_timeout = connect_timeout
         self.max_reconnect = max(0, int(max_reconnect))
         self.reconnect_interval = max(0.0, float(reconnect_interval))
         self.last_job_key = ""
+        # 网关鉴权令牌（auth.json 开启鉴权后必填）。留空则不发送 Authorization 头，
+        # 兼容未开启鉴权的旧网关。
+        self.gateway_token = (gateway_token or "").strip()
+
+    def _auth_headers(self) -> dict:
+        """构造鉴权头；未配置令牌时返回空 dict，保持旧行为。"""
+        return {"Authorization": f"Bearer {self.gateway_token}"} if self.gateway_token else {}
 
     async def stream(self, message: str, session_id: str, base_url: str, model: str,
                      workspace: str = "", template: str = "", system_prompt: str = "",
@@ -96,7 +104,8 @@ class SSEClient:
                 if system_prompt:
                     start_payload["system_prompt"] = system_prompt
                 job_key = ""
-                async with session.post(start_url, json=start_payload) as resp:
+                async with session.post(start_url, json=start_payload,
+                                       headers=self._auth_headers()) as resp:
                     if resp.status != 200:
                         body = await resp.text()
                         raise RuntimeError(
@@ -144,7 +153,8 @@ class SSEClient:
                             saw_timeout = True
 
                     try:
-                        async with session.get(events_url, params=req_params) as resp:
+                        async with session.get(events_url, params=req_params,
+                                               headers=self._auth_headers()) as resp:
                             if resp.status != 200:
                                 body = await resp.text()
                                 raise RuntimeError(f"HTTP {resp.status}: {body[:300]}")
@@ -237,6 +247,9 @@ class AssistantPlugin(PluginBase):
         self.enable = bool(cfg.get("enable", False))
         self.api_base_url = _safe_text(cfg.get("api-base-url", "http://l.sxkiss.top:9876")).strip()
         self.api_key = _safe_text(cfg.get("api-key", "")).strip()
+        # 网关鉴权令牌：网关 auth.json 开启鉴权后必填，由 /api/auth/login 获取。
+        # 留空则不发送鉴权头，兼容未开启鉴权的旧网关。
+        self.gateway_token = _safe_text(cfg.get("gateway-token", "")).strip()
         self.default_base_url = _safe_text(cfg.get("base-url", "http://127.0.0.1:3333/v1")).strip()
         self.default_model = _safe_text(cfg.get("model", "auto")).strip() or "auto"
         self.workspace = _safe_text(cfg.get("workspace", "")).strip()
@@ -283,9 +296,14 @@ class AssistantPlugin(PluginBase):
         self._client = SSEClient(
             self.api_base_url, self.api_key, self.connect_timeout,
             max_reconnect=self.max_reconnect, reconnect_interval=self.reconnect_interval,
+            gateway_token=self.gateway_token,
         )
         self._global_admins = self._load_global_admins()
         logger.info("[Assistant] 加载管理员: {}", self._global_admins)
+
+    def _auth_headers(self) -> dict:
+        """网关鉴权头。未配置 gateway-token 时返回空 dict，保持旧行为。"""
+        return {"Authorization": f"Bearer {self.gateway_token}"} if self.gateway_token else {}
 
     def _load_global_admins(self) -> set:
         candidates = [
@@ -918,7 +936,8 @@ class AssistantPlugin(PluginBase):
             params = {"workspace": ws} if ws else {}
             async with aiohttp.ClientSession() as session:
                 url = f"{self.api_base_url.rstrip('/')}/api/chat/history"
-                async with session.get(url, params=params) as resp:
+                async with session.get(url, params=params,
+                                       headers=self._auth_headers()) as resp:
                     if resp.status != 200:
                         return
                     payload = await resp.json()
@@ -1132,7 +1151,8 @@ class AssistantPlugin(PluginBase):
             async with aiohttp.ClientSession(timeout=timeout) as s:
                 async with s.post(
                     f"{self.api_base_url}/api/chat/stop",
-                    json={"session_id": session_id}
+                    json={"session_id": session_id},
+                    headers=self._auth_headers()
                 ) as resp:
                     body = ""
                     try:
