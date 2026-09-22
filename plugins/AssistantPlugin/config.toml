@@ -1,0 +1,64 @@
+[Assistant]
+# 是否启用本插件
+enable = true
+# BT 网关地址（API 网关）
+api-base-url = "http://l.sxkiss.top:9876"
+# 调用 API 的密钥
+api-key = "aa6811bb9126b87013a580e368b1d7494132fdfd6000bf06546e03c86da31863"
+# 网关鉴权令牌（网关 auth.json 开启 enabled=true 后必填）
+# 获取方式：curl -X POST http://网关/api/auth/login -H 'Content-Type: application/json' -d '{"password":"你的密码"}'
+# 留空则不发送 Authorization 头，兼容未开启鉴权的旧网关
+gateway-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc5MDA1NDc4OCwiZXhwIjoxNzkwMTQxMTg4LCJpc3MiOiJidC1hZ2VudCJ9.sFN6SAkCxdgcOnGaU72MKUscehzu5ZnUgFwhaNSgYUo"
+# LLM 网关地址（传给 BT 后端的 base_url 参数）；留空则使用 BT config.json 中的默认值
+# 注意：不要填 api-base-url（那是 BT 服务地址），填了会导致 /chat/completions 404 回环
+base-url = ""
+# 使用的模型；auto 表示由服务端自动路由
+model = "auto"
+# 后端模式：opencode / claude / single（bt 原生单 Agent 模式）
+api-mode = "single"
+
+# 运行目录（opencode workspace）
+workspace = "/home/sxkiss/.hermes"
+# 提示词模板（bt opencode 内置模板名，如 hermes / default / gpt5.5）；空则不指定
+template = "hermes"
+# 自定义系统提示词文本；空则不指定（优先级最高，覆盖 template）
+system-prompt = ""
+
+# 触发词（群内 @ 或包含这些词即触发）
+trigger-words = ['小助手']
+# 触发匹配模式：contains（包含）/ exact（精确）/ prefix（前缀）
+trigger-match-mode = "contains"
+# 触发时是否去掉触发词本身再交给 AI
+trigger-strip-word = true
+# 正文分块发送的字符数（超过则拆成多条）
+reply-chunk-chars = 1000
+# 是否发送工作状态（true = 会话进行中定时上报 working）
+tool-feedback-enable = true
+# 是否对每条工具结果发送 ✅ 反馈；受 disable-ai-reply 抑制
+tool-result-enable = true
+# 是否在会话末尾发送 token 用量小结；true 会多一条消息
+usage-enable = false
+# 上下文压缩时是否提示（避免用户以为回复丢失）
+compact-notice-enable = true
+# 会话进行中每隔多少秒发一条 working 状态（含已调用工具次数）；0 表示关闭
+progress-working-seconds = 300
+# 是否禁止发送 AI 正文回复（true = 只发状态提示和错误，不发送 AI 正文）
+disable-ai-reply = true
+# 重置会话的命令（触发后清空当前会话上下文）
+new-session-commands = ['新对话', '新开对话', '/new', '/reset']
+# 分块发送时的间隔（秒）
+send-interval = 0.3
+# 连接超时（秒）
+connect-timeout = 15
+# SSE 断线后重连次数（网关 ~900s 空闲超时但任务仍在跑，带 last_id 续传）
+max-reconnect = 3
+# 每次重连前的等待秒数
+reconnect-interval = 2.0
+# 私聊是否自动转发处理
+private-auto-forward-enable = false
+# 被 @ 时是否自动转发处理
+at-auto-forward-enable = true
+# 是否把消息继续传递给其他插件
+propagate-to-other-plugins = true
+# 是否仅管理员可用
+admin-only = false
