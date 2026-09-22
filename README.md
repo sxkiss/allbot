@@ -70,10 +70,19 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 
 ## 🚀 快速开始
 
-### 本分支 feat/wxserver-license（含 869/874 协议 + 卡密授权）
+### 分支说明
+
+| 分支 | 说明 |
+|------|------|
+| `main` | 纯 allbot 框架（不含 wxserver/874 二进制） |
+| `feat/wxserver-license` | 含 wxserver + 874 协议服务 + 远程卡密授权 + 十端登录支持 |
+
+> **需要微信协议服务（869/874）+ 卡密授权的用户**：请使用 `feat/wxserver-license` 分支，见下方说明。
+
+### feat/wxserver-license 分支（含 869/874 协议 + 卡密授权）
 
 ```bash
-# 克隆本分支
+# 克隆项目并切换到 feat 分支
 git clone -b feat/wxserver-license https://github.com/sxkiss/allbot.git
 cd allbot
 
@@ -86,16 +95,15 @@ docker compose up -d
 docker compose logs -f
 ```
 
-**分支说明：**
-| 分支 | 说明 |
-|------|------|
-| `main` | 纯 allbot 框架（不含协议服务） |
-| `feat/wxserver-license` | 含协议服务 + 卡密授权（本分支） |
-
 **使用：**
 1. 访问管理后台二维码页面
 2. 卡密输入框填入卡密 → 提交拉码
 3. 页面可切换协议版本（869/874）与登录端（iPad / Mac / Pad / Windows / 车载 等）
+
+**特性：**
+- **双协议**：支持 869 与 874 协议，页面一键切换
+- **多端登录**：iPad / Mac / 安卓 Pad / Windows / 车载 等多种设备类型
+- **授权管理**：基于卡密使用授权，绑定设备
 
 ### main 分支（纯 allbot 框架）
 
@@ -105,7 +113,6 @@ cd allbot
 cp main_config.template.toml main_config.toml
 docker compose up -d
 ```
-
 <table>
   <tr>
     <td width="50%">
@@ -131,7 +138,7 @@ docker compose up -d
   </tr>
 </table>
 
-### Docker 部署（推荐）
+#### Docker 部署（推荐）
 
 ```bash
 # 克隆项目

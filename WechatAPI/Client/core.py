@@ -602,7 +602,15 @@ class WechatAPIClient(WechatAPIClientBase):
                     raise RuntimeError(text or f"协议接口请求失败: Code={code}")
 
                 if success_flag is False:
-                    if self._is_send_related_path(request_path):
+                    # 协议 quirk：部分网关接口（如 /message/SendCdnDownload）返回 Code=200、
+                    # Data 有实际内容，但 Success=false。此时不应视为失败，否则会把已拿到的数据丢掉。
+                    if self._has_usable_data(payload):
+                        logger.warning(
+                            "WechatAPIClient 接口 Success=false 但 Data 非空(协议 quirk，按成功处理): path={} text={}",
+                            request_path,
+                            text,
+                        )
+                    elif self._is_send_related_path(request_path):
                         if self._looks_like_send_ack(payload):
                             logger.warning(
                                 "WechatAPIClient 发送接口 Success=false 但有发送回执(可能协议 quirk): path={} text={}",
@@ -626,6 +634,34 @@ class WechatAPIClient(WechatAPIClientBase):
                 text_preview[:200],
             )
         return payload
+
+    @staticmethod
+    def _has_usable_data(payload: Any) -> bool:
+        """判断响应体里是否带有可用的业务数据。
+
+        用于兜住「Code=200 + Data 有内容 + Success=false」这类协议 quirk，
+        避免误判为失败把已返回的数据丢掉。
+        """
+        if not isinstance(payload, dict):
+            return False
+        data = payload.get("Data")
+        if data is None:
+            return False
+        if isinstance(data, dict):
+            if not data:
+                return False
+            # 只有显式错误码（非 0）才算真失败
+            ret_code = data.get("RetCode") or data.get("ret") or data.get("Code")
+            if isinstance(ret_code, (int, str)) and str(ret_code).strip() not in ("", "0"):
+                try:
+                    if int(ret_code) != 0:
+                        return False
+                except (TypeError, ValueError):
+                    return False
+            return True
+        if isinstance(data, (list, str, bytes, bytearray)):
+            return len(data) > 0
+        return True
 
     @staticmethod
     def _is_send_related_path(path: str) -> bool:
