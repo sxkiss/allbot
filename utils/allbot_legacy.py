@@ -1269,7 +1269,15 @@ class AllBot:
 
                 quote_message["Content"] = refermsg.find("content").text
 
-                quote_root = ET.fromstring(quote_message["Content"])
+                # 跨用户引用时，微信会在 refermsg.content 前注入原发送者 wxid 前缀
+                # （形如 "wxid_xxx:<msg>...</msg>"），直接 ET.fromstring 会因 invalid token
+                # 解析失败，导致整条引用消息被丢弃。这里先剥掉 XML 之前的非 '<' 前缀再解析。
+                quote_content = quote_message["Content"]
+                if isinstance(quote_content, str):
+                    xml_start = quote_content.find("<")
+                    if xml_start > 0:
+                        quote_content = quote_content[xml_start:]
+                quote_root = ET.fromstring(quote_content)
                 quote_appmsg = quote_root.find("appmsg")
 
                 quote_message["Content"] = (
