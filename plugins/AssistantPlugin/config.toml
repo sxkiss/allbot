@@ -8,7 +8,7 @@ api-key = "aa6811bb9126b87013a580e368b1d7494132fdfd6000bf06546e03c86da31863"
 # 网关鉴权令牌（网关 auth.json 开启 enabled=true 后必填）
 # 获取方式：curl -X POST http://网关/api/auth/login -H 'Content-Type: application/json' -d '{"password":"你的密码"}'
 # 留空则不发送 Authorization 头，兼容未开启鉴权的旧网关
-gateway-token = ""
+gateway-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc5MDA1NDc4OCwiZXhwIjoxNzkwMTQxMTg4LCJpc3MiOiJidC1hZ2VudCJ9.sFN6SAkCxdgcOnGaU72MKUscehzu5ZnUgFwhaNSgYUo"
 # LLM 网关地址（传给 BT 后端的 base_url 参数）；留空则使用 BT config.json 中的默认值
 # 注意：不要填 api-base-url（那是 BT 服务地址），填了会导致 /chat/completions 404 回环
 base-url = ""
