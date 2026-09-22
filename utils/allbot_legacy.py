@@ -1584,6 +1584,12 @@ class AllBot:
         content_lower = content.lower()
         logger.debug(f"检查引用消息中的触发词: {content}")
 
+        # 标记本次是否已调用过某插件的 quote_message 处理方法。
+        # 各分支只 break 不 return，调用方无法感知"已处理"，会再 emit("quote_message")
+        # 导致同一条引用消息被同一插件处理两次（例如向网关发两份 chat/start）。
+        # 故此处置位，末尾返回 True 阻止外层重复 emit。
+        quote_handled = False
+
         def normalize_token(token: Any) -> Optional[str]:
             if isinstance(token, str):
                 value = token.strip()
@@ -1629,6 +1635,7 @@ class AllBot:
                                 method = getattr(plugin, method_name)
                                 if hasattr(method, "_event_type") and method._event_type == "quote_message":
                                     result = await method(self.bot, message)
+                                    quote_handled = True
                                     if result is False:
                                         return True
                                     break
@@ -1673,6 +1680,7 @@ class AllBot:
                                 method = getattr(plugin, method_name)
                                 if hasattr(method, "_event_type") and method._event_type == "text_message":
                                     result = await method(self.bot, modified_message)
+                                    quote_handled = True
                                     if result is False:
                                         return True
                                     break
@@ -1690,6 +1698,7 @@ class AllBot:
                                 method = getattr(plugin, method_name)
                                 if hasattr(method, "_event_type") and method._event_type == "quote_message":
                                     result = await method(self.bot, message)
+                                    quote_handled = True
                                     if result is False:
                                         return True
                                     break
@@ -1709,9 +1718,16 @@ class AllBot:
                                 method = getattr(plugin, method_name)
                                 if hasattr(method, "_event_type") and method._event_type == "quote_message":
                                     result = await method(self.bot, message)
+                                    quote_handled = True
                                     if result is False:
                                         return True
                                     break
+
+        # 已在触发词分支调用过 quote_message，返回 True 阻止调用方再次
+        # emit("quote_message")，避免同一条引用消息被同一插件处理两次。
+        if quote_handled:
+            logger.debug("quote_message 已在触发词检查中触发，跳过默认 quote_message 事件")
+            return True
 
         return False
 
