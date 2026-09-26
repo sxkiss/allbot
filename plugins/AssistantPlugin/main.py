@@ -250,6 +250,17 @@ class AssistantPlugin(PluginBase):
         # 网关鉴权令牌：网关 auth.json 开启鉴权后必填，由 /api/auth/login 获取。
         # 留空则不发送鉴权头，兼容未开启鉴权的旧网关。
         self.gateway_token = _safe_text(cfg.get("gateway-token", "")).strip()
+        # 网关登录密码：用于 token 自动续期。留空则不续期（维持旧行为，需手动换 token）。
+        # 自动续期会在每次发起对话前检查剩余有效期，低于阈值时静默重新登录并
+        # 把新 token 写回 config.toml，全过程无需重启容器。
+        self.gateway_password = _safe_text(cfg.get("gateway-password", "")).strip()
+        # token 剩余有效期低于该秒数时触发自动续期（默认提前 1 小时）
+        self.token_refresh_margin = max(int(cfg.get("token-refresh-margin-seconds", 3600) or 0), 0)
+        # 续期串行锁，避免并发请求同时刷新；_token_retry_after 抑制登录失败后的重试风暴
+        self._token_lock = asyncio.Lock()
+        self._token_retry_after = 0.0
+        # config.toml 路径（续期后写回使用）
+        self._config_path = config_path
         self.default_base_url = _safe_text(cfg.get("base-url", "http://127.0.0.1:3333/v1")).strip()
         self.default_model = _safe_text(cfg.get("model", "auto")).strip() or "auto"
         self.workspace = _safe_text(cfg.get("workspace", "")).strip()
@@ -304,6 +315,113 @@ class AssistantPlugin(PluginBase):
     def _auth_headers(self) -> dict:
         """网关鉴权头。未配置 gateway-token 时返回空 dict，保持旧行为。"""
         return {"Authorization": f"Bearer {self.gateway_token}"} if self.gateway_token else {}
+
+    # ---------- 网关 token 自动续期 ----------
+
+    @staticmethod
+    def _token_exp_ts(token: str) -> int:
+        """解析 JWT 的 exp（秒）。解析失败返回 0，调用方视为"需刷新"。"""
+        raw = _safe_text(token).strip()
+        if not raw or raw.count(".") < 2:
+            return 0
+        try:
+            payload = raw.split(".", 2)[1]
+            payload += "=" * (-len(payload) % 4)
+            data = json.loads(base64.urlsafe_b64decode(payload))
+            return int(data.get("exp") or 0)
+        except Exception:
+            return 0
+
+    def _token_needs_refresh(self) -> bool:
+        """当前 token 是否需要续期。
+
+        未配置密码 → 不自动续期（保持旧行为）；无 token → 不续期（旧网关兼容）。
+        剩余有效期低于阈值时返回 True。
+        """
+        if not self.gateway_password or not self.gateway_token:
+            return False
+        exp = self._token_exp_ts(self.gateway_token)
+        if exp <= 0:
+            return True
+        return (exp - int(time.time())) < self.token_refresh_margin
+
+    async def _refresh_gateway_token(self) -> bool:
+        """重新登录网关换取新 token，并同步到 SSEClient 与 config.toml。
+
+        全程静默：失败仅记 warning，不影响本次对话（旧 token 可能仍有效）。
+        成功则写回配置，使容器重启后也无需人工干预。
+        """
+        if not self.gateway_password or not self.api_base_url:
+            return False
+        # 登录失败后短时间内不再重试，避免每条消息都打一次登录接口
+        if time.time() < self._token_retry_after:
+            return False
+        async with self._token_lock:
+            # 持锁后再次判断：排队期间可能已被别的请求刷新成功
+            if not self._token_needs_refresh():
+                return True
+            url = f"{self.api_base_url.rstrip('/')}/api/auth/login"
+            payload = json.dumps({"password": self.gateway_password}).encode("utf-8")
+            try:
+                timeout = aiohttp.ClientTimeout(total=15.0, connect=5.0)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(url, data=payload,
+                                            headers={"Content-Type": "application/json"}) as resp:
+                        if resp.status != 200:
+                            self._token_retry_after = time.time() + 300
+                            logger.warning("[Assistant] 网关 token 续期失败: HTTP {}", resp.status)
+                            return False
+                        body = await resp.json(content_type=None)
+            except Exception as e:
+                self._token_retry_after = time.time() + 300
+                logger.warning("[Assistant] 网关 token 续期异常: {}", e)
+                return False
+
+            result = body if isinstance(body, dict) else {}
+            data = result.get("data") if isinstance(result.get("data"), dict) else {}
+            new_token = _safe_text(data.get("token") or result.get("token")).strip()
+            if not result.get("status", True) or not new_token:
+                self._token_retry_after = time.time() + 300
+                logger.warning("[Assistant] 网关 token 续期返回异常: {}", str(body)[:120])
+                return False
+
+            self.gateway_token = new_token
+            self._client.gateway_token = new_token
+            self._token_retry_after = 0.0
+            self._persist_gateway_token(new_token)
+            exp = self._token_exp_ts(new_token)
+            logger.info("[Assistant] 网关 token 已自动续期，新有效期: {}",
+                        time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(exp)) if exp else "未知")
+            return True
+
+    def _persist_gateway_token(self, token: str) -> None:
+        """把新 token 写回 config.toml（就地替换，保留注释与其它配置项）。"""
+        try:
+            with open(self._config_path, "r", encoding="utf-8") as f:
+                text = f.read()
+            new_text, count = re.subn(
+                r'(?m)^(\s*gateway-token\s*=\s*)(?:"[^"]*"|\'[^\']*\')',
+                lambda m: f'{m.group(1)}"{token}"',
+                text,
+                count=1,
+            )
+            if not count:
+                logger.warning("[Assistant] config.toml 未找到 gateway-token，跳过写回")
+                return
+            tmp = self._config_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(new_text)
+            os.replace(tmp, self._config_path)
+        except Exception as e:
+            logger.warning("[Assistant] 写回 gateway-token 失败: {}", e)
+
+    async def _ensure_gateway_token(self) -> None:
+        """对话发起前调用：token 临近过期则自动续期。"""
+        try:
+            if self._token_needs_refresh():
+                await self._refresh_gateway_token()
+        except Exception as e:
+            logger.warning("[Assistant] token 续期检查异常: {}", e)
 
     def _load_global_admins(self) -> set:
         candidates = [
@@ -420,10 +538,14 @@ class AssistantPlugin(PluginBase):
         return text.strip()
 
     def _strip_mentions(self, text: str) -> str:
+        # 纯 @ 消息（如 "@Hdkhd @阿猪米德"）剥到最后一个 @ 后已无正文，
+        # 此前直接 return "" 会把整条消息吞掉，导致下游 user_text 为空、
+        # "被@即处理"的判定失效。改为保留无法继续剥离的剩余文本，
+        # 让引用内容仍有机会进入 prompt（_build_prompt 会用 quote 兜底）。
         while text.startswith("@"):
             _, _, rest = text.partition(" ")
             if not rest.strip():
-                return ""
+                return text.strip()
             text = rest.strip()
         return text
 
@@ -538,6 +660,21 @@ class AssistantPlugin(PluginBase):
             urls.append(public_url)
         return urls
 
+    def _mk_quote_result(self, file_path: str, md5_hint: str = "") -> Tuple[str, str]:
+        """把 _save_quote_binary 的单返回值包装成 (local_path, md5) 契约。
+
+        _download_quote_media 的类型注解为 Tuple[str, str]，调用处按两个值解包；
+        而语音/视频/文件分支此前直接透传 _save_quote_binary 的单返回值，
+        会触发 ValueError: too many values to unpack (expected 2)。
+        """
+        path = _safe_text(file_path).strip()
+        if not path:
+            return "", ""
+        md5_value = _safe_text(md5_hint).strip()
+        if not md5_value:
+            md5_value = self._calc_md5_from_path(path)
+        return path, md5_value
+
     def _extract_quote_resource_path(self, quote_xml: str) -> str:
         """从引用 XML 中提取资源路径。"""
         raw = _safe_text(quote_xml).strip()
@@ -642,7 +779,7 @@ class AssistantPlugin(PluginBase):
                 payload_b64 = await bot.download_voice(md5_value or msg_id or "quote-voice", cdn_url, 0)
                 payload = self._coerce_media_payload_bytes(payload_b64)
                 if payload:
-                    return self._save_quote_binary(payload, f"{md5_value or 'quote-voice'}.silk")
+                    return self._mk_quote_result(self._save_quote_binary(payload, f"{md5_value or 'quote-voice'}.silk"), md5_value)
             except Exception as e:
                 self._log_media_download_error("引用语音", e)
             return "", ""
@@ -659,7 +796,7 @@ class AssistantPlugin(PluginBase):
                     payload_b64 = ""
                 payload = self._coerce_media_payload_bytes(payload_b64)
                 if payload:
-                    return self._save_quote_binary(payload, f"{md5_value or msg_id or 'quote-video'}.mp4")
+                    return self._mk_quote_result(self._save_quote_binary(payload, f"{md5_value or msg_id or 'quote-video'}.mp4"), md5_value)
             except Exception as e:
                 self._log_media_download_error("quote-video", e)
             return "", ""
@@ -673,7 +810,7 @@ class AssistantPlugin(PluginBase):
                     payload_b64 = await self._cdn_download_with_fallback(aeskey, cdn_url)
                 payload = self._coerce_media_payload_bytes(payload_b64)
                 if payload:
-                    return self._save_quote_binary(payload, f"{md5_value or 'quote-file'}.bin")
+                    return self._mk_quote_result(self._save_quote_binary(payload, f"{md5_value or 'quote-file'}.bin"), md5_value)
             except Exception as e:
                 self._log_media_download_error("quote-file", e)
             return "", ""
@@ -1073,11 +1210,18 @@ class AssistantPlugin(PluginBase):
         # 引用消息需触发词（普通对话无需 admin）
         # 被 @ 即视为呼叫：检查 message["Ats"] 是否包含 bot wxid（对齐 Hermes 的
         # _is_at_current_bot；实测引用消息 Ats 确实填充了 bot wxid）
-        _bot_wxid = getattr(self.bot, "wxid", "") if self.bot else ""
+        # bot.wxid 实测可能是纯字符串，也可能是框架的字符串包装对象（{'str': 'wxid_xxx'}）。
+        # 若是后者，`_bot_wxid in _ats` 恒为 False（dict 永远不等于列表里的字符串），
+        # 导致"被@即处理"判定失效。_safe_text 对 dict 会取 string/str/text，
+        # 对其它类型转字符串，这里统一归一化后再比较。
+        _bot_wxid = _safe_text(getattr(self.bot, "wxid", "") if self.bot else "").strip()
         _ats = message.get("Ats") or []
         has_at_bot = bool(_bot_wxid) and _bot_wxid in _ats
         logger.info("[Assistant] handle_quote check: bot_wxid={}, Ats={!r}, raw_content={!r}, has_at_bot={}", _bot_wxid, _ats, _safe_text(message.get("Content")).replace("\u2005", " ").strip()[:30], has_at_bot)
-        if has_at_bot and user_text:
+        if has_at_bot:
+            # 被 @ 即视为呼叫，不再要求正文非空：纯 @ + 引用 是引用场景的
+            # 常见用法（引用内容本身就是输入）。正文为空时由
+            # _build_prompt 用引用内容兜底（prompt 为空则直接用 quote_block）。
             prompt_text = user_text
         else:
             match = self._match_trigger(user_text) if user_text else None
@@ -1176,6 +1320,8 @@ class AssistantPlugin(PluginBase):
     async def _stream_chat(self, route: WatchRoute, message: str, original_message: dict):
         if not message.strip():
             return
+        # 网关 token 临近过期时先自动续期，避免长任务中途 401 或下次对话才发现问题
+        await self._ensure_gateway_token()
         session_id = await self._resolve_session_id(route)
         # 新消息到达：先取消该 session 的旧任务，避免并行冲突
         _route_key = self._session_key(route)
