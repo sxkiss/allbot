@@ -725,6 +725,18 @@ class AssistantPlugin(PluginBase):
             or quote.get("cdnthumbaeskey") # 图片缩略图 aeskey
         ).strip()
         attach_id = _safe_text(quote.get("attachid")).strip()
+        # 框架对 type=49 会把 appattach 解析成 dict 塞进 quote（见
+        # allbot_legacy.process_quote_message），文件消息的 attachid/aeskey
+        # 在其中，且该文件引用可能不带 RawReferMsgXml，必须优先读这里。
+        appattach = quote.get("appattach")
+        if isinstance(appattach, dict):
+            if not attach_id:
+                attach_id = _safe_text(appattach.get("attachid")).strip()
+            if not aeskey:
+                aeskey = _safe_text(appattach.get("aeskey")
+                                    or appattach.get("cdnattachaeskey")).strip()
+            if not cdn_url:
+                cdn_url = _safe_text(appattach.get("cdnattachurl")).strip()
         msg_id = _safe_text(
             quote.get("NewMsgId")
             or quote.get("MsgId")
