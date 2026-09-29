@@ -732,18 +732,39 @@ class AssistantPlugin(PluginBase):
         ).strip()
 
         raw = html.unescape(_safe_text(quote_xml).strip())
+
+        def _attr(*names: str) -> str:
+            """按属性形式提取：name="value"。"""
+            for name in names:
+                m = re.search(r'%s="([^"]+)"' % name, raw)
+                if m and m.group(1).strip():
+                    return m.group(1).strip()
+            return ""
+
+        def _elem(*names: str) -> str:
+            """按元素形式提取：<name>value</name>。
+
+            文件消息(type=49/appmsg type=6)的 appattach 用的是元素形式，
+            例如 <attachid>@cdn_xxx</attachid>，属性正则匹配不到。
+            同时兼容 CDATA 包裹。
+            """
+            for name in names:
+                m = re.search(r'<%s>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</%s>' % (name, name), raw, re.S)
+                if m and m.group(1).strip():
+                    return m.group(1).strip()
+            return ""
+
         if not cdn_url:
-            m = re.search(r'(?:cdnvideourl|cdnmidimgurl|cdnbigimgurl|cdnurl|url)="([^"]+)"', raw)
-            if m:
-                cdn_url = m.group(1).strip()
+            # 文件消息的 cdnattachurl 同样是元素形式，需优先按元素取
+            cdn_url = (_elem("cdnattachurl")
+                       or _attr("cdnattachurl", "cdnvideourl", "cdnmidimgurl",
+                                "cdnbigimgurl", "cdnurl", "cdndataurl", "url"))
         if not aeskey:
-            m = re.search(r'aeskey="([^"]+)"', raw)
-            if m:
-                aeskey = m.group(1).strip()
+            # appattach 内 aeskey 也是元素形式
+            aeskey = (_elem("aeskey")
+                      or _attr("aeskey", "cdnattachaeskey", "cdnthumbaeskey", "cdnthumbkey"))
         if not attach_id:
-            m = re.search(r'attachid="([^"]+)"', raw)
-            if m:
-                attach_id = m.group(1).strip()
+            attach_id = _elem("attachid") or _attr("attachid")
         return cdn_url, aeskey, attach_id, msg_id
 
     async def _download_quote_media(self, quote: dict, quoted_type: int, quote_xml: str) -> Tuple[str, str]:
