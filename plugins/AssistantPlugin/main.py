@@ -604,18 +604,26 @@ class AssistantPlugin(PluginBase):
                 media_urls: list = []
                 if quoted_type in (3, 34, 43, 49):
                     media_urls = await self._extract_quote_media_urls(quote)
-                if quoted_content:
+                # 微信分享卡片（链接/视频/音乐/小程序）的 Content 往往只是标题，
+                # 真正的链接在 url/lowurl，描述在 des/destination。必须一并带上，
+                # 否则引用链接会退化成"只有标题、没有可访问地址"。
+                quoted_url = _safe_text(quote.get("url") or quote.get("lowurl")).strip()
+                quoted_desc = _safe_text(quote.get("des") or quote.get("destination")).strip()
+                if quoted_content or quoted_url or media_urls:
                     # 如果 Content 是 XML，提取干净标签而非原始 XML
-                    if quoted_content.lstrip().startswith("<"):
-                        import re as _re
+                    if quoted_content and quoted_content.lstrip().startswith("<"):
                         media_label = "[图片]" if "img" in quoted_content else "[媒体]"
                         quote_block = f"[Quoted message from {quoted_sender or 'unknown'}] {media_label}"
-                        if media_urls:
-                            quote_block += "\n" + "\n".join(media_urls)
                     else:
-                        quote_block = f"[Quoted message from {quoted_sender or 'unknown'}]\n{quoted_content}"
-                        if media_urls:
-                            quote_block += "\n" + "\n".join(media_urls)
+                        quote_block = f"[Quoted message from {quoted_sender or 'unknown'}]"
+                        if quoted_content:
+                            quote_block += f"\n{quoted_content}"
+                    if quoted_desc and quoted_desc not in quote_block:
+                        quote_block += f"\n{quoted_desc}"
+                    if quoted_url and quoted_url not in quote_block:
+                        quote_block += f"\n链接: {quoted_url}"
+                    if media_urls:
+                        quote_block += "\n" + "\n".join(media_urls)
                     prompt = f"{prompt}\n\n{quote_block}" if prompt else quote_block
         if identity_header:
             prompt = f"{identity_header}\n\n{prompt}" if prompt else identity_header
