@@ -1391,6 +1391,9 @@ class AssistantPlugin(PluginBase):
                     else:
                         duration = f"{elapsed_s}秒"
                     await self._send(route, f"⏳ 工作中... 已进行 {duration}，已调用 {state['calls']} 次工具")
+                    # 标记"已向用户发过进行中提示"，结束时需补一条完成/终止提示，
+                    # 否则用户只看到 ⏳ 却永远不知道任务最终结果。
+                    state["notified"] = True
 
         if self.progress_working_seconds > 0 and self.tool_feedback_enable:
             progress_task = asyncio.create_task(_progress_worker())
@@ -1475,6 +1478,7 @@ class AssistantPlugin(PluginBase):
                     if "SSE 订阅超时" in err_msg:
                         if not state.get("timeout_noticed"):
                             state["timeout_noticed"] = True
+                            state["notified"] = True
                             logger.warning("[Assistant] sse idle timeout(将重连续传) session={}", session_id)
                             await self._send(route, "⏳ 仍在运行中，已自动重连续传")
                         continue
@@ -1485,10 +1489,26 @@ class AssistantPlugin(PluginBase):
             if (not self.disable_ai_reply) and accumulated.strip():
                 await self._send(route, accumulated)
                 logger.info("assistant stream ended session={}", session_id)
+            # 若此前向用户发过进行中提示（⏳ 工作中/仍在运行中），结束时必须补一条
+            # 终止提示，否则长任务结束后用户无从判断是否完成，只能干等。
+            if state.get("notified") and not self.disable_ai_reply:
+                elapsed_s = int(time.monotonic() - _chat_start_ts)
+                if elapsed_s >= 60:
+                    duration = f"{elapsed_s // 60}分{elapsed_s % 60}秒"
+                else:
+                    duration = f"{elapsed_s}秒"
+                await self._send(
+                    route,
+                    f"✅ 任务完成，耗时 {duration}，共调用 {state['calls']} 次工具",
+                )
+                logger.info("assistant stream completed session={} elapsed={}s calls={}",
+                            session_id, elapsed_s, state["calls"])
             if first_use:
                 await self._catchup_session_id(route, message)
 
         except asyncio.CancelledError:
+            # 被新消息打断：不是任务失败，也不该静默。用户刚发的新消息会立刻
+            # 触发新一轮回复，这里不额外刷屏，仅记录日志。
             logger.warning("assistant stream cancelled session={}", session_id)
             if first_use:
                 await self._catchup_session_id(route, message)
