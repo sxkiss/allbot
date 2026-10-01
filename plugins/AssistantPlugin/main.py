@@ -1377,7 +1377,7 @@ class AssistantPlugin(PluginBase):
         self._session_routes[session_id] = route
         accumulated = ""
         # 会话进行中的共享状态：工具调用计数（供后台 working 任务读取）
-        state = {"calls": 0}
+        state = {"calls": 0, "sent_anything": False}
         _chat_start_ts = time.monotonic()  # 本次对话耗时计时起点
         # 每隔 progress_working_seconds 秒发一条 working 状态；关闭则 None
         progress_task = None
@@ -1435,6 +1435,7 @@ class AssistantPlugin(PluginBase):
                     if (not self.disable_ai_reply) and len(accumulated) >= self.reply_chunk_chars:
                         await self._send(route, accumulated)
                         accumulated = ""
+                        state["sent_anything"] = True
                         await asyncio.sleep(self.send_interval)
 
                 elif ev == "tool_call":
@@ -1450,6 +1451,7 @@ class AssistantPlugin(PluginBase):
                             await self._send(route, accumulated)
                             accumulated = ""
                         await self._send(route, f"✅ {self._tool_name(data)}")
+                        state["sent_anything"] = True
 
                 elif ev in ("usage", "stop"):
                     # 会话末尾的 token 用量小结；默认关闭，避免刷屏
@@ -1468,6 +1470,7 @@ class AssistantPlugin(PluginBase):
                     if (not self.disable_ai_reply) and accumulated.strip():
                         await self._send(route, accumulated)
                         accumulated = ""
+                    state["sent_anything"] = True
                     raw_err = data if isinstance(data, str) else str(data)
                     err_msg = raw_err
                     if not err_msg.strip():
@@ -1498,9 +1501,8 @@ class AssistantPlugin(PluginBase):
                 await self._send(route, accumulated)
                 logger.info("assistant stream ended session={}", session_id)
             # 无论任务长短，结束时必须给用户明确信号。
-            # 短任务（<5分钟）不会有 ⏳ 进行中提示，但同样需要 ✅ 完成提示
-            # 让用户知道任务已结束，而非卡死或无响应。
-            if not self.disable_ai_reply and accumulated.strip():
+            # 用 sent_anything 标志判断（不能依赖 accumulated，它在发送 chunk 后已清空）
+            if not self.disable_ai_reply and state.get("sent_anything"):
                 elapsed_s = int(time.monotonic() - _chat_start_ts)
                 if elapsed_s >= 60:
                     duration = f"{elapsed_s // 60}分{elapsed_s % 60}秒"
