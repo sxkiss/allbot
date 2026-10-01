@@ -57,6 +57,14 @@ class WatchRoute:
     is_group: bool
 
 
+class SSEGiveUp(Exception):
+    """SSE 重连次数耗尽：连接已放弃，但网关任务很可能仍在运行。
+
+    与真正收到 message_end 的正常结束必须区分开，否则调用方会误判为
+    "任务完成"并向用户发送错误的完成提示。
+    """
+
+
 class SSEClient:
     """轻量 SSE 客户端，按 event 逐条 yield"""
 
@@ -208,14 +216,21 @@ class SSEClient:
                             if saw_timeout and not saw_end:
                                 attempt += 1
                                 if attempt > self.max_reconnect:
-                                    return
+                                    # 不能静默 return：调用方会误判为任务正常结束。
+                                    raise SSEGiveUp(
+                                        f"SSE 空闲超时重连 {self.max_reconnect} 次后放弃"
+                                        "(网关任务可能仍在运行)"
+                                    )
                                 continue
                             # 收到 message_end 或任务终态：正常结束，不再重连
                             return
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                         attempt += 1
                         if attempt > self.max_reconnect:
-                            raise RuntimeError(f"连接失败(重试{self.max_reconnect}次后仍失败): {e}") from e
+                            raise SSEGiveUp(
+                                f"连接失败(重试{self.max_reconnect}次后仍失败)"
+                                f"(网关任务可能仍在运行): {e}"
+                            ) from e
                     except RuntimeError:
                         # HTTP 非 200：重试无意义，直接抛出
                         raise
@@ -1329,6 +1344,41 @@ class AssistantPlugin(PluginBase):
                     ids.append(sid)
         return ids[:8]
 
+    async def _probe_session_running(self, session_id: str):
+        """查询网关上该 session 是否仍有任务在运行。
+
+        返回 True(仍在跑) / False(已不在跑) / None(无法确认，如 401/超时)。
+        用于 SSE 重连耗尽时如实告知用户任务状态，避免误报"完成"。
+        """
+        try:
+            timeout = aiohttp.ClientTimeout(total=6.0)
+            async with aiohttp.ClientSession(timeout=timeout) as s:
+                async with s.get(
+                    f"{self.api_base_url}/api/chat/status",
+                    params={"session_id": session_id},
+                    headers=self._auth_headers(),
+                ) as resp:
+                    if resp.status != 200:
+                        return None
+                    body = await resp.text()
+            import json as _json
+            data = _json.loads(body)
+            if not isinstance(data, dict) or not data.get("status"):
+                return None
+            payload = data.get("data") or {}
+            running = payload.get("running")
+            if isinstance(running, bool):
+                return running
+            status = str(payload.get("status") or "")
+            if status == "running":
+                return True
+            if status in ("done", "error", "stopped", "none"):
+                return False
+            return None
+        except Exception as e:
+            logger.debug("[Assistant] 查询任务状态失败 sid={}: {}", session_id, e)
+            return None
+
     async def _post_stop(self, session_id: str) -> None:
         """向网关发送 stop，失败时记录日志（不再静默吞掉）。"""
         try:
@@ -1520,6 +1570,24 @@ class AssistantPlugin(PluginBase):
                 )
                 logger.info("assistant stream completed session={} elapsed={}s calls={}",
                             session_id, elapsed_s, state["calls"])
+            if first_use:
+                await self._catchup_session_id(route, message)
+
+        except SSEGiveUp as e:
+            # 重连耗尽：连接放弃，但网关任务很可能仍在运行。
+            # 这里绝不能发 "✅ 任务完成"（会造成用户误判），必须明确告知不确定状态。
+            logger.warning("assistant stream giveup session={}: {}", session_id, e)
+            if (not self.disable_ai_reply) and accumulated.strip():
+                await self._send(route, accumulated)
+            running = await self._probe_session_running(session_id)
+            if running is True:
+                tip = "⚠️ 与后台的连接已中断（自动重连耗尽），任务仍在后台运行，请稍后查看结果"
+            elif running is False:
+                tip = "⚠️ 与后台的连接已中断，任务已不在运行，但结果可能不完整，请查看会话历史"
+            else:
+                tip = "⚠️ 与后台的连接已中断，无法确认任务状态，请稍后查看结果"
+            await self._send(route, tip)
+            logger.info("assistant stream giveup notice sent session={} running={}", session_id, running)
             if first_use:
                 await self._catchup_session_id(route, message)
 
