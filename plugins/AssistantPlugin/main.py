@@ -1497,9 +1497,10 @@ class AssistantPlugin(PluginBase):
             if (not self.disable_ai_reply) and accumulated.strip():
                 await self._send(route, accumulated)
                 logger.info("assistant stream ended session={}", session_id)
-            # 若此前向用户发过进行中提示（⏳ 工作中/仍在运行中），结束时必须补一条
-            # 终止提示，否则长任务结束后用户无从判断是否完成，只能干等。
-            if state.get("notified") and not self.disable_ai_reply:
+            # 无论任务长短，结束时必须给用户明确信号。
+            # 短任务（<5分钟）不会有 ⏳ 进行中提示，但同样需要 ✅ 完成提示
+            # 让用户知道任务已结束，而非卡死或无响应。
+            if not self.disable_ai_reply and accumulated.strip():
                 elapsed_s = int(time.monotonic() - _chat_start_ts)
                 if elapsed_s >= 60:
                     duration = f"{elapsed_s // 60}分{elapsed_s % 60}秒"
