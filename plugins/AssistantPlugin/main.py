@@ -1432,15 +1432,18 @@ class AssistantPlugin(PluginBase):
                         except Exception:
                             data = ""
                     accumulated += _safe_text(data).replace("\\n", "\n")
+                    # 收到正文即视为「任务有产出」。该标志与是否发送正文无关：
+                    # disable-ai-reply=true 只是不发 AI 正文，仍需据此发完成提示。
+                    state["sent_anything"] = True
                     if (not self.disable_ai_reply) and len(accumulated) >= self.reply_chunk_chars:
                         await self._send(route, accumulated)
                         accumulated = ""
-                        state["sent_anything"] = True
                         await asyncio.sleep(self.send_interval)
 
                 elif ev == "tool_call":
                     # 仅累计工具调用次数，供 working 状态展示；不逐条发送反馈
                     state["calls"] += 1
+                    state["sent_anything"] = True
 
                 elif ev == "tool_result":
                     # disable_ai_reply=true 表示不向微信发送 AI 侧内容，
@@ -1501,8 +1504,11 @@ class AssistantPlugin(PluginBase):
                 await self._send(route, accumulated)
                 logger.info("assistant stream ended session={}", session_id)
             # 无论任务长短，结束时必须给用户明确信号。
+            # 完成提示属于「状态提示」：disable-ai-reply=true 的语义是
+            # 「只发状态提示和错误，不发送 AI 正文」，因此这里不受该开关抑制，
+            # 与 ⏳ 工作中 提示保持一致（否则用户只见进行中、永远看不到结束）。
             # 用 sent_anything 标志判断（不能依赖 accumulated，它在发送 chunk 后已清空）
-            if not self.disable_ai_reply and state.get("sent_anything"):
+            if state.get("sent_anything"):
                 elapsed_s = int(time.monotonic() - _chat_start_ts)
                 if elapsed_s >= 60:
                     duration = f"{elapsed_s // 60}分{elapsed_s % 60}秒"
