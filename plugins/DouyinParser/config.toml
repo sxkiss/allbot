@@ -5,8 +5,9 @@ enable = true
 allowed_groups = ["*"]
 
 # 代理列表：按顺序轮换重试。代理是间歇性的，多配几个可显著提高成功率。
-# 容器内访问宿主机代理用 docker 网桥网关地址（docker0 通常为 172.17.0.1）。
-proxies = ["http://172.17.0.1:7890", "http://172.17.0.1:7891"]
+#   1) 172.17.0.1:7890 —— 宿主机 clash/mihomo（绑 0.0.0.0，容器可达）
+#   2) cf-warp:1080   —— WARP 容器（已接入 xbot_default，容器名可达）
+proxies = ["http://172.17.0.1:7890", "http://cf-warp:1080"]
 # yt-dlp 单独使用的代理列表；留空则沿用上面的 proxies
 ytdlp_proxies = []
 # 兼容旧字段（单个代理），proxies 存在时忽略本项

@@ -111,7 +111,7 @@ class DouyinParser(PluginBase):
 
     # 通用兜底：yt-dlp（本机已装，支持 1700+ 站点，含小红书/微博/西瓜等）
     YTDLP_BIN = "yt-dlp"
-    YTDLP_TIMEOUT = 90
+    YTDLP_TIMEOUT = 55
     # 本机网络不可达、需走代理的国外平台
     OVERSEAS_RE = re.compile(
         r"youtube\.com|youtu\.be|tiktok\.com|instagram\.com|facebook\.com|"
@@ -475,6 +475,7 @@ class DouyinParser(PluginBase):
         return {
             "kind": "video",
             "url": play_url or video_url,
+            "direct_url": play_url,  # 无直链时为空，改走卡片
             "title": title,
             "author": str(owner.get("name") or ""),
             "cover": str(data.get("pic") or "").replace("http://", "https://"),
@@ -541,18 +542,24 @@ class DouyinParser(PluginBase):
         if not isinstance(info, dict):
             return None
 
-        # 优先取带视频+音频的直链，其次单视频流，最后页面地址
-        play_url = str(info.get("url") or "")
-        if not play_url:
-            formats = info.get("formats") or []
-            for fmt in formats:
-                if not isinstance(fmt, dict):
-                    continue
-                if fmt.get("vcodec") != "none" and fmt.get("url"):
-                    play_url = str(fmt["url"])
-                    break
-            if not play_url and formats and isinstance(formats[-1], dict):
-                play_url = str(formats[-1].get("url") or "")
+        # 选取可下载直链：优先「渐进式」格式（音视频合一，可直接 HTTP 下载）。
+        # 注意 YouTube 多为 DASH 分离流，其 url 是 manifest 地址而非媒体文件，
+        # 直接下载只会挂起超时，必须识别出来并排除。
+        formats = info.get("formats") or []
+        play_url = ""
+        for fmt in formats:
+            if not isinstance(fmt, dict) or not fmt.get("url"):
+                continue
+            if (fmt.get("acodec") not in (None, "none")
+                    and fmt.get("vcodec") not in (None, "none")):
+                play_url = str(fmt["url"])
+        if not play_url and isinstance(info.get("url"), str):
+            play_url = info["url"]
+        # manifest / HLS / DASH 均不可直接下载
+        if re.search(r"manifest|\.m3u8|\.mpd", play_url, re.I):
+            logger.info("yt-dlp 返回 manifest 流，无法直接下载，改以页面地址入卡片")
+            play_url = ""
+        page_url = str(info.get("webpage_url") or "") or video_url
 
         cover = str(info.get("thumbnail") or "").replace("http://", "https://")
         images = []
@@ -566,7 +573,10 @@ class DouyinParser(PluginBase):
         title = str(info.get("title") or info.get("description") or "").strip()
         author = str(info.get("uploader") or info.get("channel") or "").strip()
 
-        if images and not play_url:
+        # 图文仅在没有播放地址时成立；YouTube 等 DASH 站点有封面无渐进式直链，
+        # 仍属视频（只是不可下载），应返回 video 让上层降级为卡片
+        has_media = bool(play_url) or bool(info.get("duration")) or not images
+        if images and not play_url and not has_media:
             return {
                 "kind": "note",
                 "title": title,
@@ -579,7 +589,8 @@ class DouyinParser(PluginBase):
         logger.info("yt-dlp 解析成功: title={}, 直链={}", title[:30], bool(play_url))
         return {
             "kind": "video",
-            "url": play_url or video_url,
+            "url": play_url or page_url,
+            "direct_url": play_url,  # 仅渐进式媒体文件才有值，供直发判定
             "title": title,
             "author": author,
             "cover": cover or (images[0] if images else ""),
@@ -666,6 +677,7 @@ class DouyinParser(PluginBase):
             return {
                 "kind": "video",
                 "url": video_src,
+                "direct_url": video_src,  # 第三方接口给的即媒体文件
                 "title": title,
                 "author": author,
                 "cover": str(cover or "").strip(),
@@ -1540,7 +1552,8 @@ class DouyinParser(PluginBase):
         （由调用方降级为卡片）。
         任何下载/发送异常都视为"直发不可用"，不抛错、不打扰用户。
         """
-        video_url = str(video_info.get("url") or "").strip()
+        # 只有真正的媒体直链才尝试直发；卡片链接可能是网页/manifest
+        video_url = str(video_info.get("direct_url") or "").strip()
         if not video_url:
             return False
         max_bytes = self.video_direct_max_mb * 1024 * 1024
@@ -1566,7 +1579,7 @@ class DouyinParser(PluginBase):
                     return False
 
                 async with session.get(
-                    video_url, timeout=aiohttp.ClientTimeout(total=120)
+                    video_url, timeout=aiohttp.ClientTimeout(total=60)
                 ) as resp:
                     if resp.status != 200:
                         return False
@@ -1598,7 +1611,7 @@ class DouyinParser(PluginBase):
             )
             return True
         except Exception as e:  # noqa: BLE001 - 静默降级，不打扰用户
-            logger.warning("视频直发失败，降级为卡片: {}", e)
+            logger.warning("视频直发失败，降级为卡片: {}: {}", type(e).__name__, e or repr(e))
             return False
 
     async def _send_video_card(self, bot: WechatAPIClient, group_id: str, video_info: dict):
