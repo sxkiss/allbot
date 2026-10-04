@@ -112,6 +112,10 @@ class DouyinParser(PluginBase):
     BILI_ID_RE = re.compile(r"(BV[0-9A-Za-z]{10})")
     BILI_AV_RE = re.compile(r"/video/av(\d+)|[?&]aid=(\d+)", re.I)
 
+    # 通用兜底：yt-dlp（本机已装，支持 1700+ 站点，含小红书/微博/西瓜等）
+    YTDLP_BIN = "yt-dlp"
+    YTDLP_TIMEOUT = 90
+
     _ttwid_cache: str | None = None
     _ttwid_cache_time: float = 0.0
     _ttwid_ttl = 3600.0
@@ -253,9 +257,14 @@ class DouyinParser(PluginBase):
                 if third_party:
                     third_party.setdefault("source_url", video_url)
                     return third_party
-                # 第三方全部失败时，回退原有官方解析链路（仅抖音可用）
+                # 第三方全部失败时，通用兜底：yt-dlp（覆盖小红书/微博/西瓜等）
                 if not self.DOUYIN_URL_RE.search(video_url):
+                    ytdlp_result = await self._parse_via_ytdlp(video_url)
+                    if ytdlp_result:
+                        ytdlp_result.setdefault("source_url", video_url)
+                        return ytdlp_result
                     raise VideoParserError("该平台暂无可用的解析线路，请稍后重试")
+                # 抖音：回退原有官方解析链路（detail 接口 / 页面解析）
                 html_content = await self._fetch_text(session, resolved_url)
                 item_id = self._extract_item_id(resolved_url)
                 if item_id:
@@ -418,6 +427,87 @@ class DouyinParser(PluginBase):
             "title": title,
             "author": str(owner.get("name") or ""),
             "cover": str(data.get("pic") or "").replace("http://", "https://"),
+        }
+
+    async def _parse_via_ytdlp(self, video_url: str) -> dict[str, Any] | None:
+        """通用兜底线路：调用 yt-dlp 取元数据与播放直链。
+
+        yt-dlp 支持 1700+ 站点，可覆盖第三方接口不支持的平台
+        （小红书/微博/西瓜/知乎等）。失败时返回 None，由调用方给出错误。
+        """
+        import shutil
+        if not shutil.which(self.YTDLP_BIN):
+            logger.warning("yt-dlp 不可用，跳过通用兜底线路: {}", self.YTDLP_BIN)
+            return None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                self.YTDLP_BIN, "--dump-json", "--no-warnings",
+                "--no-playlist", video_url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(
+                proc.communicate(), timeout=self.YTDLP_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.warning("yt-dlp 超时: {}", video_url)
+            return None
+        except Exception as e:  # noqa: BLE001
+            logger.warning("yt-dlp 调用失败: {}", e)
+            return None
+
+        if not stdout:
+            return None
+        try:
+            info = json.loads(stdout.decode("utf-8", "ignore").strip().splitlines()[-1])
+        except Exception as e:  # noqa: BLE001
+            logger.warning("yt-dlp 输出解析失败: {}", e)
+            return None
+        if not isinstance(info, dict):
+            return None
+
+        # 优先取带视频+音频的直链，其次单视频流，最后页面地址
+        play_url = str(info.get("url") or "")
+        if not play_url:
+            formats = info.get("formats") or []
+            for fmt in formats:
+                if not isinstance(fmt, dict):
+                    continue
+                if fmt.get("vcodec") != "none" and fmt.get("url"):
+                    play_url = str(fmt["url"])
+                    break
+            if not play_url and formats and isinstance(formats[-1], dict):
+                play_url = str(formats[-1].get("url") or "")
+
+        cover = str(info.get("thumbnail") or "").replace("http://", "https://")
+        images = []
+        if isinstance(info.get("thumbnails"), list):
+            images = [
+                str(t.get("url")).replace("http://", "https://")
+                for t in info["thumbnails"]
+                if isinstance(t, dict) and t.get("url")
+            ]
+
+        title = str(info.get("title") or info.get("description") or "").strip()
+        author = str(info.get("uploader") or info.get("channel") or "").strip()
+
+        if images and not play_url:
+            return {
+                "kind": "note",
+                "title": title,
+                "author": author,
+                "image_urls": images,
+                "image_url_groups": [[u] for u in images],
+            }
+        if not play_url and not cover:
+            return None
+        logger.info("yt-dlp 解析成功: title={}, 直链={}", title[:30], bool(play_url))
+        return {
+            "kind": "video",
+            "url": play_url or video_url,
+            "title": title,
+            "author": author,
+            "cover": cover or (images[0] if images else ""),
         }
 
     @classmethod
