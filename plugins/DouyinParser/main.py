@@ -46,6 +46,39 @@ class DouyinParser(PluginBase):
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     )
     DOUYIN_URL_RE = re.compile(r'https?://[^\s<>"]+?(?:v\.)?(?:douyin\.com|iesdouyin\.com)[^\s<>"]*')
+    # 支持的平台域名（对齐参考页 27 平台）。仅用于识别"这条消息是否值得解析"，
+    # 不做拦截：未命中已知平台时交由万能线路兜底尝试。
+    MEDIA_URL_RE = re.compile(
+        r"""https?://[^\s<>"']*?(?:"""
+        r"""douyin\.com|iesdouyin\.com|"""
+        r"""jimeng\.jianying\.com|dreamina|"""
+        r"""qianwen\.com|"""
+        r"""kuaishou\.com|gifshow|kwai|"""
+        r"""xiaohongshu\.com|xhslink\.(?:com|cn)|xhs\.com|"""
+        r"""bilibili\.com|b23\.tv|bili2233|"""
+        r"""weibo\.(?:com|cn)|"""
+        r"""toutiao\.com|"""
+        r"""xigua\.com|ixigua\.com|"""
+        r"""weishi\.qq\.com|"""
+        r"""haokan\.baidu\.com|"""
+        r"""acfun\.cn|acg\.tv|"""
+        r"""zhihu\.com|"""
+        r"""pipix\.com|pipigx\.com|"""
+        r"""meipai\.com|"""
+        r"""quanmin\.tv|"""
+        r"""kg\.qq\.com|"""
+        r"""huya\.com|"""
+        r"""doupai\.com|"""
+        r"""xinpianchang\.com|"""
+        r"""zuiyou\.com|"""
+        r"""(?:^|\.)6\.cn|"""
+        r"""pearvideo|lishipin|"""
+        r"""channels\.weixin\.qq\.com|"""
+        r"""tiktok\.com|"""
+        r"""youtube\.com|youtu\.be"""
+        r""")[^\s<>"']*""",
+        re.I,
+    )
     ROUTER_DATA_RE = re.compile(r"window\._ROUTER_DATA\s*=\s*({.*?})\s*</script>", re.S)
     SHARE_SLIDES_RE = re.compile(r"/share/slides/(\d+)")
     ITEM_ID_RE = re.compile(r"/(?:video|note|slides|share)/?(\d{10,})")
@@ -66,10 +99,18 @@ class DouyinParser(PluginBase):
     THIRD_PARTY_APIS: tuple[tuple[str, Any, str], ...] = (
         ("星之阁·抖音", re.compile(r"douyin\.com|iesdouyin\.com", re.I),
          "https://api.xingzhige.com/API/douyin/?url={url}"),
+        ("星之阁·快手", re.compile(r"kuaishou\.com|gifshow|kwai", re.I),
+         "https://api.xingzhige.com/API/kuaishou/?url={url}"),
         ("BugPk·万能", None,
          "https://api.bugpk.com/api/short_videos?url={url}"),
     )
     THIRD_PARTY_TIMEOUT = 25
+
+    BILI_VIEW_API = "https://api.bilibili.com/x/web-interface/view"
+    BILI_PLAY_API = "https://api.bilibili.com/x/player/playurl"
+    BILI_RE = re.compile(r"bilibili\.com|b23\.tv|bili2233", re.I)
+    BILI_ID_RE = re.compile(r"(BV[0-9A-Za-z]{10})")
+    BILI_AV_RE = re.compile(r"/video/av(\d+)|[?&]aid=(\d+)", re.I)
 
     _ttwid_cache: str | None = None
     _ttwid_cache_time: float = 0.0
@@ -113,12 +154,12 @@ class DouyinParser(PluginBase):
         if "*" not in self.allowed_groups and group_id not in self.allowed_groups:
             return
 
-        douyin_url = self._extract_douyin_url(content)
-        if not douyin_url:
+        media_url = self._extract_media_url(content)
+        if not media_url:
             return
 
         try:
-            result = await self.parse_video(douyin_url)
+            result = await self.parse_video(media_url)
             if result.get("kind") == "live":
                 logger.debug(
                     "抖音直播解析完成: image_source={}, source={}, cover={}, image_size={}",
@@ -144,6 +185,14 @@ class DouyinParser(PluginBase):
     @classmethod
     def _extract_douyin_url(cls, content: str) -> str | None:
         match = cls.DOUYIN_URL_RE.search(content)
+        if not match:
+            return None
+        return match.group(0).rstrip("，。,.!！?？)")
+
+    @classmethod
+    def _extract_media_url(cls, content: str) -> str | None:
+        """从消息中提取可解析的媒体链接（支持参考页列出的多平台）。"""
+        match = cls.MEDIA_URL_RE.search(content)
         if not match:
             return None
         return match.group(0).rstrip("，。,.!！?？)")
@@ -192,13 +241,21 @@ class DouyinParser(PluginBase):
                         "image_bytes": image_bytes,
                         "source_url": resolved_url,
                     }
-                # 优先第三方多线路解析：官方 detail 接口需 a_bogus 签名 + ttwid，
+                # 优先 B站专用线路（通用接口对 B站常失败）
+                if self.BILI_RE.search(video_url):
+                    bili = await self._parse_bilibili(session, video_url)
+                    if bili:
+                        bili.setdefault("source_url", video_url)
+                        return bili
+                # 其余平台：第三方多线路。官方 detail 接口需 a_bogus 签名 + ttwid，
                 # 抖音风控一升级即整片 403，且对图文（图集）覆盖不全。
                 third_party = await self._parse_via_third_party(session, video_url)
                 if third_party:
                     third_party.setdefault("source_url", video_url)
                     return third_party
-                # 第三方全部失败时，回退原有官方解析链路（detail 接口 / 页面解析）
+                # 第三方全部失败时，回退原有官方解析链路（仅抖音可用）
+                if not self.DOUYIN_URL_RE.search(video_url):
+                    raise VideoParserError("该平台暂无可用的解析线路，请稍后重试")
                 html_content = await self._fetch_text(session, resolved_url)
                 item_id = self._extract_item_id(resolved_url)
                 if item_id:
@@ -264,6 +321,104 @@ class DouyinParser(PluginBase):
         if last_err:
             logger.warning("第三方线路全部失败，将回退官方解析: {}", last_err)
         return None
+
+    async def _parse_bilibili(
+        self, session: aiohttp.ClientSession, video_url: str
+    ) -> dict[str, Any] | None:
+        """B站专用线路（官方 view + playurl 接口）。
+
+        参考页注释指出「通用接口对 B站常失败」，故单独实现。
+        官方接口无需登录；qn=64(720P) + platform=html5 可匿名拿到直链。
+        """
+        bvid = ""
+        aid = ""
+        match = self.BILI_ID_RE.search(video_url)
+        if match:
+            bvid = match.group(1)
+        else:
+            match = self.BILI_AV_RE.search(video_url)
+            if match:
+                aid = match.group(1) or match.group(2) or ""
+
+        # b23.tv 短链：跟随跳转后从落地地址取 BV 号
+        if not bvid and not aid:
+            try:
+                resolved = await self._resolve_redirect(session, video_url)
+                match = self.BILI_ID_RE.search(resolved or "")
+                if match:
+                    bvid = match.group(1)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("B站短链跳转失败: {}", e)
+        if not bvid and not aid:
+            return None
+
+        headers = {"User-Agent": self.DESKTOP_USER_AGENT, "Referer": "https://www.bilibili.com"}
+        timeout = aiohttp.ClientTimeout(total=self.THIRD_PARTY_TIMEOUT)
+        try:
+            params = {"bvid": bvid} if bvid else {"aid": aid}
+            async with session.get(
+                self.BILI_VIEW_API, params=params, headers=headers, timeout=timeout
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning("B站 view 接口状态码 {}", resp.status)
+                    return None
+                view = await resp.json(content_type=None)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("B站 view 接口失败: {}", e)
+            return None
+
+        if not isinstance(view, dict) or view.get("code") != 0:
+            return None
+        data = view.get("data")
+        if not isinstance(data, dict):
+            return None
+        bvid = str(data.get("bvid") or bvid)
+
+        # 分 P 支持
+        page = 1
+        mp = re.search(r"[?&]p=(\d+)", video_url)
+        if mp:
+            try:
+                page = max(1, int(mp.group(1)))
+            except ValueError:
+                page = 1
+        pages = data.get("pages") if isinstance(data.get("pages"), list) else []
+        cid = str(data.get("cid") or "")
+        if 0 < page <= len(pages) and isinstance(pages[page - 1], dict):
+            cid = str(pages[page - 1].get("cid") or cid)
+
+        # 播放直链（拿不到时回退原页面地址，保证卡片仍可点击）
+        play_url = ""
+        if cid:
+            try:
+                pp = {"bvid": bvid, "cid": cid, "qn": 64, "fnval": 1,
+                      "platform": "html5", "high_quality": 1}
+                async with session.get(
+                    self.BILI_PLAY_API, params=pp, headers=headers, timeout=timeout
+                ) as resp:
+                    if resp.status == 200:
+                        play = await resp.json(content_type=None)
+                        durl = ((play or {}).get("data") or {}).get("durl") or []
+                        if isinstance(durl, list) and durl and isinstance(durl[0], dict):
+                            play_url = str(durl[0].get("url") or "")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("B站 playurl 接口失败: {}", e)
+
+        owner = data.get("owner") if isinstance(data.get("owner"), dict) else {}
+        title = str(data.get("title") or "")
+        if len(pages) > 1 and 0 < page <= len(pages):
+            part = str((pages[page - 1] or {}).get("part") or "")
+            if part:
+                title = f"{title} · P{page}·{part}"
+
+        logger.info("B站解析成功: bvid={}, 直链={}, title={}", bvid, bool(play_url), title[:30])
+        return {
+            "kind": "video",
+            "url": play_url or video_url,
+            "title": title,
+            "author": str(owner.get("name") or ""),
+            "cover": str(data.get("pic") or "").replace("http://", "https://"),
+        }
 
     @classmethod
     def _normalize_third_party(cls, payload: Any) -> dict[str, Any] | None:
