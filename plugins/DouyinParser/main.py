@@ -33,9 +33,9 @@ class VideoParserError(Exception):
 
 
 class DouyinParser(PluginBase):
-    description = "抖音解析插件"
+    description = "多平台视频解析插件（抖音/快手/B站等 27 平台）"
     author = "BEelzebub"
-    version = "1.3.0"
+    version = "1.4.0"
 
     USER_AGENT = (
         "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) "
