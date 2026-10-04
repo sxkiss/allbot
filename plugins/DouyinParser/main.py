@@ -115,6 +115,12 @@ class DouyinParser(PluginBase):
     # 通用兜底：yt-dlp（本机已装，支持 1700+ 站点，含小红书/微博/西瓜等）
     YTDLP_BIN = "yt-dlp"
     YTDLP_TIMEOUT = 90
+    # 本机网络不可达、需走代理的国外平台
+    OVERSEAS_RE = re.compile(
+        r"youtube\.com|youtu\.be|tiktok\.com|instagram\.com|facebook\.com|"
+        r"twitter\.com|x\.com|reddit\.com|vimeo\.com|dailymotion\.com",
+        re.I,
+    )
 
     _ttwid_cache: str | None = None
     _ttwid_cache_time: float = 0.0
@@ -132,6 +138,11 @@ class DouyinParser(PluginBase):
         self.enable = config["enable"]
         self.allowed_groups = self._normalize_groups(config.get("allowed_groups", ["*"]))
         self.blacklist_groups = self._normalize_groups(config.get("blacklist_groups", []))
+        # 国外平台（YouTube/TikTok 等）本机网络不可达，需经代理访问。
+        # 留空表示不使用代理；仅对 OVERSEAS_RE 命中的平台生效，国内平台直连。
+        self.proxy = str(config.get("proxy", "") or "").strip()
+        # ytdlp_proxy 显式留空时回落到 proxy（get 的默认值对空串不生效，需二次兜底）
+        self.ytdlp_proxy = str(config.get("ytdlp_proxy", "") or "").strip() or self.proxy
 
     @staticmethod
     def _normalize_groups(value: Any) -> set[str]:
@@ -210,7 +221,14 @@ class DouyinParser(PluginBase):
         return hostname.endswith(".amemv.com") and "/webcast/" in parsed_url.path.lower()
 
     async def parse_video(self, video_url: str) -> dict[str, Any]:
-        """解析抖音分享页，兼容视频和图文作品。"""
+        """解析分享页，兼容视频和图文作品。"""
+        # 国外平台：本机直连不可达，跳过国内链路，直接走 yt-dlp + 代理
+        if self.OVERSEAS_RE.search(video_url) and self.ytdlp_proxy:
+            result = await self._parse_via_ytdlp(video_url)
+            if result:
+                result.setdefault("source_url", video_url)
+                return result
+            raise VideoParserError("该平台解析失败（代理线路不可用），请稍后重试")
         try:
             async with self._create_session() as session:
                 resolved_url = await self._resolve_redirect(session, video_url)
@@ -440,9 +458,16 @@ class DouyinParser(PluginBase):
             logger.warning("yt-dlp 不可用，跳过通用兜底线路: {}", self.YTDLP_BIN)
             return None
         try:
-            proc = await asyncio.create_subprocess_exec(
+            cmd = [
                 self.YTDLP_BIN, "--dump-json", "--no-warnings",
                 "--no-playlist", video_url,
+            ]
+            # 仅国外平台走代理：国内平台直连更快且代理反而可能失败
+            if self.ytdlp_proxy and self.OVERSEAS_RE.search(video_url):
+                cmd += ["--proxy", self.ytdlp_proxy]
+                logger.info("yt-dlp 使用代理: {} ({})", self.ytdlp_proxy, video_url[:50])
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
