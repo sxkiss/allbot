@@ -137,13 +137,42 @@ class DouyinParser(PluginBase):
         self.blacklist_groups = self._normalize_groups(config.get("blacklist_groups", []))
         # 国外平台（YouTube/TikTok 等）本机网络不可达，需经代理访问。
         # 留空表示不使用代理；仅对 OVERSEAS_RE 命中的平台生效，国内平台直连。
-        self.proxy = str(config.get("proxy", "") or "").strip()
-        # ytdlp_proxy 显式留空时回落到 proxy（get 的默认值对空串不生效，需二次兜底）
-        self.ytdlp_proxy = str(config.get("ytdlp_proxy", "") or "").strip() or self.proxy
+        # 代理：支持字符串或列表。代理是间歇性的，配置多个按顺序轮换重试，
+        # 可显著提高成功率（单点失败不代表平台不可用）。
+        self.proxies = self._normalize_proxies(
+            config.get("proxies") if config.get("proxies") is not None
+            else config.get("proxy", "")
+        )
+        self.proxy = self.proxies[0] if self.proxies else ""
+        _yp = config.get("ytdlp_proxies")
+        if _yp is None:
+            _yp = config.get("ytdlp_proxy")
+        self.ytdlp_proxies = self._normalize_proxies(_yp) or self.proxies
+        self.ytdlp_proxy = self.ytdlp_proxies[0] if self.ytdlp_proxies else ""
+        # 视频直发阈值：小于该值直接发视频消息，超过则只发卡片
+        try:
+            self.video_direct_max_mb = int(config.get("video-direct-max-mb", 10))
+        except (TypeError, ValueError):
+            self.video_direct_max_mb = 10
         # 是否对未匹配已知平台的任意链接也尝试解析。
         # yt-dlp 支持 1700+ 站点，开启可覆盖枚举外站点；但会对普通网页
         # 产生无效请求，默认关闭。
-        self.generic_fallback = bool(config.get("generic-fallback", False))
+        self.generic_fallback = bool(config.get("generic-fallback", True))
+
+    @staticmethod
+    def _normalize_proxies(value: Any) -> list[str]:
+        """把 proxy 配置归一化为代理列表（支持字符串或列表，去重保序）。"""
+        items: list[str] = []
+        if isinstance(value, str):
+            items = [value]
+        elif isinstance(value, (list, tuple)):
+            items = [str(v) for v in value]
+        result: list[str] = []
+        for item in items:
+            item = str(item).strip()
+            if item and item not in result:
+                result.append(item)
+        return result
 
     @staticmethod
     def _normalize_groups(value: Any) -> set[str]:
@@ -189,14 +218,16 @@ class DouyinParser(PluginBase):
             logger.debug(f"抖音解析结果: {result}")
             if result.get("kind") == "note":
                 await self._send_note(bot, group_id, result)
-            else:
+                return
+            # 先尝试直发视频（小文件），失败或超限再降级为卡片
+            if not await self._try_send_video_file(bot, group_id, result):
                 await self._send_video_card(bot, group_id, result)
         except VideoParserError as e:
-            logger.error(f"解析抖音失败: {e}")
-            await bot.send_text_message(group_id, f"解析失败: {e}")
+            # 解析失败/代理不可用：静默，只在日志留痕。
+            # 群里链接来源杂，失败提示会刷屏且无补救价值。
+            logger.info("解析失败（静默）: {} url={}", e, media_url[:60])
         except Exception as e:
-            logger.exception(f"处理抖音链接时发生错误: {e}")
-            await bot.send_text_message(group_id, "解析失败，请稍后重试")
+            logger.warning("处理链接时发生错误（静默）: {} url={}", e, media_url[:60])
 
     @classmethod
     def _extract_douyin_url(cls, content: str) -> str | None:
@@ -459,28 +490,45 @@ class DouyinParser(PluginBase):
         if not shutil.which(self.YTDLP_BIN):
             logger.warning("yt-dlp 不可用，跳过通用兜底线路: {}", self.YTDLP_BIN)
             return None
-        try:
+
+        # 候选代理：国外平台逐个轮换（代理间歇性可用，单点失败需重试下一个）
+        # 国内平台先直连（更快），直连失败再轮换代理重试。
+        if self.OVERSEAS_RE.search(video_url):
+            candidates = list(self.ytdlp_proxies) or [""]
+        else:
+            candidates = [""] + list(self.ytdlp_proxies)
+
+        stdout = b""
+        for idx, proxy in enumerate(candidates):
             cmd = [
                 self.YTDLP_BIN, "--dump-json", "--no-warnings",
                 "--no-playlist", video_url,
             ]
-            # 仅国外平台走代理：国内平台直连更快且代理反而可能失败
-            if self.ytdlp_proxy and self.OVERSEAS_RE.search(video_url):
-                cmd += ["--proxy", self.ytdlp_proxy]
-                logger.info("yt-dlp 使用代理: {} ({})", self.ytdlp_proxy, video_url[:50])
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(
-                proc.communicate(), timeout=self.YTDLP_TIMEOUT
-            )
-        except asyncio.TimeoutError:
-            logger.warning("yt-dlp 超时: {}", video_url)
-            return None
-        except Exception as e:  # noqa: BLE001
-            logger.warning("yt-dlp 调用失败: {}", e)
+            if proxy:
+                cmd += ["--proxy", proxy]
+            try:
+                logger.info(
+                    "yt-dlp 尝试 {}/{}: proxy={} url={}",
+                    idx + 1, len(candidates), proxy or "直连", video_url[:45],
+                )
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                out, _ = await asyncio.wait_for(
+                    proc.communicate(), timeout=self.YTDLP_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                logger.warning("yt-dlp 超时: proxy={} url={}", proxy or "直连", video_url[:45])
+                continue
+            except Exception as e:  # noqa: BLE001
+                logger.warning("yt-dlp 调用失败: {} ({})", e, proxy or "直连")
+                continue
+            if out:
+                stdout = out
+                break
+        if not stdout:
             return None
 
         if not stdout:
@@ -1482,6 +1530,76 @@ class DouyinParser(PluginBase):
         if title:
             lines.append(f"文案：{title}")
         return "\n".join(lines)
+
+    async def _try_send_video_file(
+        self, bot: WechatAPIClient, group_id: str, video_info: dict,
+    ) -> bool:
+        """尝试直接发送视频文件。
+
+        仅当视频体积小于阈值（默认 10MB）时发送；超限直接返回 False
+        （由调用方降级为卡片）。
+        任何下载/发送异常都视为"直发不可用"，不抛错、不打扰用户。
+        """
+        video_url = str(video_info.get("url") or "").strip()
+        if not video_url:
+            return False
+        max_bytes = self.video_direct_max_mb * 1024 * 1024
+        try:
+            async with self._create_session() as session:
+                # 先用 HEAD/Range 探大小，超限就不浪费带宽下载
+                head_size = None
+                try:
+                    async with session.head(
+                        video_url, timeout=aiohttp.ClientTimeout(total=15)
+                    ) as resp:
+                        length = resp.headers.get("Content-Length")
+                        if length and str(length).isdigit():
+                            head_size = int(length)
+                except Exception:  # noqa: BLE001 - HEAD 不支持时按未知处理
+                    head_size = None
+                if head_size is not None and head_size > max_bytes:
+                    logger.info(
+                        "视频 {} 超过 {}MB，降级为卡片: {} bytes",
+                        video_info.get("title", "")[:20],
+                        self.video_direct_max_mb, head_size,
+                    )
+                    return False
+
+                async with session.get(
+                    video_url, timeout=aiohttp.ClientTimeout(total=120)
+                ) as resp:
+                    if resp.status != 200:
+                        return False
+                    video_bytes = await resp.read()
+
+            if not video_bytes:
+                return False
+            if len(video_bytes) > max_bytes:
+                logger.info(
+                    "视频下载后超过阈值，降级为卡片: {} bytes",
+                    len(video_bytes),
+                )
+                return False
+
+            # 封面作为视频缩略图
+            thumb_bytes = b""
+            cover_url = str(video_info.get("cover") or "").strip()
+            if cover_url:
+                try:
+                    async with self._create_session() as session:
+                        thumb_bytes = await self._download_image(session, cover_url)
+                except Exception:  # noqa: BLE001 - 无封面不影响发视频
+                    thumb_bytes = b""
+
+            await bot.send_video_message(group_id, video_bytes, thumb_bytes)
+            logger.info(
+                "视频已直发: to={}, size={} bytes, title={}",
+                group_id, len(video_bytes), str(video_info.get("title"))[:24],
+            )
+            return True
+        except Exception as e:  # noqa: BLE001 - 静默降级，不打扰用户
+            logger.warning("视频直发失败，降级为卡片: {}", e)
+            return False
 
     async def _send_video_card(self, bot: WechatAPIClient, group_id: str, video_info: dict):
         try:
