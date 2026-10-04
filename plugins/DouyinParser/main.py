@@ -46,37 +46,34 @@ class DouyinParser(PluginBase):
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     )
     DOUYIN_URL_RE = re.compile(r'https?://[^\s<>"]+?(?:v\.)?(?:douyin\.com|iesdouyin\.com)[^\s<>"]*')
-    # 支持的平台域名（对齐参考页 27 平台）。仅用于识别"这条消息是否值得解析"，
-    # 不做拦截：未命中已知平台时交由万能线路兜底尝试。
+    # 已知平台域名。仅用于识别"这条消息是否值得解析"，不做拦截。
+    # 结构：https:// + 任意子域前缀 + 平台域名 + 可选路径。
+    # 子域前缀禁止含点（[^\s<>"'./]+\.），避免 "vax.com" 被误判为 "x.com"。
+    # 路径部分排除中日韩文字与全角标点，避免把 URL 后面的中文正文一起吃进来。
     MEDIA_URL_RE = re.compile(
-        r"""https?://[^\s<>"']*?(?:"""
+        r"""https?://(?:[^\s<>"'./，。、！？；：（）【】《》\u4e00-\u9fff]+\.)*(?:"""
         r"""douyin\.com|iesdouyin\.com|"""
-        r"""jimeng\.jianying\.com|dreamina|"""
-        r"""qianwen\.com|"""
-        r"""kuaishou\.com|gifshow|kwai|"""
-        r"""xiaohongshu\.com|xhslink\.(?:com|cn)|xhs\.com|"""
-        r"""bilibili\.com|b23\.tv|bili2233|"""
-        r"""weibo\.(?:com|cn)|"""
-        r"""toutiao\.com|"""
-        r"""xigua\.com|ixigua\.com|"""
-        r"""weishi\.qq\.com|"""
-        r"""haokan\.baidu\.com|"""
-        r"""acfun\.cn|acg\.tv|"""
-        r"""zhihu\.com|"""
-        r"""pipix\.com|pipigx\.com|"""
-        r"""meipai\.com|"""
-        r"""quanmin\.tv|"""
-        r"""kg\.qq\.com|"""
-        r"""huya\.com|"""
-        r"""doupai\.com|"""
-        r"""xinpianchang\.com|"""
-        r"""zuiyou\.com|"""
-        r"""(?:^|\.)6\.cn|"""
-        r"""pearvideo|lishipin|"""
+        r"""kuaishou\.com|gifshow\.com|kwai\.com|"""
+        r"""xiaohongshu\.com|xhslink\.com|xhslink\.cn|xhs\.com|"""
+        r"""bilibili\.com|b23\.tv|bili2233\.cn|bilibili\.tv|"""
+        r"""weibo\.com|weibo\.cn|toutiao\.com|xigua\.com|ixigua\.com|"""
+        r"""zhihu\.com|pipix\.com|pipigx\.com|meipai\.com|quanmin\.tv|"""
+        r"""huya\.com|douyu\.com|doupai\.com|xinpianchang\.com|zuiyou\.com|"""
+        r"""pearvideo\.com|lishipin\.com|youku\.com|iqiyi\.com|mgtv\.com|"""
+        r"""sohu\.com|le\.com|acfun\.cn|acg\.tv|weishi\.qq\.com|"""
+        r"""haokan\.baidu\.com|kg\.qq\.com|v\.qq\.com|6\.cn|"""
+        r"""jimeng\.jianying\.com|dreamina\.com|qianwen\.com|"""
         r"""channels\.weixin\.qq\.com|"""
-        r"""tiktok\.com|"""
-        r"""youtube\.com|youtu\.be"""
-        r""")[^\s<>"']*""",
+        r"""youtube\.com|youtu\.be|tiktok\.com|instagram\.com|facebook\.com|"""
+        r"""twitter\.com|x\.com|reddit\.com|vimeo\.com|dailymotion\.com|"""
+        r"""twitch\.tv|pinterest\.com|nicovideo\.jp|soundcloud\.com|"""
+        r"""t\.me|threads\.net|linkedin\.com|medium\.com"""
+        r""")(?:[/:?#][^\s<>"'，。、！？；：（）【】《》\u4e00-\u9fff]*)?""",
+        re.I,
+    )
+    # 通用兜底：任意 http(s) 链接（供 generic-fallback 开关使用）
+    ANY_URL_RE = re.compile(
+        r"""https?://[^\s<>"'，。、！？；：（）【】《》\u4e00-\u9fff]+""",
         re.I,
     )
     ROUTER_DATA_RE = re.compile(r"window\._ROUTER_DATA\s*=\s*({.*?})\s*</script>", re.S)
@@ -143,6 +140,10 @@ class DouyinParser(PluginBase):
         self.proxy = str(config.get("proxy", "") or "").strip()
         # ytdlp_proxy 显式留空时回落到 proxy（get 的默认值对空串不生效，需二次兜底）
         self.ytdlp_proxy = str(config.get("ytdlp_proxy", "") or "").strip() or self.proxy
+        # 是否对未匹配已知平台的任意链接也尝试解析。
+        # yt-dlp 支持 1700+ 站点，开启可覆盖枚举外站点；但会对普通网页
+        # 产生无效请求，默认关闭。
+        self.generic_fallback = bool(config.get("generic-fallback", False))
 
     @staticmethod
     def _normalize_groups(value: Any) -> set[str]:
@@ -204,13 +205,14 @@ class DouyinParser(PluginBase):
             return None
         return match.group(0).rstrip("，。,.!！?？)")
 
-    @classmethod
-    def _extract_media_url(cls, content: str) -> str | None:
-        """从消息中提取可解析的媒体链接（支持参考页列出的多平台）。"""
-        match = cls.MEDIA_URL_RE.search(content)
+    def _extract_media_url(self, content: str) -> str | None:
+        """从消息中提取可解析的媒体链接（已知平台 + 可选通用兜底）。"""
+        match = self.MEDIA_URL_RE.search(content)
+        if not match and self.generic_fallback:
+            match = self.ANY_URL_RE.search(content)
         if not match:
             return None
-        return match.group(0).rstrip("，。,.!！?？)")
+        return match.group(0).rstrip("，。,.!！?？)）】》")
 
     @classmethod
     def _is_live_url(cls, url: str) -> bool:
