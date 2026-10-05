@@ -591,6 +591,7 @@ class DouyinParser(PluginBase):
             "kind": "video",
             "url": play_url or page_url,
             "direct_url": play_url,  # 仅渐进式媒体文件才有值，供直发判定
+            "page_url": page_url,    # 无直链时用 yt-dlp 自行下载的入口
             "title": title,
             "author": author,
             "cover": cover or (images[0] if images else ""),
@@ -1543,6 +1544,76 @@ class DouyinParser(PluginBase):
             lines.append(f"文案：{title}")
         return "\n".join(lines)
 
+    async def _download_via_ytdlp(
+        self, page_url: str, max_bytes: int,
+    ) -> bytes | None:
+        """用 yt-dlp 自行下载并合并视频（用于无 HTTP 直链的站点，如 YouTube）。
+
+        实测参数（2026-10-05）：YouTube DASH 流在代理下用默认并发会持续
+        SSL UNEXPECTED_EOF，必须限制单并发 + 分片 1M + 强制 IPv4 才能稳定，
+        实测 14MB/31s。android client 可绕过 "Sign in to confirm you're not a bot"。
+        """
+        import shutil, tempfile
+        import pathlib
+        if not shutil.which(self.YTDLP_BIN):
+            return None
+        tmpdir = tempfile.mkdtemp(prefix="dy_ytdlp_")
+        out_tpl = str(pathlib.Path(tmpdir) / "v.%(ext)s")
+        # yt-dlp 的 --max-filesize 是近似判定（实测 10M 档会产出 10.2MB），
+        # 故按阈值留 15% 余量，并在下载完成后再严格校验一次真实字节数。
+        max_mb = max(1, int(max_bytes // (1024 * 1024) * 0.85))
+
+        for proxy in (self.ytdlp_proxies or [""]):
+            cmd = [
+                self.YTDLP_BIN,
+                "--no-warnings", "--no-playlist",
+                "--concurrent-fragments", "1",
+                "--http-chunk-size", "1M",
+                "--force-ipv4",
+                "--retries", "20",
+                "--fragment-retries", "20",
+                "--socket-timeout", "20",
+                "--max-filesize", f"{max_mb}M",
+                "-f", "bv*[height<=480]+ba/b[height<=480]/b",
+                "-o", out_tpl,
+            ]
+            if self.OVERSEAS_RE.search(page_url):
+                cmd += ["--extractor-args", "youtube:player_client=android"]
+            if proxy:
+                cmd += ["--proxy", proxy]
+            cmd.append(page_url)
+            try:
+                logger.info("yt-dlp 下载尝试: proxy={} url={}", proxy or "直连", page_url[:45])
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, err = await asyncio.wait_for(proc.communicate(), timeout=180)
+            except asyncio.TimeoutError:
+                logger.warning("yt-dlp 下载超时: proxy={}", proxy or "直连")
+                continue
+            except Exception as e:  # noqa: BLE001
+                logger.warning("yt-dlp 下载异常: {}: {}", type(e).__name__, e)
+                continue
+
+            files = sorted(pathlib.Path(tmpdir).glob("v.*"))
+            if not files:
+                logger.warning("yt-dlp 下载无产物: {}", (err or b"")[-160:].decode("utf-8", "ignore"))
+                continue
+            target = files[0]
+            size = target.stat().st_size
+            if size > max_bytes:
+                logger.info("下载完成但超阈值({} bytes)，放弃直发", size)
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                return None
+            data = target.read_bytes()
+            shutil.rmtree(tmpdir, ignore_errors=True)
+            logger.info("yt-dlp 下载成功: {} bytes", len(data))
+            return data
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        return None
+
     async def _try_send_video_file(
         self, bot: WechatAPIClient, group_id: str, video_info: dict,
     ) -> bool:
@@ -1552,11 +1623,23 @@ class DouyinParser(PluginBase):
         （由调用方降级为卡片）。
         任何下载/发送异常都视为"直发不可用"，不抛错、不打扰用户。
         """
-        # 只有真正的媒体直链才尝试直发；卡片链接可能是网页/manifest
-        video_url = str(video_info.get("direct_url") or "").strip()
-        if not video_url:
-            return False
         max_bytes = self.video_direct_max_mb * 1024 * 1024
+        video_url = str(video_info.get("direct_url") or "").strip()
+        # 无 HTTP 直链（DASH/manifest 站点）：交给 yt-dlp 自行下载并合并
+        if not video_url:
+            page_url = str(video_info.get("page_url") or "").strip()
+            if not page_url:
+                return False
+            data = await self._download_via_ytdlp(page_url, max_bytes)
+            if not data:
+                return False
+            try:
+                await bot.send_video_message(group_id, data, b"")
+                logger.info("视频已直发(yt-dlp下载): to={}, size={}", group_id, len(data))
+                return True
+            except Exception as e:  # noqa: BLE001
+                logger.warning("发送视频失败: {}: {}", type(e).__name__, e)
+                return False
         try:
             async with self._create_session() as session:
                 # 先用 HEAD/Range 探大小，超限就不浪费带宽下载
