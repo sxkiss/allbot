@@ -40,17 +40,20 @@ sleep 2
 # 注意：875 是 Beego 应用，固定读取 /app/conf/app.conf（不是 conf875/），
 # 必须先部署配置到该路径，否则 user_token_key 等配置读不到会导致启动失败。
 if [ -x /app/wechatpad875 ] && [ -f /app/conf875/app.conf ]; then
-    echo "部署 875 配置到 /app/conf/app.conf（Beego 默认路径）..."
+    echo "部署 875 配置到 /config/app.conf（wechatpad 入口强制路径）..."
+    mkdir -p /config
+    cp /app/conf875/app.conf /config/app.conf
+    # 兼容 Beego 默认路径（部分版本读 /app/conf/app.conf）
     mkdir -p /app/conf
     cp /app/conf875/app.conf /app/conf/app.conf
     # 卡密：优先用环境变量 WX_TOKEN_KEY，未设置则兜底默认值，
     # 保证容器在任何情况下都能启动（授权是否有效由控制面 authserver 裁决）
     WX_TOKEN_KEY_EFFECTIVE="${WX_TOKEN_KEY:-local-dev-placeholder}"
-    sed -i "s|^user_token_key = .*|user_token_key = \"${WX_TOKEN_KEY_EFFECTIVE}\"|" /app/conf/app.conf
+    sed -i "s|^user_token_key = .*|user_token_key = \"${WX_TOKEN_KEY_EFFECTIVE}\"|" /config/app.conf /app/conf/app.conf
     echo "875 卡密已设置（来源: ${WX_TOKEN_KEY:+环境变量}${WX_TOKEN_KEY:-兜底默认值}）"
     # redis 地址从环境变量注入（容器内 redis 默认 127.0.0.1:6379）
     if [ -n "${WX_REDIS_LINK:-}" ]; then
-        sed -i "s|^redislink = .*|redislink = ${WX_REDIS_LINK}|" /app/conf/app.conf
+        sed -i "s|^redislink = .*|redislink = ${WX_REDIS_LINK}|" /config/app.conf /app/conf/app.conf
     fi
     echo "启动 875 (wechatpad875)..."
     cd /app && nohup ./wechatpad875 > /tmp/875.log 2>&1 &
