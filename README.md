@@ -58,7 +58,7 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 
 | 平台 | 协议 | 说明 |
 |------|------|------|
-| **微信** | 869/pad/ipad/mac/win 等 | 多协议版本支持 |
+| **微信** | 875（WeChatPadProMAX） | 卡密授权 + 多端登录 |
 | **微信 clawbot 渠道（ocwx）** | openclaw-weixin HTTP JSON | 多账号扫码登录与 ReplyQueue 回写 |
 | **QQ** | NTQQ | 私聊和群聊 |
 | **Telegram** | Bot API | 长轮询/Webhook |
@@ -74,16 +74,16 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 
 | 分支 | 说明 |
 |------|------|
-| `main` | 纯 allbot 框架（不含 wxserver/874 二进制） |
-| `feat/wxserver-license` | 含 wxserver + 874 协议服务 + 远程卡密授权 + 十端登录支持 |
+| `main` | 纯 allbot 框架（不含 wxserver/875 二进制） |
+| `feat/wxserver875-license` | 含 wxserver + 875 协议服务 + 远程卡密授权 + 多端登录支持 |
 
-> **需要微信协议服务（869/874）+ 卡密授权的用户**：请使用 `feat/wxserver-license` 分支，见下方说明。
+> **需要微信协议服务（875）+ 卡密授权的用户**：请使用 `feat/wxserver875-license` 分支，见下方说明。
 
-### feat/wxserver-license 分支（含 869/874 协议 + 卡密授权）
+### feat/wxserver875-license 分支（含 875 协议 + 卡密授权）
 
 ```bash
 # 克隆项目并切换到 feat 分支
-git clone -b feat/wxserver-license https://github.com/sxkiss/allbot.git
+git clone -b feat/wxserver875-license https://github.com/sxkiss/allbot.git
 cd allbot
 
 # 编辑 main_config.toml（协议版本、管理员账号等）
@@ -98,10 +98,10 @@ docker compose logs -f
 **使用：**
 1. 访问管理后台二维码页面
 2. 卡密输入框填入卡密 → 提交拉码
-3. 页面可切换协议版本（869/874）与登录端（iPad / Mac / Pad / Windows / 车载 等）
+3. 页面可切换登录端（iPad / Mac / Pad / Windows / 车载 等）
 
 **特性：**
-- **双协议**：支持 869 与 874 协议，页面一键切换
+- **875 协议**：WeChatPadProMAX，卡密授权拉码登录
 - **多端登录**：iPad / Mac / 安卓 Pad / Windows / 车载 等多种设备类型
 - **授权管理**：基于卡密使用授权，绑定设备
 

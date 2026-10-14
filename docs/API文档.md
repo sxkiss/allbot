@@ -173,4 +173,4 @@ POST /api/chat/history
 
 - 若接口返回 `success=false`，请查看 `error` 或 `message` 字段获取原因。
 - 部分功能（如聊天历史）已标记为禁用，文档仍保留以便前端兼容。
-- 869 专属能力（如撤回、拍一拍、二维码、标签、动态调用）不再通过管理后台 HTTP API 暴露；如需使用，请在插件中直接调用 `Client869` 方法，参考 `plugins/README.md` 与 `plugins/Protocol869Demo/`。
+- 875 专属能力（如撤回、拍一拍、二维码、标签、动态调用）不再通过管理后台 HTTP API 暴露；如需使用，请在插件中直接调用 `WechatAPIClient` 方法，参考 `plugins/README.md`。
