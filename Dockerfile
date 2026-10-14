@@ -56,6 +56,22 @@ RUN chmod +x /app/wxserver
 COPY wxserver_runtime/assets /app/assets
 COPY wxserver_runtime/static /app/static
 
+# 运行时配置（内置默认，compose 无需重复声明）
+ENV WX_HOST=127.0.0.1
+ENV WX_PORT=18062
+ENV WX_REDIS_LINK=127.0.0.1:6379
+ENV WX_AUTH_SERVER=https://v.sxkiss.top
+ENV WX_TOKEN_KEY=local-dev-placeholder
+ENV MYSQL_HOST=mysql
+ENV MYSQL_PORT=3306
+ENV MYSQL_USER=weixin
+ENV MYSQL_PASSWORD=wxserver_2026
+ENV MYSQL_DATABASE=weixin
+ENV MYSQL_PARAMS=charset=utf8mb4&parseTime=true&loc=Local
+ENV REDIS_HOST=redis
+ENV REDIS_PORT=6379
+ENV REDIS_DB=2
+
 # 暴露端口（仅后台管理端口）
 EXPOSE 9090
 
