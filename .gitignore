@@ -32,10 +32,6 @@ logs/
 *.sqlite
 *.sqlite3
 
-# 环境变量
-.env
-.env.local
-
 # 操作系统文件
 .DS_Store
 Thumbs.db
@@ -45,6 +41,8 @@ Thumbs.db
 *.temp
 .cache/
 .*
+!.env
+!.env
 tests/
 
 
