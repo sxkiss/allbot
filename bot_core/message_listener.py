@@ -1,6 +1,6 @@
 """
 @input: WebSocket 消息流、Redis 队列、消息数据库、AllBot 实例与 resource/robot_stat.json（用于兜底 WS key）
-@output: 标准化 AddMsgs 消息入队并驱动插件处理（可配置多 worker 并发消费）；869 登录恢复时回写状态与缓存
+@output: 标准化 AddMsgs 消息入队并驱动插件处理（可配置多 worker 并发消费）；875 登录恢复时回写状态与缓存
 @position: bot_core 启动流程中的消息接收与分发入口
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -180,326 +180,6 @@ async def listen_ws_messages(allbot, ws_url: str | Callable[[], str], redis, mes
     reconnect_interval = 5
     reconnect_count = 0
 
-    async def _maybe_relogin_869(reason: str) -> bool:
-        bot = getattr(allbot, "bot", None)
-        if bot is None:
-            return False
-        if str(getattr(bot, "protocol_version", "") or "").lower() != "869":
-            return False
-        if not hasattr(bot, "try_wakeup_login"):
-            return False
-
-        lock = getattr(allbot, "_869_relogin_lock", None)
-        if lock is None:
-            lock = asyncio.Lock()
-            setattr(allbot, "_869_relogin_lock", lock)
-
-        async with lock:
-            try:
-                if await bot.is_logged_in(getattr(bot, "wxid", None) or None):
-                    return False
-            except Exception:
-                pass
-
-            try:
-                from bot_core.status_manager import update_bot_status
-
-                # 唤醒登录期间不要落 offline，否则前端会显示“机器人未运行”。
-                update_bot_status(
-                    "waiting_login",
-                    f"869 掉线，正在唤醒登录：{reason}",
-                    {"protocol_version": "869", "wxid": getattr(bot, "wxid", "") or ""},
-                )
-            except Exception:
-                pass
-
-            wxid = getattr(bot, "wxid", "") or "system"
-            _notify_ws_event("offline", account=wxid)
-            _notify_ws_event(
-                "retry",
-                adapter="wechat-869",
-                account=wxid,
-                reason=f"掉线唤醒: {reason}",
-                retry_in=0,
-            )
-
-            try:
-                ok = await bot.try_wakeup_login()
-            except Exception as error:
-                logger.warning("869 免扫码唤醒登录失败: {}", error)
-                ok = False
-
-            if not ok:
-                qrcode_url = ""
-                for attr in ("qrcode_url", "qr_url", "login_qrcode_url"):
-                    value = str(getattr(bot, attr, "") or "").strip()
-                    if value:
-                        qrcode_url = value
-                        break
-                if not qrcode_url:
-                    display_uuid = str(getattr(bot, "display_uuid", "") or "").strip()
-                    if display_uuid:
-                        qrcode_url = f"http://weixin.qq.com/x/{display_uuid}"
-                if qrcode_url:
-                    _notify_ws_event(
-                        "login_qrcode",
-                        source="wechat-869",
-                        account=wxid,
-                        qrcode_url=qrcode_url,
-                        login_link=qrcode_url,
-                        extra=f"掉线后需扫码: {reason}",
-                    )
-
-            if ok:
-                try:
-                    from bot_core.status_manager import update_bot_status
-                    update_bot_status(
-                        "online",
-                        f"869 免扫码唤醒登录成功：{getattr(bot, 'nickname', '') or ''}",
-                        {
-                            "protocol_version": "869",
-                            "nickname": getattr(bot, "nickname", "") or "",
-                            "wxid": getattr(bot, "wxid", "") or "",
-                            "alias": getattr(bot, "alias", "") or "",
-                        },
-                    )
-                except Exception:
-                    pass
-            return ok
-
-    while True:
-        try:
-            # 875 协议：WS ticket 有 TTL（默认 300s），每次（重）连接前必须重新换取，
-            # 否则断线超过 5 分钟后用过期 ticket 重连必然握手失败（永久中断）。
-            _bot = getattr(allbot, "bot", None)
-            if _bot is not None and str(getattr(_bot, "protocol_version", "") or "").lower() == "875":
-                if hasattr(_bot, "get_websocket_ticket_875"):
-                    try:
-                        _new_ticket = await _bot.get_websocket_ticket_875()
-                        if _new_ticket:
-                            logger.info("875 已刷新 WebSocket ticket（重连前换票）")
-                        else:
-                            logger.warning("875 刷新 ticket 返回空，可能未登录，稍后重试")
-                    except Exception as _e:
-                        logger.warning("875 刷新 ticket 异常: {}", _e)
-
-            runtime_ws_url = ws_url() if callable(ws_url) else ws_url
-            if not runtime_ws_url.startswith("ws://") and not runtime_ws_url.startswith("wss://"):
-                runtime_ws_url = "ws://" + runtime_ws_url
-
-            logger.info("正在连接到 WebSocket 服务器: {}", _mask_ws_url(runtime_ws_url))
-
-            async with websockets.connect(runtime_ws_url, ping_interval=30, ping_timeout=10) as websocket:
-                logger.success("已连接到 WebSocket 消息服务器: {}", _mask_ws_url(runtime_ws_url))
-                reconnect_count = 0
-
-                while True:
-                    try:
-                        msg = await websocket.recv()
-
-                        if isinstance(msg, str) and ("已关闭连接" in msg or "connection closed" in msg.lower()):
-                            logger.warning("检测到服务端主动关闭连接消息，主动关闭本地ws，准备重连...")
-                            _notify_ws_event(
-                                "retry",
-                                adapter="wechat-ws",
-                                account=getattr(getattr(allbot, "bot", None), "wxid", "") or "system",
-                                reason="服务端主动关闭连接",
-                                retry_in=reconnect_interval,
-                            )
-                            await websocket.close()
-                            break
-
-                        try:
-                            data = json.loads(msg)
-                            await _process_ws_message(data, allbot, redis, message_db)
-
-                        except json.JSONDecodeError:
-                            msg_preview = msg[:100] + "..." if len(msg) > 100 else msg
-                            if not msg.strip():
-                                logger.debug("收到WebSocket心跳包或空消息")
-                            else:
-                                logger.info("收到非JSON格式的WebSocket消息: {}", msg_preview)
-
-                        except Exception as error:
-                            logger.error("处理ws消息出错: {}, 原始内容: {}...", error, msg[:100])
-
-                    except websockets.exceptions.ConnectionClosed as error:
-                        logger.error(
-                            "WebSocket 连接已关闭: {} (code={}, reason={})，{}秒后重连...",
-                            error,
-                            getattr(error, "code", None),
-                            getattr(error, "reason", None),
-                            reconnect_interval,
-                        )
-                        _notify_ws_event(
-                            "retry",
-                            adapter="wechat-ws",
-                            account=getattr(getattr(allbot, "bot", None), "wxid", "") or "system",
-                            reason=f"连接关闭 code={getattr(error, 'code', None)} reason={getattr(error, 'reason', None)}",
-                            retry_in=reconnect_interval,
-                        )
-                        break
-
-                    except Exception as error:
-                        logger.error("WebSocket消息主循环异常: {}\n{}", error, traceback.format_exc())
-                        break
-
-        except websockets.exceptions.InvalidStatus as error:
-            reconnect_count += 1
-            payload = _parse_invalid_status_payload(error)
-            status_code = payload.get("_status_code")
-            code = payload.get("Code")
-            text_msg = _first_non_empty(payload.get("Text"), payload.get("Message"), str(error))
-            if status_code == 200 and str(code) == "300":
-                masked_key = _mask_key(_extract_url_key(runtime_ws_url))
-                wait_seconds = max(reconnect_interval, 8)
-                # 869：若已掉线则尝试免扫码唤醒登录（避免一直空转重连）
-                relogin_ok = await _maybe_relogin_869(text_msg)
-                if relogin_ok:
-                    reconnect_count = 0
-                    wait_seconds = reconnect_interval
-                logger.warning(
-                    "869 WS 长链接未就绪（key={}）: {}，第{}次重试，{}秒后继续",
-                    masked_key,
-                    text_msg,
-                    reconnect_count,
-                    wait_seconds,
-                )
-                await asyncio.sleep(wait_seconds)
-                continue
-
-            logger.error(
-                "WebSocket 握手失败: {}，第{}次重连，{}秒后重试...",
-                error,
-                reconnect_count,
-                reconnect_interval,
-            )
-            _notify_ws_event(
-                "retry",
-                adapter="wechat-ws",
-                account=getattr(getattr(allbot, "bot", None), "wxid", "") or "system",
-                reason=f"握手失败: {error}",
-                retry_in=reconnect_interval,
-            )
-            await asyncio.sleep(reconnect_interval)
-
-        except Exception as error:
-            reconnect_count += 1
-            logger.error(
-                "WebSocket 连接失败: {}: {}，第{}次重连，{}秒后重试...\n{}",
-                type(error).__name__,
-                error,
-                reconnect_count,
-                reconnect_interval,
-                traceback.format_exc(),
-            )
-            _notify_ws_event(
-                "retry",
-                adapter="wechat-ws",
-                account=getattr(getattr(allbot, "bot", None), "wxid", "") or "system",
-                reason=f"{type(error).__name__}: {error}",
-                retry_in=reconnect_interval,
-            )
-            await asyncio.sleep(reconnect_interval)
-
-
-# 875 消息去重缓存（P1-5）：msg_id -> 时间戳，防 WS/Webhook 重复投递
-_875_dedupe_cache: "OrderedDict[str, float]" = OrderedDict()
-_875_dedupe_lock = threading.Lock()
-DEDUPE_CACHE_SIZE = 2000
-
-
-def _is_duplicate_875(msg_id: str) -> bool:
-    """判断 875 消息是否重复（LRU 缓存，超过容量淘汰最旧）。"""
-    if not msg_id:
-        return False
-    with _875_dedupe_lock:
-        if msg_id in _875_dedupe_cache:
-            return True
-        _875_dedupe_cache[msg_id] = time.time()
-        while len(_875_dedupe_cache) > DEDUPE_CACHE_SIZE:
-            _875_dedupe_cache.popitem(last=False)
-    return False
-
-
-async def _process_ws_message(data: Dict[str, Any], allbot, redis, message_db):
-    bot_wxid = getattr(allbot.bot, "wxid", "")
-
-    # 875 协议：推送体字段与 869 不同（fromWxid/toWxid/content/msgType），
-    # 先转成框架的 AddMsgs 结构，后续复用统一的入队与插件分发逻辑。
-    if str(getattr(allbot.bot, "protocol_version", "") or "").lower() == "875":
-        for raw_message in extract_messages_from_ws(data):
-            addmsg = normalize_addmsg(raw_message, bot_wxid)
-            # P1-5: 去重（同一 msg_id 只处理一次）
-            _mid = str(addmsg.get("MsgId") or "")
-            if _is_duplicate_875(_mid):
-                logger.debug("875 重复消息已跳过 msg_id={}", _mid)
-                continue
-            await _save_and_enqueue_message(addmsg, redis, message_db, is_standard_format=True)
-        return
-
-    for raw_message in normalize_ws_payloads(data):
-        addmsg = normalize_addmsg(raw_message, bot_wxid)
-        if not addmsg.get("FromUserName", {}).get("string") or not addmsg.get("Content", {}).get("string"):
-            logger.warning(
-                "WS 消息归一化后关键字段为空，raw keys={} raw_preview={}",
-                list(raw_message.keys()) if isinstance(raw_message, dict) else type(raw_message),
-                (json.dumps(raw_message, ensure_ascii=False)[:600] if isinstance(raw_message, dict) else str(raw_message)[:200]),
-            )
-        logger.debug("ws消息适配为AddMsgs: {}", json.dumps(addmsg, ensure_ascii=False))
-        # 调试：打印完整原始 WS 消息（引用视频相关）
-        if "refermsg" in str(raw_message):
-            import json as _json
-            # 只打印引用消息的完整结构（用于调试）
-            if raw_message.get('Type') == '49' or 'refermsg' in str(raw_message.get('Content', '')):
-                logger.info("RAW_QUOTE_MSG {}", _json.dumps(raw_message, ensure_ascii=False, indent=2))
-        bot = getattr(allbot, "bot", None)
-        if bot is not None and hasattr(bot, "register_msg_ids"):
-            try:
-                # 注册消息 ID 映射：原始 svrid → msg_id
-                # 引用消息的 new_msg_id 和 refermsg.svrid 可能是不同的值
-                bot.register_msg_ids(addmsg.get("MsgId"), addmsg.get("NewMsgId"))
-                # 同时尝试从 Content XML 中提取 refermsg.svrid
-                content_str = addmsg.get("Content", "")
-                if isinstance(content_str, dict):
-                    content_str = content_str.get("string", "")
-                if isinstance(content_str, str) and "refermsg" in content_str:
-                    import xml.etree.ElementTree as _ET
-                    try:
-                        root = _ET.fromstring(content_str.split("\n", 1)[1] if "\n" in content_str else content_str)
-                        appmsg = root.find(".//appmsg")
-                        if appmsg is not None:
-                            refermsg = appmsg.find("refermsg")
-                            if refermsg is not None:
-                                svrid = refermsg.findtext("svrid", "").strip()
-                                if svrid:
-                                    bot.register_msg_ids(addmsg.get("MsgId"), svrid)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-        await _save_and_enqueue_message(addmsg, redis, message_db, is_standard_format=True)
-
-
-async def _save_and_enqueue_message(message: Dict[str, Any], redis, message_db, is_standard_format: bool):
-    fields = MessageNormalizer.extract_message_fields(message, is_standard_format)
-    sender = fields["sender_wxid"]
-    is_group = bool(message.get("IsGroup")) or (isinstance(sender, str) and sender.endswith("@chatroom"))
-
-    await message_db.save_message(
-        msg_id=int(fields["msg_id"] or 0),
-        sender_wxid=sender,
-        from_wxid=fields["from_wxid"],
-        msg_type=int(fields["msg_type"] or 0),
-        content=fields["content"],
-        is_group=is_group,
-    )
-
-    await redis.rpush(QUEUE_NAME, json.dumps(message, ensure_ascii=False))
-    logger.info("消息已入队到队列 {}，消息ID: {}", QUEUE_NAME, fields["msg_id"])
-
-
-class MessageListener:
     def __init__(self, allbot, config: AppConfig, script_dir: Path):
         self.allbot = allbot
         self.config = config
@@ -523,25 +203,6 @@ class MessageListener:
             _first_non_empty(data.get("poll_key")),
             _first_non_empty(data.get("auth_key")),
         )
-
-    def _resolve_869_ws_key(self) -> str:
-        bot = getattr(self.allbot, "bot", None)
-        token_key = _first_non_empty(getattr(bot, "token_key", ""))
-        poll_key = _first_non_empty(getattr(bot, "poll_key", ""))
-
-        auth_key = _first_non_empty(getattr(bot, "auth_key", ""))
-        if not auth_key:
-            auth_keys = getattr(bot, "auth_keys", None)
-            if isinstance(auth_keys, list) and auth_keys:
-                auth_key = _first_non_empty(auth_keys[0])
-
-        if not token_key and not poll_key and not auth_key:
-            stat_token, stat_poll, stat_auth = self._load_robot_stat_key()
-            token_key = token_key or stat_token
-            poll_key = poll_key or stat_poll
-            auth_key = auth_key or stat_auth
-
-        return _first_non_empty(token_key, poll_key, auth_key)
 
     def _extract_login_payload(self, payload: Any) -> Dict[str, Any]:
         if not isinstance(payload, dict):
@@ -677,86 +338,8 @@ class MessageListener:
             if api_config.enable_websocket:
                 if protocol_version == "875":
                     await self._start_listening_875(message_db)
-                elif protocol_version == "869":
-                    login_task = getattr(self.allbot, "_wechat_login_task", None)
-                    if isinstance(login_task, asyncio.Task) and not login_task.done():
-                        logger.info("869 主 WS 将在扫码登录成功后启动（当前仅运行消息消费者）")
-                        try:
-                            login_ok = await login_task
-                        except Exception as error:
-                            logger.error("登录任务异常，转为等待后续手动登录成功再启动 869 主 WS: {}", error)
-                            login_ok = False
-
-                        if not login_ok:
-                            logger.warning("登录未成功，等待后续扫码/卡密登录成功后再启动 869 主 WS")
-                            bot = getattr(self.allbot, "bot", None)
-                            while True:
-                                try:
-                                    payload = None
-                                    if bot is not None and hasattr(bot, "check_login_uuid"):
-                                        try:
-                                            _, payload = await bot.check_login_uuid(
-                                                getattr(bot, "poll_key", "") or getattr(bot, "display_uuid", "") or ""
-                                            )
-                                        except Exception:
-                                            payload = None
-                                    if bot is not None and await bot.is_logged_in(None):
-                                        try:
-                                            from bot_core.status_manager import update_bot_status
-                                            login_mode = str(getattr(bot, "device_type", "") or "").strip().lower()
-                                            device_id = str(getattr(bot, "device_id", "") or "").strip()
-
-                                            if hasattr(bot, "get_profile"):
-                                                await bot.get_profile()
-
-                                            update_bot_status(
-                                                "online",
-                                                f"已登录：{getattr(bot, 'nickname', '') or ''}",
-                                                {
-                                                    "protocol_version": "869",
-                                                    "nickname": getattr(bot, "nickname", "") or "",
-                                                    "wxid": getattr(bot, "wxid", "") or "",
-                                                    "alias": getattr(bot, "alias", "") or "",
-                                                    "login_mode": login_mode,
-                                                    "device_id": device_id,
-                                                },
-                                            )
-                                            self._save_robot_stat_from_bot(bot)
-                                        except Exception:
-                                            pass
-                                        logger.success("检测到 869 后续登录成功，继续启动主 WS")
-                                        break
-                                    if payload and self._is_scanned_login(payload):
-                                        try:
-                                            from bot_core.status_manager import update_bot_status
-                                            login_mode = str(getattr(bot, "device_type", "") or "").strip().lower()
-                                            device_id = str(getattr(bot, "device_id", "") or "").strip()
-                                            qrcode_url = self._resolve_qrcode_url_from_bot(bot)
-
-                                            update_bot_status(
-                                                "scanned",
-                                                "已扫描，请在手机上确认登录",
-                                                {
-                                                    "protocol_version": "869",
-                                                    "nickname": getattr(bot, "nickname", "") or "",
-                                                    "wxid": getattr(bot, "wxid", "") or "",
-                                                    "alias": getattr(bot, "alias", "") or "",
-                                                    "data62": getattr(bot, "data62", "") or "",
-                                                    "ticket": getattr(bot, "ticket", "") or "",
-                                                    "qrcode_url": qrcode_url,
-                                                    "login_mode": login_mode,
-                                                    "device_id": device_id,
-                                                },
-                                            )
-                                        except Exception:
-                                            pass
-                                except Exception:
-                                    pass
-                                await asyncio.sleep(3)
-
-                ws_url = self._get_websocket_url
-                logger.info("WebSocket 消息推送地址: {}", _mask_ws_url(ws_url()))
-                await listen_ws_messages(self.allbot, ws_url, self.redis, message_db)
+                else:
+                    logger.warning("未知协议版本 {}，不启动 WS 监听", protocol_version)
             else:
                 logger.info("WebSocket 消息通道已禁用（enable-websocket = false），消息消费者将继续从 Redis 队列读取")
                 await asyncio.Event().wait()
@@ -768,9 +351,8 @@ class MessageListener:
     async def _start_listening_875(self, message_db) -> None:
         """875 协议：登录后先换取 WebSocket ticket，再启动收消息监听。
 
-        与 869 的区别：875 需先调 /api/Runtime/WebSocketTicket 拿短时票据，
-        再连 ws://host:18089/ws/sync?ticket=xxx。此流程与 869 的
-        ws://host:port/ws/GetSyncMsg?key=xxx 完全独立。
+        875 需先调 /api/Runtime/WebSocketTicket 拿短时票据，
+        再连 ws://host:18089/ws/sync?ticket=xxx。
         """
         bot = getattr(self.allbot, "bot", None)
         if bot is None:
@@ -802,31 +384,9 @@ class MessageListener:
     def _build_default_ws_url(self) -> str:
         api_config = self.config.wechat_api
         protocol_version = str(self.config.protocol.version).lower()
-        if protocol_version == "869":
-            return f"ws://{api_config.host}:{api_config.port}/ws/GetSyncMsg"
-        if protocol_version == "875":
-            # 875 的 WS 端口独立于 API 端口（默认 18089），路径 /ws/sync
-            ws_port = getattr(api_config, "ws_port", 0) or 18089
-            return f"ws://{api_config.host}:{ws_port}/ws/sync"
-        return f"ws://{api_config.host}:{api_config.port}/ws"
-
-    def _normalize_869_ws_url(self, ws_url: str) -> str:
-        runtime_url = ws_url.strip()
-        if not runtime_url:
-            runtime_url = self._build_default_ws_url()
-
-        if runtime_url.endswith("/api/ws"):
-            runtime_url = runtime_url[:-7] + "/ws/GetSyncMsg"
-        elif runtime_url.endswith("/ws"):
-            runtime_url = runtime_url + "/GetSyncMsg"
-        elif "/ws/GetSyncMsg" not in runtime_url:
-            runtime_url = runtime_url.rstrip("/") + "/ws/GetSyncMsg"
-
-        active_key = self._resolve_869_ws_key()
-        if active_key and not _has_query_key(runtime_url):
-            runtime_url = _append_query_key(runtime_url, active_key)
-
-        return runtime_url
+        # 875：WS 端口独立于 API 端口（默认 18089），路径 /ws/sync
+        ws_port = getattr(api_config, "ws_port", 0) or 18089
+        return f"ws://{api_config.host}:{ws_port}/ws/sync"
 
     def _get_websocket_url(self) -> str:
         api_config = self.config.wechat_api
@@ -837,18 +397,8 @@ class MessageListener:
             ws_url = self._build_default_ws_url()
             logger.warning("未在配置中找到有效的 ws-url，使用构造值: {}", ws_url)
 
-        if protocol_version == "869":
-            return self._normalize_869_ws_url(ws_url)
-
-        if protocol_version == "875":
-            # 875 收消息需要短时 ticket：/ws/sync?ticket=xxx
-            return self._normalize_875_ws_url(ws_url)
-
-        wxid = getattr(self.allbot.bot, "wxid", "")
-        if wxid and not ws_url.rstrip("/").endswith(wxid):
-            ws_url = ws_url.rstrip("/") + f"/{wxid}"
-
-        return ws_url
+        # 875：收消息需要短时 ticket → /ws/sync?ticket=xxx
+        return self._normalize_875_ws_url(ws_url)
 
     def _normalize_875_ws_url(self, ws_url: str) -> str:
         """875 收消息 WS 地址：补 /ws/sync 路径并附加 ticket 票据。

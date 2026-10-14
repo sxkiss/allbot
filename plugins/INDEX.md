@@ -25,7 +25,6 @@
 | AuthKey | 授权码生成：对接 vx.sxkiss.top 授权服务，按类型/天数生成 | `on_text_message`（priority 40）、`on_at_message`（40） | `[AuthKey] enable/command（授权码）/base-url/admin-key/api-mode/key-type/days/count/timeout/admin-only/admin-required-types/user-daily-limit/admin-bypass-limit` |
 | ClawPlugin | OpenClaw 网关通信：WS 持久连接、触发词转发、RPC、runId 实时事件回推、媒体公网链接输出 | `on_text_message`(45)、`on_at_message`(45)、`on_quote_message`(45)、`on_image_message`(45)、`on_voice_message`(45)、`on_video_message`(45)、`on_file_message`(45)、`on_article_message`(45) | `[Claw] enable/ws-url/gateway-token/gateway-password/auto-connect/trigger-words/trigger-match-mode/max-reply-chars/propagate-to-other-plugins`；`[Claw.EventForward] enable/allowed-events/to-wxids` |
 | ManagePlugin | 插件管理命令：加载/卸载/重载/插件列表/重启/更新框架 | `on_text_message` | `[ManagePlugin] enable/command`（加载插件/重载插件/插件列表/重启/更新…） |
-| Protocol869Demo | 869 客户端能力示例：拍一拍/撤回/二维码/标签/群信息/动态调用（仅 869 协议、管理员可用） | `on_text_message`(80)、`on_quote_message`(80)、`on_emoji_message`(80) | `[Protocol869Demo] enable`；文本命令前缀 “869”（869帮助/869拍拍/869撤回） |
 | RandomPicture | 随机图片：文本命令触发返回随机图 | `on_text_message` | `[RandomPicture] enable/command`（随机图片/随机图图） |
 | RandomPhoto | 随机图片（图床 API，限 Telegram 平台） | `on_text_message` | `[RandomPhoto] enable/command`（666）、`api_url`、`proxy_url`、`timeout`、`max_retries`、`allowed_platforms` |
 | VideoDemand | 视频菜单/随机视频：文本命令触发返回视频菜单或随机视频 | `on_text_message`（4 处 handler） | `[VideoDemand] enable/command（视频菜单）/random-command（随机视频）/random-video-url/menu-image/cache-time` |
