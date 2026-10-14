@@ -648,12 +648,10 @@
                                         <div class="col-6">
                                             <div class="dropdown w-100">
                                                 <button id="protocol-btn" class="btn btn-sm btn-outline-primary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                                    <i class="bi bi-hdd-network me-1"></i><span id="current-protocol">849协议</span>
+                                                    <i class="bi bi-hdd-network me-1"></i><span id="current-protocol">875协议</span>
                                                 </button>
                                                 <ul class="dropdown-menu">
-                                                    <li><a class="dropdown-item protocol-option" href="#" data-value="849">849协议</a></li>
-                                                    <li><a class="dropdown-item protocol-option" href="#" data-value="855">855协议</a></li>
-                                                    <li><a class="dropdown-item protocol-option" href="#" data-value="ipad">iPad协议</a></li>
+                                                    <li><a class="dropdown-item protocol-option" href="#" data-value="875">875协议（WeChatPadPro）</a></li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -1086,7 +1084,7 @@
 
                         // 提取协议版本
                         const protocolMatch = configText.match(/version\s*=\s*"([^"]+)"/i);
-                        const protocolVersion = protocolMatch ? protocolMatch[1] : '849';
+                        const protocolVersion = protocolMatch ? protocolMatch[1] : '875';
 
                         // 提取消息过滤模式
                         const filterModeMatch = configText.match(/ignore-mode\s*=\s*"([^"]+)"/i);
@@ -1113,12 +1111,12 @@
 
                     // 使用默认值
                     window.currentConfig = {
-                        protocolVersion: '849',
+                        protocolVersion: '875',
                         filterMode: 'None',
                         configText: ''
                     };
 
-                    updateProtocolUI('849');
+                    updateProtocolUI('875');
                     updateFilterModeUI('None');
                 });
         }

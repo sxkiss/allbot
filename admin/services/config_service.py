@@ -113,14 +113,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
                 "select",
                 description="不同协议兼容不同客户端环境。",
                 options=[
-                    _option("869", "869（推荐）"),
-                    _option("874", "874（多登录端）"),
-                    _option("ipad", "iPad"),
-                    _option("pad", "Pad"),
-                    _option("mac", "Mac"),
-                    _option("ipad2", "iPad2"),
-                    _option("car", "Car"),
-                    _option("win", "Windows"),
+                    _option("875", "875（WeChatPadPro，推荐）"),
                 ],
             )
         ],
@@ -155,7 +148,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
                 description="生产环境建议使用 release。",
                 options=[_option("debug", "调试 (debug)"), _option("release", "生产 (release)")],
             ),
-            _field("admin-key", "管理密钥", "password", description="869 管理密钥，部署时填写。", secret=True),
+            _field("admin-key", "管理密钥", "password", description="875 卡密（authcode），部署时填写。", secret=True),
             _field(
                 "login-qrcode-proxy",
                 "登录二维码代理",
@@ -181,7 +174,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
                 "ws-url",
                 "WebSocket 地址",
                 "text",
-                description="869 建议使用 /ws/GetSyncMsg，程序会自动追加 key。",
+                description="875 使用 /ws/sync（需先用 WebSocketTicket 换取票据追加到 URL）。",
                 placeholder="ws://127.0.0.1:9000/ws/GetSyncMsg",
             ),
             _field("enable-rabbitmq", "启用 RabbitMQ 收消息", "boolean"),

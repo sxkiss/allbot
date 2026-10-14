@@ -97,10 +97,10 @@
 | /api/auth/login | POST | 登录（签发会话 Cookie） | 公开 | auth_routes.py |
 | /api/auth/status | GET | 登录状态（轮询） | 公开 | auth_routes.py |
 | /api/auth/logout | POST | 登出 | 公开 | auth_routes.py |
-| /api/login/qrcode | GET | 获取登录二维码 | 匿名(challenge) | qrcode_routes.py |
-| /api/login/verify_code | POST | 提交验证码 | 匿名(challenge) | qrcode_routes.py |
-| /api/login/force_mac_qrcode | POST | 强制 mac 拉码 | 匿名(challenge) | qrcode_routes.py |
-| /api/login/restart_869_flow | POST | 重启 869 登录流程 | 匿名(challenge) | qrcode_routes.py |
+| /api/login/qrcode | GET | 获取登录二维码（875） | 匿名(challenge) | qrcode_routes.py |
+| /api/login/restart_875_flow | POST | 提交卡密并拉码（875） | 匿名(challenge) | qrcode_routes.py |
+| /api/login/device_types | GET | 875 支持的登录设备端列表 | 匿名 | qrcode_routes.py |
+| /api/login/switch_device | POST | 切换登录设备端并重拉码（875） | 匿名(challenge) | qrcode_routes.py |
 | /api/qrcode | GET | 二维码图片 | 匿名 | qrcode_routes.py |
 | /api/notification/settings | GET | 通知设置 | 鉴权 | notification_routes.py |
 | /api/notification/settings | POST | 更新通知设置 | 鉴权 | notification_routes.py |
