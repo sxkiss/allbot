@@ -1377,7 +1377,8 @@ class WechatAPIClient(WechatAPIClientBase):
         返回统一结构：
           {"online": bool, "wxid": str, "nickname": str, "message": str, "raw": dict}
         """
-        params: Dict[str, Any] = {"autoLogin": True}
+        # 875 的 GET query 不接受 bool（会报 "Invalid variable type"），统一转字符串
+        params: Dict[str, Any] = {"autoLogin": "true"}
         if wxid:
             params["wxid"] = wxid
 
