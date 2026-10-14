@@ -118,10 +118,10 @@ class ContactManager:
         try:
             with open("main_config.toml", "rb") as f:
                 config = tomllib.load(f)
-                protocol_version = config.get("Protocol", {}).get("version", "849")
+                protocol_version = config.get("Protocol", {}).get("version", "875")
 
                 # 根据协议版本选择前缀
-                if protocol_version == "849":
+                if protocol_version == "875":
                     api_prefix = "/VXAPI"
                     logger.info(f"使用849协议前缀: {api_prefix}")
                 else:  # 855 或 ipad

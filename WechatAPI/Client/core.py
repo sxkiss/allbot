@@ -478,12 +478,8 @@ class WechatAPIClient(WechatAPIClientBase):
     def _resolve_request_path(self, path: str) -> str:
         """按协议版本做路径映射替换。
 
-        - 874: 查 ROUTE_MAP_874（缺失则原样，874 路径已是 /api/xxx 终态）
         - 875: 查 ROUTE_MAP_875，未命中自动补 /api 前缀
-        - 869: 原样返回
         """
-        if self.protocol_version == "874":
-            return self.ROUTE_MAP_874.get(path, path)
         if self.protocol_version == "875":
             return protocol875.resolve_875_path(path)
         return path
@@ -491,8 +487,7 @@ class WechatAPIClient(WechatAPIClientBase):
     def _resolve_request_body(self, path: str, body: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """按协议版本转换请求体。
 
-        875 用扁平参数（ToWxid/Content/Base64），与 869 的 MsgItem 嵌套结构不同，
-        必须在发请求前转换；其余协议原样返回。
+        875 用扁平参数（ToWxid/Content/Base64），必须在发请求前转换。
         """
         if self.protocol_version == "875":
             return protocol875.to_875_body(path, body)
@@ -576,8 +571,8 @@ class WechatAPIClient(WechatAPIClientBase):
     ) -> Any:
         request_method = method.upper().strip()
         headers_arg = headers  # 避免与下方局部变量 headers 重名
-        # 874/875 协议时用映射表替换路径，并转换请求体
-        if self.protocol_version in ("874", "875"):
+        # 875 协议时用映射表替换路径，并转换请求体
+        if self.protocol_version == "875":
             request_path = self._resolve_request_path(path)
             body = self._resolve_request_body(path, body)
         else:
@@ -1196,38 +1191,6 @@ class WechatAPIClient(WechatAPIClientBase):
         if proxy_value:
             payload["Proxy"] = proxy_value
 
-        # 874：按设备类型路由到对应登录端接口（874 是接口区分，不是参数区分）
-        qr_path = "/login/GetLoginQrCodeNewDirect"
-        if self.protocol_version == "874":
-            qr_endpoint = {
-                "ipad": "/api/Login/LoginGetQR",
-                "mac": "/api/Login/LoginGetQRMac",
-                "pad": "/api/Login/LoginGetQRPad",
-                "androidpad": "/api/Login/LoginGetQRPad",
-                "win": "/api/Login/LoginGetQRWin",
-                "winuwp": "/api/Login/LoginGetQRWinUwp",
-                "winunified": "/api/Login/LoginGetQRWinUnified",
-                "car": "/api/Login/LoginGetQRCar",
-                "notcode": "/api/Login/LoginGetQRNotCode",
-                "notcodepush": "/api/Login/LoginGetQRNotCodePush",
-            }.get(str(device_name or "").strip().lower())
-            if qr_endpoint:
-                # 直接用 874 端点（绕过 ROUTE_MAP_874 的默认 Pad 映射）
-                qr_path = qr_endpoint
-                raw_device = str(device_name or "").strip().lower()
-                payload = {"DeviceName": raw_device, "DeviceID": device_id, "LoginType": ""}
-                if proxy_value:
-                    # 874 ProxyInfo: {ProxyIp, ProxyUser, ProxyPassword}
-                    clean = proxy_value.replace("socks5://", "").replace("http://", "")
-                    parts = clean.rsplit("@", 1)
-                    if len(parts) == 2:
-                        user_pass, host_port = parts
-                        user, _, pwd = user_pass.partition(":")
-                    else:
-                        host_port = parts[0]
-                        user, pwd = "", ""
-                    ip, _, port = host_port.partition(":")
-                    payload["Proxy"] = {"ProxyIp": ip + ":" + port, "ProxyUser": user, "ProxyPassword": pwd}
 
         # 875：按设备类型路由到对应拉码接口（官方 18 个 GetQR* 端点，接口区分而非参数区分）
         # 设备 → 端点映射（依据 swagger /Login/*）

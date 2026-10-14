@@ -12,15 +12,7 @@ class ProtocolConfig:
 
     # 协议版本到 API 前缀的映射
     PROTOCOL_API_PREFIX_MAP: Dict[str, str] = {
-        "849": "/VXAPI",      # 849 协议使用 /VXAPI 前缀
-        "ipad": "/api",       # iPad 协议使用 /api 前缀
-        "pad": "/api",        # Pad 协议使用 /api 前缀
-        "mac": "/api",        # Mac 协议使用 /api 前缀
-        "ipad2": "/api",      # iPad2 协议使用 /api 前缀
-        "car": "/api",        # Car 协议使用 /api 前缀
-        "win": "/api",        # Win 协议使用 /api 前缀
-        "855": "/api",        # 855 协议使用 /api 前缀
-        "869": "/api",        # 协议使用 /api 前缀（WS 由消息监听器单独处理）
+        "875": "/api",        # 875（WeChatPadPro）使用 /api 前缀
     }
 
     # 默认 API 前缀（当协议版本未知时使用）
