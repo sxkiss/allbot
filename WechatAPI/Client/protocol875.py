@@ -171,10 +171,11 @@ def _first_msg_item(body: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def to_875_body(path: str, body: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """把 869 请求体转换为 875 请求体。
+    """把 869 请求体转换为 875 请求体（按官方 Swagger 字段逐一定义）。
 
-    875 用扁平参数：ToWxid / Content / Base64 / At / Type / DeviceName
-    869 用嵌套参数：MsgItem[].{ToUserName, TextContent, ImageContent, AtWxIDList}
+    官方字段依据：/home/sxkiss/875/source/app/swagger/swagger.json
+    注意 875 用扁平参数（ToWxid/Content/Base64/Xml/Type/Md5/...），
+    与 869 的 MsgItem 嵌套结构不同，必须在发请求前转换。
     """
     if not isinstance(body, dict) or not body:
         return body
@@ -185,7 +186,6 @@ def to_875_body(path: str, body: Optional[Dict[str, Any]]) -> Optional[Dict[str,
     if lowered in ("/login/getloginqrcodenewdirect", "/api/login/getqr"):
         device_name = str(body.get("DeviceName") or "").strip()
         if not device_name:
-            # 从 869 的 IpadOrmac 推断设备名
             mode = str(body.get("IpadOrmac") or "ipad").lower()
             device_name = "mac" if mode == "mac" else "iPad"
         result: Dict[str, Any] = {"DeviceName": device_name, "oversea": False}
@@ -194,16 +194,13 @@ def to_875_body(path: str, body: Optional[Dict[str, Any]]) -> Optional[Dict[str,
             result["Proxy"] = proxy
         return result
 
-    # ---------- 文本消息 ----------
+    # ---------- 文本消息 (Msg/SendTxt: ToWxid, Content, At, Type) ----------
     if lowered in ("/message/sendtextmessage", "/api/msg/sendtxt"):
         item = _first_msg_item(body)
         if not item and "ToWxid" in body:
-            return body  # 已经是 875 结构
+            return body  # 已是 875 结构
         at_list = item.get("AtWxIDList") or []
-        if isinstance(at_list, (list, tuple)):
-            at_value = ",".join(str(x) for x in at_list if x)
-        else:
-            at_value = str(at_list or "")
+        at_value = ",".join(str(x) for x in at_list if x) if isinstance(at_list, (list, tuple)) else str(at_list or "")
         return {
             "ToWxid": item.get("ToUserName", ""),
             "Content": item.get("TextContent", ""),
@@ -211,108 +208,133 @@ def to_875_body(path: str, body: Optional[Dict[str, Any]]) -> Optional[Dict[str,
             "Type": int(item.get("MsgType") or 1),
         }
 
-    # ---------- 图片消息（base64 上传）----------
+    # ---------- 图片 (Msg/UploadImg: ToWxid, Base64) ----------
     if lowered in (
-        "/message/uploadimagetocdn",
-        "/message/sendimagemessage",
-        "/message/sendimagenewmessage",
-        "/api/msg/uploadimg",
-    ):
-        item = _first_msg_item(body)
-        if not item and "ToWxid" in body:
-            return body
-        image = item.get("ImageContent") or item.get("Base64") or ""
-        return {
-            "ToWxid": item.get("ToUserName", ""),
-            "Base64": image,
-        }
-
-    # ---------- CDN 转发类（图片/视频/文件）----------
-    if lowered in (
-        "/message/forwardimagemessage",
-        "/message/forwardvideomessage",
-        "/message/cdnuploadvideo",
-        "/message/sendcdnfile",
-        "/api/msg/sendcdnimg",
-        "/api/msg/sendcdnvideo",
-        "/api/msg/sendcdnfile",
+        "/message/uploadimagetocdn", "/message/sendimagemessage",
+        "/message/sendimagenewmessage", "/api/msg/uploadimg",
     ):
         item = _first_msg_item(body)
         if not item and "ToWxid" in body:
             return body
         return {
             "ToWxid": item.get("ToUserName", ""),
-            "Content": item.get("Content")
-            or item.get("Xml")
-            or item.get("TextContent")
-            or "",
+            "Base64": item.get("ImageContent") or item.get("Base64") or "",
         }
 
-    # ---------- 语音 / 视频 / 文件 ----------
+    # ---------- CDN 转发图片/视频 (Msg/SendCDNImg|Video|File: ToWxid, Content=xml) ----------
     if lowered in (
-        "/message/sendvoice",
-        "/message/sendvideomessage",
-        "/message/sendfilemessage",
-        "/api/msg/sendvoice",
-        "/api/msg/sendvideo",
-        "/api/msg/sendfile",
+        "/message/forwardimagemessage", "/message/forwardvideomessage",
+        "/message/cdnuploadvideo", "/message/sendcdnfile",
+        "/api/msg/sendcdnimg", "/api/msg/sendcdnvideo", "/api/msg/sendcdnfile",
     ):
         item = _first_msg_item(body)
         if not item and "ToWxid" in body:
             return body
         return {
             "ToWxid": item.get("ToUserName", ""),
-            "Content": item.get("Content")
-            or item.get("Base64")
-            or item.get("TextContent")
-            or "",
+            "Content": item.get("Content") or item.get("Xml") or item.get("TextContent") or "",
         }
 
-    # ---------- 撤回 ----------
+    # ---------- 语音 (Msg/SendVoice: ToWxid, Base64, Type, VoiceTime) ----------
+    if lowered in ("/message/sendvoice", "/api/msg/sendvoice"):
+        item = _first_msg_item(body)
+        if not item and "ToWxid" in body:
+            return body
+        return {
+            "ToWxid": item.get("ToUserName", ""),
+            "Base64": item.get("Content") or item.get("Base64") or "",
+            "Type": int(item.get("MsgType") or 0),
+            "VoiceTime": int(item.get("VoiceTime") or 0),
+        }
+
+    # ---------- 视频 (Msg/SendVideo: ToWxid, Base64, ImageBase64, PlayLength) ----------
+    if lowered in ("/message/sendvideomessage", "/api/msg/sendvideo"):
+        item = _first_msg_item(body)
+        if not item and "ToWxid" in body:
+            return body
+        return {
+            "ToWxid": item.get("ToUserName", ""),
+            "Base64": item.get("Content") or item.get("Base64") or "",
+            "ImageBase64": item.get("ThumbBase64") or "",
+            "PlayLength": int(item.get("PlayLength") or 0),
+        }
+
+    # ---------- 文件 (Msg/SendFile: ToWxid, Base64, FileName) ----------
+    if lowered in ("/message/sendfilemessage", "/api/msg/sendfile"):
+        item = _first_msg_item(body)
+        if not item and "ToWxid" in body:
+            return body
+        return {
+            "ToWxid": item.get("ToUserName", ""),
+            "Base64": item.get("Content") or item.get("Base64") or "",
+            "FileName": item.get("FileName") or item.get("Title") or "file",
+        }
+
+    # ---------- 撤回 (Msg/Revoke: ToUserName, NewMsgId, ClientMsgId, CreateTime) ----------
     if lowered in ("/message/revokemsg", "/message/revokemsgnew", "/api/msg/revoke"):
         item = _first_msg_item(body)
         if not item and ("ToWxid" in body or "MsgId" in body):
             return body
         return {
-            "ToWxid": item.get("ToUserName", ""),
-            "Content": str(item.get("MsgId") or item.get("NewMsgId") or ""),
+            "ToUserName": item.get("ToUserName", ""),
+            "NewMsgId": str(item.get("NewMsgId") or item.get("MsgId") or ""),
+            "ClientMsgId": str(item.get("ClientMsgId") or ""),
+            "CreateTime": int(item.get("CreateTime") or 0),
         }
 
-    # ---------- App / 名片 / 链接（统一传 Content=xml）----------
+    # ---------- App / 链接 / 名片 (Msg/SendApp|ShareLink: ToWxid, Type, Xml) ----------
     if lowered in (
-        "/message/sendappmessage",
-        "/message/sendappmessagenew",
-        "/message/sharecardmessage",
-        "/message/sharelinkmessage",
-        "/api/msg/sendapp",
-        "/api/msg/sendappmessage",
-        "/api/msg/sharecard",
-        "/api/msg/sharelink",
+        "/message/sendappmessage", "/message/sendappmessagenew",
+        "/message/sharelinkmessage", "/api/msg/sendapp",
+        "/api/msg/sendappmessage", "/api/msg/sharelink",
     ):
         item = _first_msg_item(body)
         if not item and "ToWxid" in body:
             return body
         return {
             "ToWxid": item.get("ToUserName", ""),
-            "Content": item.get("Content")
-            or item.get("Xml")
-            or item.get("TextContent")
-            or "",
+            "Type": int(item.get("MsgType") or item.get("AppMsgType") or 0),
+            "Xml": item.get("Content") or item.get("Xml") or item.get("TextContent") or "",
         }
 
-    # ---------- 表情 ----------
+    # ---------- 名片 (Msg/ShareCard: ToWxid, CardWxId, CardNickName, CardAlias) ----------
+    if lowered in ("/message/sharecardmessage", "/api/msg/sharecard"):
+        item = _first_msg_item(body)
+        if not item and "ToWxid" in body:
+            return body
+        return {
+            "ToWxid": item.get("ToUserName", ""),
+            "CardWxId": item.get("Wxid") or item.get("CardWxId") or "",
+            "CardNickName": item.get("NickName") or item.get("CardNickName") or "",
+            "CardAlias": item.get("Alias") or item.get("CardAlias") or "",
+        }
+
+    # ---------- 表情 (Msg/SendEmoji: ToWxid, Md5, TotalLen) ----------
     if lowered in ("/message/sendemojimessage", "/api/msg/sendemoji"):
         item = _first_msg_item(body)
         if not item and "ToWxid" in body:
             return body
         return {
             "ToWxid": item.get("ToUserName", ""),
-            "Content": str(item.get("Md5") or item.get("Content") or ""),
+            "Md5": str(item.get("Md5") or item.get("Content") or ""),
+            "TotalLen": int(item.get("TotalLen") or 0),
         }
 
-    # ---------- 消息同步（875 用 Scene + Synckey）----------
+    # ---------- 引用回复 (Msg/Quote: 官方小写字段) ----------
+    if lowered in ("/message/quotemessage", "/api/msg/quote"):
+        item = _first_msg_item(body)
+        if not item and "to_wxid" in body:
+            return body
+        return {
+            "to_wxid": item.get("ToUserName", ""),
+            "content": item.get("Content") or item.get("TextContent") or "",
+            "new_msg_id": str(item.get("NewMsgId") or item.get("MsgId") or ""),
+            "quote_content": item.get("QuoteContent") or item.get("quote_content") or "",
+            "msg_type": int(item.get("MsgType") or 1),
+        }
+
+    # ---------- 消息同步 (Msg/Sync: Scene, Synckey) ----------
     if lowered in ("/message/httpsyncmsg", "/api/msg/sync"):
-        # 已含两个必需字段则原样返回，否则补全（缺 Scene 时 875 会拒）
         if "Synckey" in body and "Scene" in body:
             return body
         return {
@@ -321,11 +343,6 @@ def to_875_body(path: str, body: Optional[Dict[str, Any]]) -> Optional[Dict[str,
         }
 
     return body
-
-
-# ---------------------------------------------------------------------------
-# 响应归一化：875 → 框架标准
-# ---------------------------------------------------------------------------
 
 def normalize_875_response(path: str, payload: Any) -> Any:
     """把 875 响应归一化为框架期望的结构（主要是发送回执）。"""

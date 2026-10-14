@@ -244,14 +244,28 @@ class WechatLoginHandler:
         self.bot.device_type = "ipad"
 
         # --- 1. 拉二维码 ---
-        qr_result = await self.bot.get_qr_code(device_name=device_name, device_id=device_id, print_qr=False)
-        if isinstance(qr_result, tuple):
-            uuid, qrcode_url = qr_result
-        else:
+        # 875 是纯卡密模式（身份为 token_key/authcode，无 admin_key），
+        # 因此不走 get_qr_code()（内部 ensure_auth_key 会因缺 admin_key 抛异常），
+        # 直接调 get_qr_code_with_auth 传入卡密。
+        try:
+            qr_result = await self.bot.get_qr_code_with_auth(
+                auth_key=authcode,
+                device_name=device_name,
+                device_id=device_id,
+                print_qr=False,
+            )
+            if isinstance(qr_result, dict) and qr_result.get("ok"):
+                uuid = str(qr_result.get("uuid", "") or "")
+                qrcode_url = str(qr_result.get("qrcode_url", "") or "")
+            else:
+                uuid, qrcode_url = "", ""
+                logger.error("875 拉码失败：{}", (qr_result or {}).get("text") or (qr_result or {}).get("error") or qr_result)
+        except Exception as e:
             uuid, qrcode_url = "", ""
+            qr_result = {"error": str(e)}
+            logger.error("875 拉码异常：{}", e)
 
         if not uuid and not qrcode_url:
-            logger.error("875 拉码失败：{}", qr_result)
             self._update_875_error_status("875 拉取二维码失败")
             return False
 

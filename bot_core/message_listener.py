@@ -267,6 +267,20 @@ async def listen_ws_messages(allbot, ws_url: str | Callable[[], str], redis, mes
 
     while True:
         try:
+            # 875 协议：WS ticket 有 TTL（默认 300s），每次（重）连接前必须重新换取，
+            # 否则断线超过 5 分钟后用过期 ticket 重连必然握手失败（永久中断）。
+            _bot = getattr(allbot, "bot", None)
+            if _bot is not None and str(getattr(_bot, "protocol_version", "") or "").lower() == "875":
+                if hasattr(_bot, "get_websocket_ticket_875"):
+                    try:
+                        _new_ticket = await _bot.get_websocket_ticket_875()
+                        if _new_ticket:
+                            logger.info("875 已刷新 WebSocket ticket（重连前换票）")
+                        else:
+                            logger.warning("875 刷新 ticket 返回空，可能未登录，稍后重试")
+                    except Exception as _e:
+                        logger.warning("875 刷新 ticket 异常: {}", _e)
+
             runtime_ws_url = ws_url() if callable(ws_url) else ws_url
             if not runtime_ws_url.startswith("ws://") and not runtime_ws_url.startswith("wss://"):
                 runtime_ws_url = "ws://" + runtime_ws_url

@@ -572,8 +572,10 @@ class WechatAPIClient(WechatAPIClientBase):
         key: Optional[str] = None,
         timeout: int = 30,
         raise_for_api_error: bool = True,
+        headers: Optional[Dict[str, str]] = None,
     ) -> Any:
         request_method = method.upper().strip()
+        headers_arg = headers  # 避免与下方局部变量 headers 重名
         # 874/875 协议时用映射表替换路径，并转换请求体
         if self.protocol_version in ("874", "875"):
             request_path = self._resolve_request_path(path)
@@ -591,6 +593,10 @@ class WechatAPIClient(WechatAPIClientBase):
                 headers[protocol875.AUTH_HEADER_KEY_875] = active_key
         elif active_key:
             query["key"] = active_key
+
+        # 合并调用方额外 header（如 CheckQR 的 X-QR-Check-Token），调用方优先
+        if headers_extra := (headers_arg or {}):
+            headers.update(headers_extra)
 
         self._log_request_preview(request_method, request_path, body)
 
@@ -624,7 +630,13 @@ class WechatAPIClient(WechatAPIClientBase):
                 text = payload.get("Text") or payload.get("Message") or payload.get("message") or ""
                 success_flag = payload.get("Success")
 
-                if code not in (None, 0, 200):
+                # 875 实测成功返回 Code:1（见 REPORT-875.md 第六节），
+                # 因此 875 分支接受 Code in (0, 1, 200)，避免把成功判为失败
+                if self.protocol_version == "875":
+                    _ok_codes = (None, 0, 1, 200)
+                else:
+                    _ok_codes = (None, 0, 200)
+                if code not in _ok_codes:
                     raise RuntimeError(text or f"协议接口请求失败: Code={code}")
 
                 if success_flag is False:
@@ -1339,21 +1351,27 @@ class WechatAPIClient(WechatAPIClientBase):
     async def check_qr_875(self, uuid: str, check_token: str = "") -> Dict[str, Any]:
         """875 协议：查询二维码扫码状态。
 
-        875 用 /api/Login/CheckQR（GET，query: uuid + check_token），
-        与 869/874 的 /login/CheckLoginStatus 不同。
+        官方规范：POST /api/Login/CheckQR
+          - query:  uuid（必填）、check_token（可选）
+          - header: X-QR-Check-Token（可选，优先放这里）
+        ⚠️ 官方是 POST（beego 按方法匹配），用 GET 会 405/404 导致扫码轮询失效。
 
         返回统一结构：{"status": int, "wxid": str, "nickname": str,
                        "message": str, "ok": bool, "raw": dict}
         """
         params: Dict[str, Any] = {"uuid": str(uuid or "")}
+        extra_headers: Dict[str, str] = {}
         if check_token:
+            # 官方支持 header 与 query 两种方式，header 为官方推荐位
+            extra_headers["X-QR-Check-Token"] = str(check_token)
             params["check_token"] = check_token
 
         try:
             response = await self.request(
                 "/login/CheckLoginStatus",
-                method="GET",
+                method="POST",
                 params=params,
+                headers=extra_headers or None,
                 raise_for_api_error=False,
             )
         except Exception as error:
