@@ -42,7 +42,6 @@ Thumbs.db
 .cache/
 .*
 !.env
-!.env
 tests/
 
 
