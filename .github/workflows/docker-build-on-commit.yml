@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/wxserver-license
+      - feat/wxserver875-license
     paths:
       - "Dockerfile"
       - "docker-compose.yml"
