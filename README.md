@@ -81,29 +81,42 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 
 ### feat/wxserver875-license 分支（含 875 协议 + 卡密授权）
 
+> 该分支自带 **MySQL + Redis + 875 协议服务**，`docker compose up -d` 一条命令拉起全部依赖，无需手动装数据库。
+
 ```bash
 # 克隆项目并切换到 feat 分支
 git clone -b feat/wxserver875-license https://github.com/sxkiss/allbot.git
 cd allbot
 
-# 编辑 main_config.toml（协议版本、管理员账号等）
-
-# 一键启动
+# 启动（自动起 MySQL / Redis / 875 / 管理后台）
 docker compose up -d
 
 # 查看日志
 docker compose logs -f
 ```
 
+**端口：**
+
+| 端口 | 用途 |
+|------|------|
+| `9091` | 管理后台（宿主机访问 `http://<你的IP>:9091`） |
+| `18062` | 875 协议 HTTP API（容器内） |
+| `18089` | 875 协议 WebSocket（容器内） |
+
 **使用：**
-1. 访问管理后台二维码页面
+1. 浏览器打开 `http://<你的IP>:9091`，进入二维码登录页
 2. 卡密输入框填入卡密 → 提交拉码
 3. 页面可切换登录端（iPad / Mac / Pad / Windows / 车载 等）
+
+**卡密配置（二选一）：**
+- **页面填写**：在二维码页直接输入卡密（推荐，无需重启）
+- **环境变量注入**：项目根目录建 `.env` 文件，写入 `WX_TOKEN_KEY=你的卡密`，`docker compose up -d` 生效（镜像已内置其余变量，无需改 yaml）
 
 **特性：**
 - **875 协议**：WeChatPadProMAX，卡密授权拉码登录
 - **多端登录**：iPad / Mac / 安卓 Pad / Windows / 车载 等多种设备类型
 - **授权管理**：基于卡密使用授权，绑定设备
+- **开箱即用**：环境变量内置镜像，compose 无需配置即可启动
 
 ### main 分支（纯 allbot 框架）
 
@@ -113,82 +126,16 @@ cd allbot
 cp main_config.template.toml main_config.toml
 docker compose up -d
 ```
-<table>
-  <tr>
-    <td width="50%">
-      <h3>💬 加入 AllBot 交流群</h3>
-      <p>扫描右侧的二维码加入官方交流群，获取：</p>
-      <ul>
-        <li>💡 <strong>最新功能更新</strong>和使用技巧</li>
-        <li>👨‍💻 <strong>技术支持</strong>和问题解答</li>
-        <li>👥 与其他用户<strong>交流经验</strong></li>
-        <li>📝 <strong>插件开发</strong>和定制化帮助</li>
-      </ul>
-    </td>
-    <td width="25%" align="center">
-      <a href="https://t.me/+--ToAPQBj-Q2YjM1" target="_blank">
-        <img src="admin/static/tg.jpg" alt="AllBot 交流群" width="220">
-      </a>
-      <p><strong>AllBot 交流群</strong></p>
-    </td>
-    <td width="25%" align="center">
-      <img src="admin/static/wx.png" alt="感谢赞助" width="220">
-      <p><strong>感谢赞助</strong></p>
-    </td>
-  </tr>
-</table>
 
-#### Docker 部署（推荐）
-
-```bash
-# 克隆项目
-git clone https://github.com/sxkiss/allbot.git
-cd allbot
-
-# 配置文件
-cp main_config.template.toml main_config.toml
-# 编辑 main_config.toml 设置管理员、协议服务等
-#
-# 关键项：必须修改 [Admin].password
-# secret-key 可留空；启动时若未设置/默认值/过短，会自动生成并写回 main_config.toml
-#
-# [Admin]
-# username = "admin"
-# password = "请改成强密码"
-# secret-key = ""  # 可留空，启动自动生成
-# session-cookie-secure = false  # HTTPS / 反向代理终止 TLS 时改为 true
-# cors-origins = ["http://127.0.0.1", "http://localhost"]  # 生产环境按实际域名收紧
-
-# 启动服务
-docker-compose up -d
-
-# 说明：docker-compose.yml 使用命名卷 allbot:/app，不挂载当前宿主目录
-# 本地开发需要代码热同步时，请使用 docker-compose.local.yml
-
-# 查看日志
-docker-compose logs -f
-```
-
-### 本地部署
-
-```bash
-# 安装依赖
-pip install -r requirements.txt
-
-# 启动 Redis
-redis-server
-
-# 启动主程序
-python main.py
-```
+> 纯框架版，不含 875 协议服务，管理后台端口为 `9090`。需要微信协议能力请使用 `feat/wxserver875-license` 分支。
 
 ### 访问管理后台
 
-- 地址：`http://localhost:9090`
-- 用户名/密码：在 `main_config.toml` 中配置
+- 875 分支：`http://<你的IP>:9091`
+- main 分支：`http://<你的IP>:9090`
+- 用户名/密码：在 `main_config.toml` 的 `[Admin]` 中配置
 - `[Admin].secret-key` 可留空；未设置、默认值或过短时启动会自动生成并写回配置文件
 
-详细安装步骤请参考 [配置指南](docs/配置指南.md)。
 
 ## ✨ 主要功能
 
