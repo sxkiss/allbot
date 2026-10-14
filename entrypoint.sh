@@ -56,20 +56,13 @@ if [ -x /app/wechatpad875 ] && [ -f /app/conf875/app.conf ]; then
         sed -i "s|^redislink = .*|redislink = ${WX_REDIS_LINK}|" /config/app.conf /app/conf/app.conf
     fi
     echo "启动 875 协议服务..."
+    # 强制指定 Beego 配置文件路径，确保主程序读取正确的端口和人脸验证配置
+    export BEEGO_CONFIG_PATH=/config/app.conf
     cd /app && nohup ./wechatpad875 > /tmp/875.log 2>&1 &
     sleep 3
     cd /app
 fi
 
-# 875 人脸验证服务（padface，监听 18080）
-# 通过环境变量告诉 padface875 人脸验证二进制的位置（若镜像内已提供）
-export PAD_FACE_VERIFY_BIN="${PAD_FACE_VERIFY_BIN:-/app/pad-face-verify-linux-x64}"
-if [ -x /app/padface875 ] && [ -x "${PAD_FACE_VERIFY_BIN}" ]; then
-    echo "启动 padface875（人脸验证二进制: ${PAD_FACE_VERIFY_BIN}）..."
-    cd /app && nohup ./padface875 > /tmp/padface875.log 2>&1 &
-    sleep 2
-    cd /app
-fi
 
 echo "启动XXXBot主应用..."
 exec python3 ./main.py
