@@ -26,6 +26,7 @@ from pydub import AudioSegment
 
 from WechatAPI.errors import UserLoggedOut
 from .base import WechatAPIClientBase
+from . import protocol875
 
 
 TEXT_VALUE_KEYS = ("string", "String", "str", "Str", "value", "Value", "text", "Text")
@@ -475,10 +476,27 @@ class WechatAPIClient(WechatAPIClientBase):
         return path
 
     def _resolve_request_path(self, path: str) -> str:
-        """874 协议时做路径映射替换，其余原样返回"""
-        if self.protocol_version != "874":
-            return path
-        return self.ROUTE_MAP_874.get(path, path)
+        """按协议版本做路径映射替换。
+
+        - 874: 查 ROUTE_MAP_874（缺失则原样，874 路径已是 /api/xxx 终态）
+        - 875: 查 ROUTE_MAP_875，未命中自动补 /api 前缀
+        - 869: 原样返回
+        """
+        if self.protocol_version == "874":
+            return self.ROUTE_MAP_874.get(path, path)
+        if self.protocol_version == "875":
+            return protocol875.resolve_875_path(path)
+        return path
+
+    def _resolve_request_body(self, path: str, body: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """按协议版本转换请求体。
+
+        875 用扁平参数（ToWxid/Content/Base64），与 869 的 MsgItem 嵌套结构不同，
+        必须在发请求前转换；其余协议原样返回。
+        """
+        if self.protocol_version == "875":
+            return protocol875.to_875_body(path, body)
+        return body
 
     async def _ensure_operation_map(self):
         if self._operation_map_loaded:
@@ -556,15 +574,22 @@ class WechatAPIClient(WechatAPIClientBase):
         raise_for_api_error: bool = True,
     ) -> Any:
         request_method = method.upper().strip()
-        # 874 协议时用映射表替换路径
-        if self.protocol_version == "874":
+        # 874/875 协议时用映射表替换路径，并转换请求体
+        if self.protocol_version in ("874", "875"):
             request_path = self._resolve_request_path(path)
+            body = self._resolve_request_body(path, body)
         else:
             request_path = self._coerce_path(path)
         query: Dict[str, Any] = dict(params or {})
 
         active_key = self._resolve_request_key(path, key)
-        if active_key:
+        headers: Dict[str, str] = {}
+        if self.protocol_version == "875":
+            # 875 认证：query authcode + header X-Access-Token（卡密即授权码）
+            if active_key:
+                query[protocol875.AUTH_QUERY_KEY_875] = active_key
+                headers[protocol875.AUTH_HEADER_KEY_875] = active_key
+        elif active_key:
             query["key"] = active_key
 
         self._log_request_preview(request_method, request_path, body)
@@ -575,7 +600,7 @@ class WechatAPIClient(WechatAPIClientBase):
 
         async with aiohttp.ClientSession() as session:
             if request_method == "GET":
-                response = await session.get(request_url, params=query, timeout=timeout)
+                response = await session.get(request_url, params=query, timeout=timeout, headers=headers or None)
             else:
                 response = await session.request(
                     request_method,
@@ -583,6 +608,7 @@ class WechatAPIClient(WechatAPIClientBase):
                     params=query,
                     json=body if body is not None else {},
                     timeout=timeout,
+                    headers=headers or None,
                 )
 
             content_type = response.headers.get("Content-Type", "")
@@ -1308,6 +1334,175 @@ class WechatAPIClient(WechatAPIClientBase):
         active_key = key or self.token_key or self.poll_key or self.auth_key
         return await self.request("/login/VerifyCode", method="POST", body=payload, key=active_key)
 
+    # ==================== 875 协议专用方法 ====================
+
+    async def check_qr_875(self, uuid: str, check_token: str = "") -> Dict[str, Any]:
+        """875 协议：查询二维码扫码状态。
+
+        875 用 /api/Login/CheckQR（GET，query: uuid + check_token），
+        与 869/874 的 /login/CheckLoginStatus 不同。
+
+        返回统一结构：{"status": int, "wxid": str, "nickname": str,
+                       "message": str, "ok": bool, "raw": dict}
+        """
+        params: Dict[str, Any] = {"uuid": str(uuid or "")}
+        if check_token:
+            params["check_token"] = check_token
+
+        try:
+            response = await self.request(
+                "/login/CheckLoginStatus",
+                method="GET",
+                params=params,
+                raise_for_api_error=False,
+            )
+        except Exception as error:
+            return {"status": -1, "wxid": "", "nickname": "", "message": str(error), "ok": False, "raw": {}}
+
+        parsed = protocol875.parse_875_login_status(response)
+        parsed["raw"] = response if isinstance(response, dict) else {}
+
+        # 登录成功时落库 wxid / nickname
+        if parsed.get("ok"):
+            if parsed.get("wxid"):
+                self.wxid = parsed["wxid"]
+            if parsed.get("nickname"):
+                self.nickname = parsed["nickname"]
+
+        return parsed
+
+    async def get_login_status_875(self, wxid: str = "") -> Dict[str, Any]:
+        """875 协议：查询当前卡密的登录状态（/api/Login/GetLoginStatus）。
+
+        返回统一结构：
+          {"online": bool, "wxid": str, "nickname": str, "message": str, "raw": dict}
+        """
+        params: Dict[str, Any] = {"autoLogin": True}
+        if wxid:
+            params["wxid"] = wxid
+
+        try:
+            response = await self.request(
+                "/login/GetLoginStatus",
+                method="GET",
+                params=params,
+                raise_for_api_error=False,
+            )
+        except Exception as error:
+            return {"online": False, "wxid": "", "nickname": "", "message": str(error), "raw": {}}
+
+        parsed = protocol875.parse_875_login_status(response)
+        parsed["online"] = bool(parsed.get("ok"))
+        parsed["raw"] = response if isinstance(response, dict) else {}
+
+        if parsed.get("wxid"):
+            self.wxid = parsed["wxid"]
+        if parsed.get("nickname"):
+            self.nickname = parsed["nickname"]
+
+        return parsed
+
+    async def heartbeat_875(self) -> bool:
+        """875 协议：心跳保活（/api/Login/HeartBeat，POST + authcode）。"""
+        try:
+            response = await self.request(
+                "/login/HeartBeat",
+                method="POST",
+                raise_for_api_error=False,
+            )
+        except Exception:
+            return False
+
+        if not isinstance(response, dict):
+            return False
+
+        # 875 心跳成功：Success=true 或 Code=0/200
+        code = response.get("Code")
+        success = response.get("Success")
+        if success is True:
+            return True
+        return code in (None, 0, 200)
+
+    async def get_websocket_ticket_875(self) -> str:
+        """875 协议：换取 WebSocket 短时票据（用于收消息）。
+
+        调用 /api/Runtime/WebSocketTicket，返回 ticket 字符串。
+        未扫码登录时 875 返回 SESSION_NOT_READY，此时返回空串。
+        """
+        try:
+            response = await self.request(
+                "/runtime/WebSocketTicket",
+                method="POST",
+                raise_for_api_error=False,
+            )
+        except Exception:
+            return ""
+
+        if not isinstance(response, dict):
+            return ""
+
+        data = response.get("Data")
+        if isinstance(data, dict):
+            ticket = data.get("ticket") or data.get("Ticket") or ""
+            if ticket:
+                self.ticket = str(ticket)
+                return str(ticket)
+
+        # 未就绪（SESSION_NOT_READY）时静默返回空串
+        return ""
+
+    async def fetch_ws_url_875(self) -> str:
+        """875 协议：拼接收消息的 WebSocket 地址。
+
+        端口取配置里的 websocketport（默认 18089），路径 /ws/sync?ticket=xxx
+        """
+        ticket = await self.get_websocket_ticket_875()
+        if not ticket:
+            return ""
+        ws_port = getattr(self, "ws_port", 0) or 18089
+        return f"ws://{self.ip}:{ws_port}/ws/sync?ticket={ticket}"
+
+    async def sync_messages_875(self, synckey: str = "initial") -> Dict[str, Any]:
+        """875 协议：HTTP 轮询拉取消息（WebSocket 不可用时的兜底）。
+
+        调用 /api/Msg/Sync（Scene=0, Synckey=游标）。
+        """
+        payload = {"Scene": 0, "Synckey": str(synckey or "initial")}
+        try:
+            response = await self.request(
+                "/message/HttpSyncMsg",
+                method="POST",
+                body=payload,
+                raise_for_api_error=False,
+            )
+        except Exception as error:
+            return {"ok": False, "error": str(error), "messages": []}
+
+        if not isinstance(response, dict):
+            return {"ok": False, "error": "响应非 JSON", "messages": []}
+
+        data = response.get("Data")
+        data = data if isinstance(data, dict) else {}
+
+        raw_list = (
+            data.get("MsgList")
+            or data.get("msgList")
+            or data.get("List")
+            or data.get("list")
+            or []
+        )
+        if not isinstance(raw_list, list):
+            raw_list = []
+
+        messages = [protocol875.normalize_875_message(item) for item in raw_list if isinstance(item, dict)]
+
+        return {
+            "ok": True,
+            "synckey": str(data.get("Synckey") or data.get("synckey") or ""),
+            "messages": messages,
+            "raw": response,
+        }
+
     async def verify_code_slide(
         self,
         slide_ticket: str,
@@ -1327,6 +1522,17 @@ class WechatAPIClient(WechatAPIClientBase):
         return await self.request("/login/VerifyCodeSlide", method="POST", body=payload, key=active_key)
 
     async def is_logged_in(self, wxid: Optional[str] = None) -> bool:
+        # 875：用卡密查登录状态（/api/Login/GetLoginStatus），与 869 的 key 探测不同
+        if self.protocol_version == "875":
+            key = self._resolve_active_key()
+            if not key:
+                return False
+            try:
+                status = await self.get_login_status_875(wxid=wxid or self.wxid)
+            except Exception:
+                return False
+            return bool(status.get("online"))
+
         key = self._resolve_active_key()
         if not key:
             return False
@@ -1372,6 +1578,9 @@ class WechatAPIClient(WechatAPIClientBase):
         return profile
 
     async def heartbeat(self) -> bool:
+        # 875：走 /api/Login/HeartBeat 保活
+        if self.protocol_version == "875":
+            return await self.heartbeat_875()
         return await self.is_logged_in(self.wxid)
 
     async def start_auto_heartbeat(self) -> bool:
@@ -2144,6 +2353,8 @@ class WechatAPIClient(WechatAPIClientBase):
         if self._should_route_via_reply_router(wxid):
             return await self.reply_router.send_text(wxid, content, at)
 
+        # 875 协议：request 层会自动把 MsgItem 嵌套结构转换为扁平 {ToWxid, Content, At, Type}，
+        # 因此此处统一构造 869 风格 payload 即可，协议差异由 _resolve_request_body 屏蔽。
         at_list: list[str] = []
         if isinstance(at, str) and at:
             at_list = [item for item in at.split(",") if item]
@@ -2182,6 +2393,13 @@ class WechatAPIClient(WechatAPIClientBase):
     async def send_image_message(self, wxid: str, image: Union[str, bytes, os.PathLike]) -> Dict[str, Any]:
         if self._should_route_via_reply_router(wxid):
             return await self.reply_router.send_image(wxid, image)
+
+        # 875：直接 base64 上传（/api/Msg/UploadImg），不走 869 的 CDN 两步流程
+        if self.protocol_version == "875":
+            image_base64 = self._coerce_binary_to_base64(image)
+            payload = {"ToWxid": wxid, "Base64": image_base64}
+            data = await self.call_path("/message/UploadImageToCDN", body=payload)
+            return data if isinstance(data, dict) else {"Data": data}
 
         image_base64 = self._coerce_binary_to_base64(image)
         last_result: Any = None

@@ -73,6 +73,8 @@ class WechatLoginHandler:
         protocol_version = str(getattr(self.bot, "protocol_version", "")).lower()
         if protocol_version == "869":
             return await self._handle_login_869()
+        if protocol_version == "875":
+            return await self._handle_login_875()
 
         robot_stat = self._load_robot_stat()
         wxid = robot_stat.get("wxid", None)
@@ -203,6 +205,134 @@ class WechatLoginHandler:
                 "device_type": getattr(self.bot, "device_type", "") or "",
             },
         )
+        await self._start_auto_heartbeat()
+        return True
+
+    async def _handle_login_875(self) -> bool:
+        """875 协议（WeChatPadProMAX）登录流程。
+
+        完整流程：
+          1. 读取/复用运行时（robot_stat）里的 authcode（卡密）与设备信息
+          2. 调 /api/Login/GetQR 拉二维码（需卡密通过控制面校验）
+          3. 轮询 /api/Login/CheckQR（uuid + check_token）等待扫码确认
+          4. 登录成功后落库 wxid/nickname，并推送上线状态
+
+        与 869 的差异：
+          - 875 用「卡密」而非 admin_key 签发的 key 做身份；
+          - 875 拉码不区分设备端（统一 GetQR，可选 DeviceName）；
+          - 875 扫码确认用 CheckQR 而非 CheckLoginStatus；
+          - 875 登录成功后需额外换取 WebSocket ticket 才能收消息（由 message_listener 处理）。
+        """
+        robot_stat = self._load_robot_stat()
+        device_name = str(robot_stat.get("device_name") or "").strip() or "iPad"
+        device_id = str(robot_stat.get("device_id") or self.bot.create_device_id()).strip() or self.bot.create_device_id()
+
+        # 875 的 authcode 即卡密（user_token_key），从 bot 或运行时取
+        authcode = self._first_non_empty(
+            getattr(self.bot, "token_key", ""),
+            getattr(self.bot, "poll_key", ""),
+            getattr(self.bot, "auth_key", ""),
+            robot_stat.get("authcode", ""),
+        )
+        if not authcode:
+            logger.error("875 登录失败：未配置卡密（authcode），请在配置中填写 user_token_key")
+            self._update_875_error_status("875 缺少卡密 authcode", needs_authcode=True)
+            return False
+
+        self.bot.token_key = authcode
+        self.bot.device_id = device_id
+        self.bot.device_type = "ipad"
+
+        # --- 1. 拉二维码 ---
+        qr_result = await self.bot.get_qr_code(device_name=device_name, device_id=device_id, print_qr=False)
+        if isinstance(qr_result, tuple):
+            uuid, qrcode_url = qr_result
+        else:
+            uuid, qrcode_url = "", ""
+
+        if not uuid and not qrcode_url:
+            logger.error("875 拉码失败：{}", qr_result)
+            self._update_875_error_status("875 拉取二维码失败")
+            return False
+
+        logger.info("875 二维码已生成，等待扫码：uuid={}", uuid)
+
+        # 推送二维码通知（供前端/通知渠道展示）
+        self._notify_login_qrcode(source="wechat-875", qrcode_url=qrcode_url, account=uuid)
+
+        self.update_status(
+            "waiting_login",
+            "875 等待扫码登录",
+            {
+                "uuid": uuid,
+                "qrcode_url": qrcode_url,
+                "device_name": device_name,
+                "device_id": device_id,
+                "protocol_version": "875",
+            },
+        )
+
+        # --- 2. 轮询扫码状态 ---
+        check_token = str(getattr(self.bot, "check_token", "") or "")
+        logged_in = False
+        for _ in range(120):  # 约 4 分钟（二维码有效期）
+            try:
+                state = await self.bot.check_qr_875(uuid=uuid, check_token=check_token)
+            except Exception as error:
+                logger.warning("875 查询扫码状态异常: {}", error)
+                await asyncio.sleep(2)
+                continue
+
+            status = state.get("status", -1)
+            if state.get("ok"):
+                logged_in = True
+                if state.get("wxid"):
+                    self.bot.wxid = state["wxid"]
+                if state.get("nickname"):
+                    self.bot.nickname = state["nickname"]
+                break
+
+            # 二维码过期/取消 → 重新拉码
+            if status in (3, 4):  # 3=过期 4=取消
+                logger.warning("875 二维码已失效（status={}），准备重新拉取", status)
+                qr_result = await self.bot.get_qr_code(device_name=device_name, device_id=device_id, print_qr=False)
+                if isinstance(qr_result, tuple):
+                    uuid, qrcode_url = qr_result
+                    if uuid:
+                        self._notify_login_qrcode(source="wechat-875", qrcode_url=qrcode_url, account=uuid)
+                        continue
+                logger.error("875 重新拉码失败")
+                return False
+
+            await asyncio.sleep(2)
+
+        if not logged_in:
+            logger.error("875 扫码登录超时")
+            self._update_875_error_status("875 扫码登录超时")
+            return False
+
+        # --- 3. 登录成功，补齐资料与状态 ---
+        try:
+            await self._safe_apply_profile_from_bot()
+        except Exception as error:
+            logger.warning("875 拉取用户资料失败: {}", error)
+
+        self._save_robot_stat(self.bot.wxid, device_name, device_id)
+
+        logger.success("875 登录成功：{}", self.bot.nickname or self.bot.wxid)
+        self.update_status(
+            "online",
+            f"已登录：{self.bot.nickname or self.bot.wxid}",
+            {
+                "nickname": self.bot.nickname,
+                "wxid": self.bot.wxid,
+                "alias": self.bot.alias,
+                "device_name": device_name,
+                "device_id": device_id,
+                "protocol_version": "875",
+            },
+        )
+
         await self._start_auto_heartbeat()
         return True
 
@@ -382,6 +512,30 @@ class WechatLoginHandler:
                 logger.info("已触发 869 登录错误通知: {}", message)
         except Exception as e:
             logger.warning("发送 869 登录错误通知失败: {}", e)
+
+    def _update_875_error_status(self, message: str, *, needs_authcode: bool = False) -> None:
+        """875 协议专用：向状态面板推送登录错误（不依赖 869 分支）。"""
+        self.update_status(
+            "error",
+            message,
+            {
+                "protocol_version": "875",
+                "needs_authcode": needs_authcode,
+                "error_message": message,
+            },
+        )
+        # 发送错误通知（复用通知服务，但源标记为 875）
+        try:
+            from utils.notification_service import get_notification_service
+            notification_service = get_notification_service()
+            if notification_service and notification_service.enabled and notification_service.token:
+                wxid = getattr(self.bot, "wxid", "") or "system"
+                notification_service.schedule(
+                    lambda: notification_service.send_error_notification(wxid, message)
+                )
+                logger.info("已触发 875 登录错误通知: {}", message)
+        except Exception as e:
+            logger.warning("发送 875 登录错误通知失败: {}", e)
 
     async def _safe_apply_profile_from_bot(self) -> None:
         try:

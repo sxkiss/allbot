@@ -110,6 +110,7 @@ def normalize_sender(raw_message: Dict[str, Any]) -> str:
             "from_user",
             "from",
             "FromWxid",
+            "fromWxid",      # 875 推送字段名
             "sender",
             "Sender",
             "Talker",
@@ -160,7 +161,7 @@ def normalize_room_id(raw_message: Dict[str, Any]) -> str:
 def normalize_to_user(raw_message: Dict[str, Any], bot_wxid: str) -> str:
     to_user = pick_first(
         raw_message,
-        ("ToUserName", "to_user_name", "toUserName", "to_user", "to", "ToWxid"),
+        ("ToUserName", "to_user_name", "toUserName", "to_user", "to", "ToWxid", "toWxid"),
         bot_wxid,
     )
     return extract_text(to_user, bot_wxid)

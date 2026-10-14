@@ -390,6 +390,14 @@ async def listen_ws_messages(allbot, ws_url: str | Callable[[], str], redis, mes
 async def _process_ws_message(data: Dict[str, Any], allbot, redis, message_db):
     bot_wxid = getattr(allbot.bot, "wxid", "")
 
+    # 875 协议：推送体字段与 869 不同（fromWxid/toWxid/content/msgType），
+    # 先转成框架的 AddMsgs 结构，后续复用统一的入队与插件分发逻辑。
+    if str(getattr(allbot.bot, "protocol_version", "") or "").lower() == "875":
+        for raw_message in extract_messages_from_ws(data):
+            addmsg = normalize_addmsg(raw_message, bot_wxid)
+            await _save_and_enqueue_message(addmsg, redis, message_db, is_standard_format=True)
+        return
+
     for raw_message in normalize_ws_payloads(data):
         addmsg = normalize_addmsg(raw_message, bot_wxid)
         if not addmsg.get("FromUserName", {}).get("string") or not addmsg.get("Content", {}).get("string"):
@@ -627,7 +635,9 @@ class MessageListener:
 
         try:
             if api_config.enable_websocket:
-                if protocol_version == "869":
+                if protocol_version == "875":
+                    await self._start_listening_875(message_db)
+                elif protocol_version == "869":
                     login_task = getattr(self.allbot, "_wechat_login_task", None)
                     if isinstance(login_task, asyncio.Task) and not login_task.done():
                         logger.info("869 主 WS 将在扫码登录成功后启动（当前仅运行消息消费者）")
@@ -715,11 +725,49 @@ class MessageListener:
                 task.cancel()
             await asyncio.gather(*self.consumer_tasks, return_exceptions=True)
 
+    async def _start_listening_875(self, message_db) -> None:
+        """875 协议：登录后先换取 WebSocket ticket，再启动收消息监听。
+
+        与 869 的区别：875 需先调 /api/Runtime/WebSocketTicket 拿短时票据，
+        再连 ws://host:18089/ws/sync?ticket=xxx。此流程与 869 的
+        ws://host:port/ws/GetSyncMsg?key=xxx 完全独立。
+        """
+        bot = getattr(self.allbot, "bot", None)
+        if bot is None:
+            logger.error("875 收消息失败：bot 不存在")
+            return
+
+        # 等待登录完成（最多 5 分钟）
+        login_task = getattr(self.allbot, "_wechat_login_task", None)
+        if isinstance(login_task, asyncio.Task) and not login_task.done():
+            try:
+                await login_task
+            except Exception as error:
+                logger.error("875 登录任务异常: {}", error)
+
+        if not await bot.is_logged_in(None):
+            logger.warning("875 尚未登录，暂时不启动 WS 监听")
+            return
+
+        # 刷新 ticket
+        ticket = await bot.get_websocket_ticket_875()
+        if not ticket:
+            logger.warning("875 未能获取 WebSocket ticket，收消息通道暂不可用")
+            return
+
+        ws_url = self._get_websocket_url
+        logger.info("875 WebSocket 消息推送地址: {}", _mask_ws_url(ws_url()))
+        await listen_ws_messages(self.allbot, ws_url, self.redis, message_db)
+
     def _build_default_ws_url(self) -> str:
         api_config = self.config.wechat_api
         protocol_version = str(self.config.protocol.version).lower()
         if protocol_version == "869":
             return f"ws://{api_config.host}:{api_config.port}/ws/GetSyncMsg"
+        if protocol_version == "875":
+            # 875 的 WS 端口独立于 API 端口（默认 18089），路径 /ws/sync
+            ws_port = getattr(api_config, "ws_port", 0) or 18089
+            return f"ws://{api_config.host}:{ws_port}/ws/sync"
         return f"ws://{api_config.host}:{api_config.port}/ws"
 
     def _normalize_869_ws_url(self, ws_url: str) -> str:
@@ -752,8 +800,31 @@ class MessageListener:
         if protocol_version == "869":
             return self._normalize_869_ws_url(ws_url)
 
+        if protocol_version == "875":
+            # 875 收消息需要短时 ticket：/ws/sync?ticket=xxx
+            return self._normalize_875_ws_url(ws_url)
+
         wxid = getattr(self.allbot.bot, "wxid", "")
         if wxid and not ws_url.rstrip("/").endswith(wxid):
             ws_url = ws_url.rstrip("/") + f"/{wxid}"
 
         return ws_url
+
+    def _normalize_875_ws_url(self, ws_url: str) -> str:
+        """875 收消息 WS 地址：补 /ws/sync 路径并附加 ticket 票据。
+
+        ticket 从 bot.get_websocket_ticket_875() 获取（异步，此处用缓存值）。
+        若已有 ticket 参数则不重复追加。
+        """
+        runtime_url = (ws_url or "").strip() or self._build_default_ws_url()
+
+        if "/ws/sync" not in runtime_url:
+            runtime_url = runtime_url.rstrip("/") + "/ws/sync"
+
+        # 优先使用 bot 缓存的 ticket（由登录流程/WS 重建时刷新）
+        ticket = str(getattr(self.allbot.bot, "ticket", "") or "").strip()
+        if ticket and "ticket=" not in runtime_url:
+            sep = "&" if "?" in runtime_url else "?"
+            runtime_url = f"{runtime_url}{sep}ticket={ticket}"
+
+        return runtime_url
