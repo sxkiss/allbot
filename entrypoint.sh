@@ -36,19 +36,20 @@ redis-server /etc/redis/redis.conf --daemonize yes --dir /data/redis
 echo "等待系统Redis服务可用..."
 sleep 2
 
-# 启动 874 协议服务（监听 0.0.0.0:8063，带卡密验证）
-if [ -x /app/staydd874 ] && [ -f /app/conf874/app.conf ]; then
-    echo "启动 874..."
-    cd /app && nohup ./staydd874 > /tmp/874.log 2>&1 &
+# 启动 875 协议服务（WeChatPadProMAX，监听 0.0.0.0:18062，WS 18089）
+if [ -x /app/wechatpad875 ] && [ -f /app/conf875/app.conf ]; then
+    echo "启动 875 (wechatpad875)..."
+    cd /app && nohup ./wechatpad875 > /tmp/875.log 2>&1 &
     sleep 3
     cd /app
 fi
 
-# 启动 wxserver（后台，监听 127.0.0.1:5253）
-if [ -x /app/wxserver ]; then
-    echo "启动 wxserver..."
-    /app/wxserver &
-    sleep 3
+# 875 人脸验证服务（padface，监听 18080）
+if [ -x /app/padface875 ]; then
+    echo "启动 padface875..."
+    cd /app && nohup ./padface875 > /tmp/padface875.log 2>&1 &
+    sleep 2
+    cd /app
 fi
 
 echo "启动XXXBot主应用..."
