@@ -1,5 +1,5 @@
 {#
-@input: /api/login/qrcode、/api/bot/status、/api/login/restart_869_flow、/api/login/switch_device_qrcode、/api/login/switch_protocol
+@input: /api/login/qrcode、/api/bot/status、/api/login/restart_875_flow
 @output: 未登录二维码页面（扫码登录/自动刷新/卡密与代理重入/协议切换/登录端切换）
 @position: admin/templates 登录入口页面
 #}
@@ -107,13 +107,11 @@
                         <span class="badge bg-secondary" id="login-mode-badge">-</span>
                         <div class="dropdown">
                             <button class="btn btn-sm btn-outline-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="bi bi-cpu me-1"></i><span id="protocol-badge-text">869</span>
+                                <i class="bi bi-cpu me-1"></i><span id="protocol-badge-text">875</span>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px">
                                 <li><h6 class="dropdown-header">协议版本</h6></li>
-                                <li><a class="dropdown-item" href="#" onclick="switchProtocol('869');return false;">869（默认）</a></li>
-                                <li><a class="dropdown-item" href="#" onclick="switchProtocol('874');return false;">874（多登录端）</a></li>
-                            </ul>
+                                </ul>
                         </div>
                     </div>
                 </div>
@@ -182,31 +180,6 @@
                         </button>
                     </div>
 
-                    <!-- 登录端切换（874） -->
-                    <div class="config-panel mt-3">
-                        <div class="card">
-                            <div class="card-header bg-light">
-                                <span><i class="bi bi-device-hdd me-1"></i>切换登录端</span>
-                            </div>
-                            <div class="card-body py-2">
-                                <div class="input-group input-group-sm">
-                                    <select class="form-select" id="device-type-select">
-                                        <option value="ipad" selected>iPad（默认）</option>
-                                        <option value="mac">Mac</option>
-                                        <option value="pad">安卓 Pad</option>
-                                        <option value="win">Windows</option>
-                                        <option value="winuwp">Win UWP（绕验证码）</option>
-                                        <option value="winunified">Win 统一版</option>
-                                        <option value="car">车载</option>
-                                        <option value="notcode">过识别通道(2)</option>
-                                        <option value="notcodepush">过识别通道(1)</option>
-                                    </select>
-                                    <button class="btn btn-outline-primary" type="button" id="btn-switch-device">
-                                        <i class="bi bi-arrow-repeat me-1"></i>切换
-                                    </button>
-                                </div>
-                                <small class="text-muted mt-1 d-block">869 仅支持 iPad/Mac；874 支持全部登录端。</small>
-                            </div>
                         </div>
                     </div>
 
@@ -250,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const resp = await fetch('/api/login/qrcode');
             const d = await resp.json();
-            const proto = (d && d.data && d.data.protocol) || '869';
+            const proto = (d && d.data && d.data.protocol) || '875';
             document.getElementById('protocol-badge-text').textContent = proto;
         } catch (e) {}
     })();
@@ -270,7 +243,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const authKey = document.getElementById('authkey-input').value.trim();
             const proxy = document.getElementById('proxy-input').value.trim();
-            const response = await fetch('/api/login/restart_869_flow', {
+            const response = await fetch('/api/login/restart_875_flow', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ auth_key: authKey, qrcode_proxy: proxy, login_challenge: loginChallenge })
@@ -298,72 +271,8 @@ document.addEventListener('DOMContentLoaded', function() {
         } finally { btn.disabled = false; btn.innerHTML = original; }
     });
 
-    // 切换登录端
-    document.getElementById('btn-switch-device').addEventListener('click', async function() {
-        const btn = this;
-        const deviceType = document.getElementById('device-type-select').value;
-        const authKey = document.getElementById('authkey-input').value.trim();
-        const proxy = document.getElementById('proxy-input').value.trim();
-        const original = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
-        try {
-            const response = await fetch('/api/login/switch_device_qrcode', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ device_type: deviceType, auth_key: authKey, qrcode_proxy: proxy, login_challenge: loginChallenge })
-            });
-            const data = await response.json();
-            if (data && data.success && data.data && data.data.status === 'online') {
-                updateQRCodeStatus(data.message || '已在线');
-                showLoginSuccess();
-            } else if (data && data.success && data.data && data.data.qrcode_url) {
-                resetQRCode();
-                qrcodeUrl = data.data.qrcode_url;
-                currentQRCodeUuid = data.data.uuid || '';
-                currentLoginMode = deviceType;
-                document.getElementById('login-mode-badge').textContent = deviceType;
-                setQRCodeImage(qrcodeUrl);
-                initialCountdown = data.data.expires_in || 240;
-                resetCountdown();
-                updateQRCodeStatus('已切换到 ' + deviceType + '，请重新扫码');
-            } else {
-                alert('切换失败: ' + (data && (data.error || data.message) || '未知错误'));
-            }
-        } catch (e) { alert('切换失败: ' + (e.message || e)); }
-        finally { btn.disabled = false; btn.innerHTML = original; }
-    });
 });
 
-// 协议热切换
-async function switchProtocol(protocol) {
-    if (!confirm('切换到 ' + protocol + '？当前登录态将失效，需重新扫码。')) return;
-    try {
-        const response = await fetch('/api/login/switch_protocol', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ protocol: protocol, login_challenge: loginChallenge })
-        });
-        const data = await response.json();
-        if (data && data.success) {
-            document.getElementById('protocol-badge-text').textContent = protocol;
-            // 切换成功后立即重拉码（带已填卡密）
-            resetQRCode();
-            // 拿新 challenge，带着卡密自动重拉
-            const authKey = document.getElementById('authkey-input').value.trim();
-            const proxy = document.getElementById('proxy-input').value.trim();
-            if (authKey) {
-                try {
-                    await fetch('/api/login/restart_869_flow', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ auth_key: authKey, qrcode_proxy: proxy, login_challenge: loginChallenge })
-                    });
-                } catch (e) { /* 静默，resetQRCode 已触发拉码 */ }
-            }
-        } else { alert('切换失败: ' + (data && (data.error || data.message) || '未知错误')); }
-    } catch (e) { alert('切换失败: ' + (e.message || e)); }
-}
 
 function loadQRCode() {
     document.getElementById('qrcode-loading').style.display = 'flex';
@@ -430,11 +339,11 @@ async function maybeRefreshQRCodeFromServer() {
 }
 
 function setQRCodeImage(url) {
-    // 如果已经是二维码图片URL（874的QrUrl），直接使用，不再二次包装
+    // 875 走 /api/qrcode 代理生成二维码图片
     if (url && (url.includes('create-qr-code') || url.includes('qrcode') || url.includes('qrserver'))) {
         document.getElementById('qrcode-img').src = url;
     } else {
-        // 869协议：通过/api/qrcode代理生成二维码
+        // 通过 /api/qrcode 代理生成二维码
         const qrcodeApiUrl = '/api/qrcode?data=' + encodeURIComponent(url);
         document.getElementById('qrcode-img').src = qrcodeApiUrl;
     }
