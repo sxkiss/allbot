@@ -37,7 +37,21 @@ echo "等待系统Redis服务可用..."
 sleep 2
 
 # 启动 875 协议服务（WeChatPadProMAX，监听 0.0.0.0:18062，WS 18089）
+# 注意：875 是 Beego 应用，固定读取 /app/conf/app.conf（不是 conf875/），
+# 必须先部署配置到该路径，否则 user_token_key 等配置读不到会导致启动失败。
 if [ -x /app/wechatpad875 ] && [ -f /app/conf875/app.conf ]; then
+    echo "部署 875 配置到 /app/conf/app.conf（Beego 默认路径）..."
+    mkdir -p /app/conf
+    cp /app/conf875/app.conf /app/conf/app.conf
+    # 卡密从环境变量 WX_TOKEN_KEY 注入（仓库不存卡密）
+    if [ -n "${WX_TOKEN_KEY:-}" ]; then
+        sed -i "s|^user_token_key = .*|user_token_key = \"${WX_TOKEN_KEY}\"|" /app/conf/app.conf
+        echo "已从环境变量注入 875 卡密"
+    fi
+    # redis 地址从环境变量注入（容器内 redis 默认 127.0.0.1:6379）
+    if [ -n "${WX_REDIS_LINK:-}" ]; then
+        sed -i "s|^redislink = .*|redislink = ${WX_REDIS_LINK}|" /app/conf/app.conf
+    fi
     echo "启动 875 (wechatpad875)..."
     cd /app && nohup ./wechatpad875 > /tmp/875.log 2>&1 &
     sleep 3

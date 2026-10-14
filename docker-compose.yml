@@ -30,8 +30,8 @@ services:
       retries: 10
 
   allbot:
-    image: sxkiss/allbot:feat-wxserver875-license
-    pull_policy: always
+    image: ghcr.nju.edu.cn/sxkiss/allbot:feat-wxserver875-license
+    pull_policy: never
     container_name: allbot-license
     restart: unless-stopped
     depends_on:
@@ -53,6 +53,8 @@ services:
     environment:
       - WX_HOST=127.0.0.1
       - WX_PORT=18062
+      - WX_TOKEN_KEY=${WX_TOKEN_KEY:-}
+      - WX_REDIS_LINK=127.0.0.1:6379
       - WX_AUTH_SERVER=http://v.sxkiss.top
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
