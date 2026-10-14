@@ -6,8 +6,10 @@
 """
 
 import asyncio
-import json
+import threading
 import time
+from collections import OrderedDict
+import json
 import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict
@@ -401,6 +403,25 @@ async def listen_ws_messages(allbot, ws_url: str | Callable[[], str], redis, mes
             await asyncio.sleep(reconnect_interval)
 
 
+# 875 消息去重缓存（P1-5）：msg_id -> 时间戳，防 WS/Webhook 重复投递
+_875_dedupe_cache: "OrderedDict[str, float]" = OrderedDict()
+_875_dedupe_lock = threading.Lock()
+DEDUPE_CACHE_SIZE = 2000
+
+
+def _is_duplicate_875(msg_id: str) -> bool:
+    """判断 875 消息是否重复（LRU 缓存，超过容量淘汰最旧）。"""
+    if not msg_id:
+        return False
+    with _875_dedupe_lock:
+        if msg_id in _875_dedupe_cache:
+            return True
+        _875_dedupe_cache[msg_id] = time.time()
+        while len(_875_dedupe_cache) > DEDUPE_CACHE_SIZE:
+            _875_dedupe_cache.popitem(last=False)
+    return False
+
+
 async def _process_ws_message(data: Dict[str, Any], allbot, redis, message_db):
     bot_wxid = getattr(allbot.bot, "wxid", "")
 
@@ -409,6 +430,11 @@ async def _process_ws_message(data: Dict[str, Any], allbot, redis, message_db):
     if str(getattr(allbot.bot, "protocol_version", "") or "").lower() == "875":
         for raw_message in extract_messages_from_ws(data):
             addmsg = normalize_addmsg(raw_message, bot_wxid)
+            # P1-5: 去重（同一 msg_id 只处理一次）
+            _mid = str(addmsg.get("MsgId") or "")
+            if _is_duplicate_875(_mid):
+                logger.debug("875 重复消息已跳过 msg_id={}", _mid)
+                continue
             await _save_and_enqueue_message(addmsg, redis, message_db, is_standard_format=True)
         return
 

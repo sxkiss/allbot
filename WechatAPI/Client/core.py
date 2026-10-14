@@ -1470,6 +1470,49 @@ class WechatAPIClient(WechatAPIClientBase):
         # 未就绪（SESSION_NOT_READY）时静默返回空串
         return ""
 
+    async def start_auto_heartbeat_875(self) -> bool:
+        """875 协议：开启自动心跳（/api/Login/AutoHeartBeat，authcode 必填）。
+
+        与单次 HeartBeat 不同，AutoHeartBeat 让服务端持续保活 + 自动二次登录。
+        """
+        try:
+            response = await self.request(
+                "/login/AutoHeartBeat",
+                method="POST",
+                raise_for_api_error=False,
+            )
+        except Exception as e:
+            logger.warning("875 开启自动心跳失败: {}", e)
+            return False
+        if not isinstance(response, dict):
+            return False
+        if response.get("Success") is True:
+            return True
+        return response.get("Code") in (None, 0, 1, 200)
+
+    async def newinit_875(self, max_synckey: str = "", current_synckey: str = "") -> Dict[str, Any]:
+        """875 协议：登录后初始化（/api/Login/Newinit）。
+
+        官方参数：query authcode + MaxSynckey + CurrentSynckey，header X-Access-Token。
+        返回初始化结果（含 synckey 游标），用于后续消息同步。
+        """
+        params: Dict[str, Any] = {}
+        if max_synckey:
+            params["MaxSynckey"] = str(max_synckey)
+        if current_synckey:
+            params["CurrentSynckey"] = str(current_synckey)
+        try:
+            response = await self.request(
+                "/login/NewInit",
+                method="POST",
+                params=params or None,
+                raise_for_api_error=False,
+            )
+        except Exception as e:
+            logger.warning("875 Newinit 失败: {}", e)
+            return {}
+        return response if isinstance(response, dict) else {}
+
     async def fetch_ws_url_875(self) -> str:
         """875 协议：拼接收消息的 WebSocket 地址。
 
@@ -1521,6 +1564,88 @@ class WechatAPIClient(WechatAPIClientBase):
             "messages": messages,
             "raw": response,
         }
+
+    # ==================== 875 媒体下载（P1-2） ====================
+    # 官方接口：
+    #   /Tools/DownloadImg     body: {msg_id, data_len, compress_type, to_wxid, section}
+    #   /Tools/DownloadVoice   body: {msgId, bufid, length, fromUserName}
+    #   /Tools/DownloadVideo   body: {msg_id, data_len, compress_type, to_wxid, section}
+    #   /Tools/DownloadFile    body: {app_id, attach_id, data_len, user_name, section}
+    #   /Tools/CdnDownloadImage body: {file_aes_key, file_no}
+
+    async def download_image_875(self, msg_id: Union[str, int], data_len: int = 0,
+                                 compress_type: int = 0, to_wxid: str = "") -> str:
+        """875 协议：下载图片，返回 base64。"""
+        payload = {
+            "msg_id": int(msg_id),
+            "data_len": int(data_len or 0),
+            "compress_type": int(compress_type),
+            "to_wxid": to_wxid or self.wxid,
+        }
+        try:
+            data = await self.call_path("/message/GetMsgBigImg", body=payload)
+            return self._extract_base64_from_payload(data)
+        except Exception as e:
+            logger.warning("875 下载图片失败: {}", e)
+            return ""
+
+    async def download_voice_875(self, msg_id: Union[str, int], bufid: str = "",
+                                 length: int = 0, from_user_name: str = "") -> str:
+        """875 协议：下载语音，返回 base64。"""
+        payload = {
+            "msgId": int(msg_id),
+            "bufid": bufid or "",
+            "length": int(length or 0),
+            "fromUserName": from_user_name or self.wxid,
+        }
+        try:
+            data = await self.call_path("/message/GetMsgVoice", body=payload)
+            return self._extract_base64_from_payload(data)
+        except Exception as e:
+            logger.warning("875 下载语音失败: {}", e)
+            return ""
+
+    async def download_video_875(self, msg_id: Union[str, int], data_len: int = 0,
+                                 compress_type: int = 0, to_wxid: str = "") -> str:
+        """875 协议：下载视频，返回 base64。"""
+        payload = {
+            "msg_id": int(msg_id),
+            "data_len": int(data_len or 0),
+            "compress_type": int(compress_type),
+            "to_wxid": to_wxid or self.wxid,
+        }
+        try:
+            data = await self.call_path("/message/GetMsgVideo", body=payload)
+            return self._extract_base64_from_payload(data)
+        except Exception as e:
+            logger.warning("875 下载视频失败: {}", e)
+            return ""
+
+    async def download_file_875(self, app_id: str = "", attach_id: str = "",
+                                data_len: int = 0, user_name: str = "") -> str:
+        """875 协议：下载文件，返回 base64。"""
+        payload = {
+            "app_id": app_id or "",
+            "attach_id": attach_id or "",
+            "data_len": int(data_len or 0),
+            "user_name": user_name or self.wxid,
+        }
+        try:
+            data = await self.call_path("/tools/DownloadFile", body=payload)
+            return self._extract_base64_from_payload(data)
+        except Exception as e:
+            logger.warning("875 下载文件失败: {}", e)
+            return ""
+
+    async def cdn_download_image_875(self, file_aes_key: str = "", file_no: str = "") -> str:
+        """875 协议：CDN 图片下载，返回 base64。"""
+        payload = {"file_aes_key": file_aes_key or "", "file_no": file_no or ""}
+        try:
+            data = await self.call_path("/message/CdnDownloadImage", body=payload)
+            return self._extract_base64_from_payload(data)
+        except Exception as e:
+            logger.warning("875 CDN 下载图片失败: {}", e)
+            return ""
 
     async def verify_code_slide(
         self,
@@ -1603,6 +1728,9 @@ class WechatAPIClient(WechatAPIClientBase):
         return await self.is_logged_in(self.wxid)
 
     async def start_auto_heartbeat(self) -> bool:
+        # 875：调 /api/Login/AutoHeartBeat 开启服务端自动保活
+        if self.protocol_version == "875":
+            return await self.start_auto_heartbeat_875()
         return await self.is_logged_in(self.wxid)
 
     async def stop_auto_heartbeat(self) -> bool:

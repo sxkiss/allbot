@@ -325,7 +325,13 @@ class WechatLoginHandler:
             self._update_875_error_status("875 扫码登录超时")
             return False
 
-        # --- 3. 登录成功，补齐资料与状态 ---
+        # --- 3. 登录成功，初始化 + 补齐资料与状态 ---
+        # 875 登录后先 Newinit 拉取同步游标（官方登录链路常见步骤）
+        try:
+            await self.bot.newinit_875()
+        except Exception as error:
+            logger.warning("875 Newinit 初始化失败（忽略）: {}", error)
+
         try:
             await self._safe_apply_profile_from_bot()
         except Exception as error:

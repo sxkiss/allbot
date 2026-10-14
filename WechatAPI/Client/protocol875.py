@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Optional
 
 # 875 路径映射（869 路径 → 875 实际路径）
@@ -380,15 +381,7 @@ def normalize_875_response(path: str, payload: Any) -> Any:
 
 
 def normalize_875_message(raw: Dict[str, Any]) -> Dict[str, Any]:
-    """把 875 WebSocket 推送的消息归一化为框架标准消息格式。
-
-    875 推送字段（典型）：
-      { "msgId", "fromWxid"/"FromUserName", "toWxid"/"ToUserName",
-        "msgType"/"MsgType", "content"/"Content", "createTime", "pushContent" }
-
-    框架标准格式（对齐 869）：
-      { "msg_id", "from_wxid", "to_wxid", "msg_type", "content", "timestamp", "raw" }
-    """
+    """把 875 WebSocket 推送的消息归一化为框架标准消息格式，并增强媒体参数提取（P1-2）。"""
     if not isinstance(raw, dict):
         return {}
 
@@ -408,17 +401,44 @@ def normalize_875_message(raw: Dict[str, Any]) -> Dict[str, Any]:
     from_wxid = str(pick("fromWxid", "FromUserName", "from", default=""))
     to_wxid = str(pick("toWxid", "ToUserName", "to", default=""))
     content = pick("content", "Content", "pushContent", "PushContent", default="")
+    content_str = str(content)
 
-    return {
-        "msg_id": str(pick("msgId", "MsgId", "newMsgId", "NewMsgId", default="")),
+    # P1-2: 媒体消息 XML 参数提取（供后续 CDN/Tools 下载使用）
+    media_meta = {}
+    if msg_type in (3, 34, 43, 49) and isinstance(content_str, str) and "<" in content_str:
+        # 尝试提取常见媒体字段
+        msg_id_match = re.search(r'(?:newmsgid|msg_id|svrid)="([^"]+)"', content_str, re.I)
+        length_match = re.search(r'length="([^"]+)"', content_str, re.I)
+        bufid_match = re.search(r'bufid="([^"]+)"', content_str, re.I)
+        aeskey_match = re.search(r'aeskey="([^"]+)"', content_str, re.I)
+        cdnmidimgurl_match = re.search(r'cdnmidimgurl="([^"]+)"', content_str, re.I)
+        cdnvideourl_match = re.search(r'cdnvideourl="([^"]+)"', content_str, re.I)
+        attachid_match = re.search(r'attachid="([^"]+)"', content_str, re.I)
+        
+        if msg_id_match: media_meta["msg_id"] = msg_id_match.group(1)
+        if length_match: media_meta["length"] = int(length_match.group(1))
+        if bufid_match: media_meta["bufid"] = bufid_match.group(1)
+        if aeskey_match: media_meta["aeskey"] = aeskey_match.group(1)
+        if cdnmidimgurl_match: media_meta["cdnmidimgurl"] = cdnmidimgurl_match.group(1)
+        if cdnvideourl_match: media_meta["cdnvideourl"] = cdnvideourl_match.group(1)
+        if attachid_match: media_meta["attachid"] = attachid_match.group(1)
+
+    result = {
+        "msg_id": str(pick("msgId", "MsgId", "newMsgId", "NewMsgId", media_meta.get("msg_id", ""), default="")),
         "from_wxid": from_wxid,
         "to_wxid": to_wxid,
         "msg_type": msg_type,
-        "content": str(content),
+        "content": content_str,
         "timestamp": pick("createTime", "CreateTime", "create_time", default=0),
         "is_group": str(from_wxid).endswith("@chatroom"),
         "raw": raw,
     }
+    
+    # 若提取到媒体元数据，附加到结果中供下载管线使用
+    if media_meta:
+        result["media_meta"] = media_meta
+        
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -477,3 +497,39 @@ def parse_875_login_status(payload: Any) -> Dict[str, Any]:
         result["ok"] = status == QR_STATUS_CONFIRMED
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# 群聊 @ 解析与群发送者拆分（P1-4）
+# ---------------------------------------------------------------------------
+
+def extract_at_members(content_xml: str) -> list[str]:
+    """从文本消息 XML 的 <atuserlist> 中解析被 @ 的成员 wxid 列表。
+
+    微信文本消息的 Content 形如：
+      <msgsource><atuserlist><voipid><username>wxid_a</username></voipid></atuserlist></msgsource>
+    本函数返回被 @ 的成员 wxid 列表。
+    """
+    if not content_xml or "<atuserlist>" not in content_xml:
+        return []
+    import re as _re
+    # 提取所有 <username> 或 <atuserlist> 下的 wxid
+    usernames = _re.findall(r"<username>([^<]+)</username>", content_xml)
+    return [u.strip() for u in usernames if u.strip()]
+
+
+def split_group_sender(content: str, from_wxid: str) -> tuple[str, str]:
+    """拆分群消息发送者与内容。
+
+    微信群消息 content 形如 "昵称:\n正文"，from_wxid 可能是群 ID。
+    若 content 以 "昵称:\n" 开头，则发送者为昵称对应 wxid（需外部查表），
+    这里返回 (发送者昵称, 去除前缀后的正文)。
+    """
+    if not content or ":\n" not in content:
+        return "", content
+    nickname, _, body = content.partition(":\n")
+    nickname = nickname.strip()
+    body = body.strip()
+    if not nickname or not body:
+        return "", content
+    return nickname, body
