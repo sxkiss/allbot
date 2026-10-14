@@ -43,11 +43,11 @@ if [ -x /app/wechatpad875 ] && [ -f /app/conf875/app.conf ]; then
     echo "部署 875 配置到 /app/conf/app.conf（Beego 默认路径）..."
     mkdir -p /app/conf
     cp /app/conf875/app.conf /app/conf/app.conf
-    # 卡密从环境变量 WX_TOKEN_KEY 注入（仓库不存卡密）
-    if [ -n "${WX_TOKEN_KEY:-}" ]; then
-        sed -i "s|^user_token_key = .*|user_token_key = \"${WX_TOKEN_KEY}\"|" /app/conf/app.conf
-        echo "已从环境变量注入 875 卡密"
-    fi
+    # 卡密：优先用环境变量 WX_TOKEN_KEY，未设置则兜底默认值，
+    # 保证容器在任何情况下都能启动（授权是否有效由控制面 authserver 裁决）
+    WX_TOKEN_KEY_EFFECTIVE="${WX_TOKEN_KEY:-local-dev-placeholder}"
+    sed -i "s|^user_token_key = .*|user_token_key = \"${WX_TOKEN_KEY_EFFECTIVE}\"|" /app/conf/app.conf
+    echo "875 卡密已设置（来源: ${WX_TOKEN_KEY:+环境变量}${WX_TOKEN_KEY:-兜底默认值}）"
     # redis 地址从环境变量注入（容器内 redis 默认 127.0.0.1:6379）
     if [ -n "${WX_REDIS_LINK:-}" ]; then
         sed -i "s|^redislink = .*|redislink = ${WX_REDIS_LINK}|" /app/conf/app.conf
