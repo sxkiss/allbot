@@ -1,15 +1,15 @@
 # 协议版本选择
 [Protocol]
-version = "869"            # 协议版本，可选值: "869", "ipad", "pad", "mac", "ipad2", "car" 或 "win"
+version = "875"            # 协议版本：当前使用 "875"（WeChatPadPro）
 
 [Framework]
 type = "wechat"
 
 [WechatAPIServer]
 host = "127.0.0.1"         # wxserver 本地地址（容器内 127.0.0.1:5253）
-port = 5253                # wxserver 端口
+port = 18062                # wxserver 端口
 mode = "debug"             # 运行模式：release(生产环境)，debug(调试模式)
-login-qrcode-proxy = ""     # 869 拉取登录二维码代理（可选）：socks5://user:pass@ip:port
+login-qrcode-proxy = ""     # 875 拉取登录二维码代理（可选）：socks5://user:pass@ip:port
 
 # Redis 设置
 redis-host = "127.0.0.1"   # Redis服务器地址，本地使用127.0.0.1
@@ -19,8 +19,8 @@ redis-db = 0                # Redis数据库编号，默认0
 message-consumer-workers = 8  # allbot 入站并发消费 worker 数（>1 避免慢插件堵全站）
 
 # WebSocket 设置
-enable-websocket = false     # 是否启用 WebSocket 消息接收
-ws-url = "ws://127.0.0.1:5253/ws/GetSyncMsg"  # 869 建议使用 /ws/GetSyncMsg，部署时按实际环境修改，key 由程序自动追加
+enable-websocket = true      # 是否启用 WebSocket 消息接收（875 必须开启，走 /ws/sync 收消息）
+ws-url = "ws://127.0.0.1:18089/ws/sync"  # 875 使用 /ws/sync，部署时按实际环境修改，key 由程序自动追加
 
 # RabbitMQ 设置
 enable-rabbitmq = true      # 是否启用 RabbitMQ 消息接收，默认开启
@@ -61,7 +61,7 @@ memory_low_threshold_mb = 500 # 可用内存警告阈值（MB）
 # AllBot 核心设置
 [AllBot]
 version = "v2.0.0"                    # 版本号，请勿修改
-enable-wechat-login = true            # 869 需要启用登录以获取 token_key 并更新 wxid/profile
+enable-wechat-login = true            # 875 需要启用登录以获取 token_key 并更新 wxid/profile
 ignore-protection = false             # 是否忽略风控保护机制，建议保持false
 enable-group-wakeup = false
 group-wakeup-words = [
