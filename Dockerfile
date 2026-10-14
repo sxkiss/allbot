@@ -56,6 +56,11 @@ RUN chmod +x /app/wxserver
 COPY wxserver_runtime/assets /app/assets
 COPY wxserver_runtime/static /app/static
 
+# 875 人脸验证二进制（41MB，静态链接，随镜像分发）
+COPY wxserver_runtime/bin/pad-face-verify-linux-x64 /app/pad-face-verify-linux-x64
+RUN chmod +x /app/pad-face-verify-linux-x64
+ENV PAD_FACE_VERIFY_BIN=/app/pad-face-verify-linux-x64
+
 # 运行时配置（内置默认，compose 无需重复声明）
 ENV WX_HOST=127.0.0.1
 ENV WX_PORT=18062
@@ -70,9 +75,13 @@ ENV MYSQL_PARAMS=charset=utf8mb4&parseTime=true&loc=Local
 ENV REDIS_HOST=redis
 ENV REDIS_PORT=6379
 ENV REDIS_DB=2
+# 875 门禁校验（走公网控制面）
+ENV WECHATPAD_DEV_ADMIN_API=1
+ENV ADMIN_API_BASE=https://v.sxkiss.top
+ENV WECHATPAD_DEV_ALLOW_PERSISTED_AUTH=1
 
-# 暴露端口（仅后台管理端口）
-EXPOSE 9090
+# 暴露端口（后台 9090 / 875 HTTP 18062 / 875 WS 18089 / 人脸验证 18080）
+EXPOSE 9090 18062 18089 18080
 
 # 数据卷（Redis持久化）
 VOLUME ["/data/redis"]

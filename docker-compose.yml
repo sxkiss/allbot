@@ -41,6 +41,11 @@ services:
         condition: service_healthy
     ports:
       - "9091:9090"
+      - "18062:18062"
+      - "18089:18089"
+      - "18180:18080"
+    env_file:
+      - .env
     volumes:
       - /etc/machine-id:/etc/machine-id:ro
       - ./main_config.toml:/app/main_config.toml

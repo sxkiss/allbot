@@ -40,7 +40,7 @@ sleep 2
 # 注意：875 是 Beego 应用，固定读取 /app/conf/app.conf（不是 conf875/），
 # 必须先部署配置到该路径，否则 user_token_key 等配置读不到会导致启动失败。
 if [ -x /app/wechatpad875 ] && [ -f /app/conf875/app.conf ]; then
-    echo "部署 875 配置到 /config/app.conf（wechatpad 入口强制路径）..."
+    echo "部署 875 配置到 /config/app.conf（入口强制路径）..."
     mkdir -p /config
     cp /app/conf875/app.conf /config/app.conf
     # 兼容 Beego 默认路径（部分版本读 /app/conf/app.conf）
@@ -55,15 +55,17 @@ if [ -x /app/wechatpad875 ] && [ -f /app/conf875/app.conf ]; then
     if [ -n "${WX_REDIS_LINK:-}" ]; then
         sed -i "s|^redislink = .*|redislink = ${WX_REDIS_LINK}|" /config/app.conf /app/conf/app.conf
     fi
-    echo "启动 875 (wechatpad875)..."
+    echo "启动 875 协议服务..."
     cd /app && nohup ./wechatpad875 > /tmp/875.log 2>&1 &
     sleep 3
     cd /app
 fi
 
 # 875 人脸验证服务（padface，监听 18080）
-if [ -x /app/padface875 ]; then
-    echo "启动 padface875..."
+# 通过环境变量告诉 padface875 人脸验证二进制的位置（若镜像内已提供）
+export PAD_FACE_VERIFY_BIN="${PAD_FACE_VERIFY_BIN:-/app/pad-face-verify-linux-x64}"
+if [ -x /app/padface875 ] && [ -x "${PAD_FACE_VERIFY_BIN}" ]; then
+    echo "启动 padface875（人脸验证二进制: ${PAD_FACE_VERIFY_BIN}）..."
     cd /app && nohup ./padface875 > /tmp/padface875.log 2>&1 &
     sleep 2
     cd /app
