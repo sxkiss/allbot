@@ -182,11 +182,32 @@ def register_qrcode_routes(app, templates):
             _update_status_snapshot,
         )
 
+    # 875 官方支持的拉码设备端（对应 /Login/GetQR* 系列接口）
+    VALID_DEVICES_875 = {
+        "ipad": "iPad（默认）",
+        "ipadx": "iPad X",
+        "mac": "Mac",
+        "pad": "安卓 Pad",
+        "padx": "安卓 Pad X",
+        "padcloud": "Pad Cloud",
+        "padppmt": "Pad PPMT",
+        "win": "Windows",
+        "winuwp": "Win UWP",
+        "winunified": "Win 统一版",
+        "watch": "手表",
+        "harmony": "鸿蒙",
+        "ipad_oversea": "iPad（海外）",
+        "mac_oversea": "Mac（海外）",
+        "ipadx_oversea": "iPad X（海外）",
+        "ipad862": "iPad 862",
+    }
+
     async def _run_875_login_flow(
         wxapi,
         *,
         authcode: str = "",
         device_name: str = "",
+        device_type: str = "",
     ):
         """875 协议：拉二维码并写入 bot_status.json（供 /qrcode 页面轮询）。
 
@@ -214,7 +235,16 @@ def register_qrcode_routes(app, templates):
         robot_stat["authcode"] = code
         robot_stat["token_key"] = code
 
-        dev_name = str(device_name or robot_stat.get("device_name") or "iPad").strip() or "iPad"
+        # 设备端：优先本次传入的 device_type，其次运行时记录，最后默认 iPad
+        _dev_type = str(device_type or "").strip().lower()
+        if _dev_type and _dev_type not in VALID_DEVICES_875:
+            return {"success": False, "error": f"不支持的设备端: {_dev_type}"}
+        if _dev_type:
+            robot_stat["device_type"] = _dev_type
+        else:
+            _dev_type = str(robot_stat.get("device_type") or "ipad").strip().lower() or "ipad"
+
+        dev_name = str(device_name or robot_stat.get("device_name") or _dev_type or "iPad").strip() or "iPad"
         dev_id = str(getattr(wxapi, "device_id", "") or robot_stat.get("device_id", "") or "").strip()
         if not dev_id and hasattr(wxapi, "create_device_id"):
             dev_id = str(wxapi.create_device_id()).strip()
@@ -228,7 +258,7 @@ def register_qrcode_routes(app, templates):
         try:
             qr_result = await wxapi.get_qr_code_with_auth(
                 auth_key=code,
-                device_name=dev_name,
+                device_name=_dev_type,
                 device_id=dev_id,
                 print_qr=False,
             )
@@ -266,8 +296,8 @@ def register_qrcode_routes(app, templates):
             "uuid": uuid,
             "timestamp": time.time(),
             "expires_in": 240,
-            "login_mode": "ipad",
-            "device_type": "ipad",
+            "login_mode": _dev_type,
+            "device_type": _dev_type,
             "device_id": dev_id,
             "token_key": code,
             "protocol_version": "875",
@@ -282,7 +312,7 @@ def register_qrcode_routes(app, templates):
                 "uuid": uuid,
                 "expires_in": 240,
                 "timestamp": time.time(),
-                "login_mode": "ipad",
+                "login_mode": _dev_type,
                 "protocol": "875",
             },
         }
@@ -419,6 +449,7 @@ def register_qrcode_routes(app, templates):
 
         auth_key = str((payload or {}).get("auth_key", "") or "").strip()
         qrcode_proxy = str((payload or {}).get("qrcode_proxy", "") or "").strip()
+        device_type = str((payload or {}).get("device_type", "") or "").strip().lower()
 
         try:
             from admin.core.app_setup import get_bot_instance
@@ -428,25 +459,86 @@ def register_qrcode_routes(app, templates):
             if wxapi is None:
                 return JSONResponse(status_code=503, content={"success": False, "error": "机器人实例未初始化"})
 
-            # 875 专属：直接设置 token_key (即 authcode)
-            if auth_key:
-                wxapi.token_key = auth_key
-                # 同步更新 robot_stat.json
-                from admin.routes.qrcode_routes import _load_robot_stat, _save_robot_stat
-                robot_stat = _load_robot_stat()
-                robot_stat["authcode"] = auth_key
-                _save_robot_stat(wxapi, wxid=getattr(wxapi, "wxid", ""))
-                
-                # 触发 875 登录流程 (如果尚未在跑，这里简单处理：返回成功让前端轮询，
-                # 实际 _handle_login_875 会在后台或下次轮询时读取新的 token_key)
+            # 875：提交卡密后直接拉码（按所选设备端），写 bot_status.json 供前端立即展示
+            if not auth_key:
+                return JSONResponse(status_code=400, content={"success": False, "error": "缺少卡密（auth_key）"})
+
+            if qrcode_proxy:
+                setattr(wxapi, "login_qrcode_proxy", qrcode_proxy)
+
+            result = await _run_875_login_flow(
+                wxapi,
+                authcode=auth_key,
+                device_type=device_type,
+            )
+            if result.get("success"):
                 return {
                     "success": True,
-                    "message": "卡密已更新，正在重新拉取二维码...",
-                    "data": {"status": "waiting_login"}
+                    "data": result["data"],
+                    "message": "已拉取二维码，请扫码登录",
                 }
-            return JSONResponse(status_code=400, content={"success": False, "error": "缺少 auth_key"})
+            return JSONResponse(
+                status_code=400 if result.get("needs_authcode") else 500,
+                content=result,
+            )
         except Exception as e:
             logger.error(f"重启 875 登录流程失败: {e}")
+            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
+    @app.get("/api/login/device_types", response_class=JSONResponse)
+    async def api_login_device_types():
+        """875 支持的拉码设备端列表（供前端下拉渲染）。"""
+        return {
+            "success": True,
+            "data": {
+                "devices": [
+                    {"value": k, "label": v} for k, v in VALID_DEVICES_875.items()
+                ]
+            },
+        }
+
+    @app.post("/api/login/switch_device", response_class=JSONResponse)
+    async def api_login_switch_device(request: Request):
+        """875：切换拉码设备端（对应官方 /Login/GetQR* 系列接口）。"""
+        auth_error = await _require_login_challenge(request)
+        if auth_error is not None:
+            return auth_error
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+        device_type = str((payload or {}).get("device_type", "") or "").strip().lower()
+        if not device_type:
+            return JSONResponse(status_code=400, content={"success": False, "error": "缺少 device_type"})
+        if device_type not in VALID_DEVICES_875:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"875 不支持的设备端: {device_type}"},
+            )
+
+        auth_key = str((payload or {}).get("auth_key", "") or "").strip()
+
+        try:
+            from admin.core.app_setup import get_bot_instance
+            wrapper = get_bot_instance()
+            wxapi = getattr(wrapper, "bot", wrapper)
+            if wxapi is None:
+                return JSONResponse(status_code=503, content={"success": False, "error": "机器人实例未初始化"})
+
+            result = await _run_875_login_flow(wxapi, authcode=auth_key, device_type=device_type)
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "data": result["data"],
+                    "message": f"已切换到 {VALID_DEVICES_875.get(device_type, device_type)}，请重新扫码",
+                }
+            return JSONResponse(
+                status_code=400 if result.get("needs_authcode") else 500,
+                content=result,
+            )
+        except Exception as e:
+            logger.error(f"875 切换设备端失败: {e}")
             return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
     @app.get("/api/qrcode")

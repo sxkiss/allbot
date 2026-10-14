@@ -1229,6 +1229,46 @@ class WechatAPIClient(WechatAPIClientBase):
                     ip, _, port = host_port.partition(":")
                     payload["Proxy"] = {"ProxyIp": ip + ":" + port, "ProxyUser": user, "ProxyPassword": pwd}
 
+        # 875：按设备类型路由到对应拉码接口（官方 18 个 GetQR* 端点，接口区分而非参数区分）
+        # 设备 → 端点映射（依据 swagger /Login/*）
+        if self.protocol_version == "875":
+            _dev = str(device_name or "").strip().lower()
+            qr_endpoint_875 = {
+                # 默认 / iPad
+                "ipad": "/api/Login/GetQR",
+                "ipad_oversea": "/api/Login/GetQR_oversea",
+                "ipadx": "/api/Login/GetQRx",
+                "ipadx_oversea": "/api/Login/GetQRx_oversea",
+                "ipad862": "/api/Login/GetLoginQRCode862",
+                # Mac
+                "mac": "/api/Login/GetQRMac",
+                "mac_oversea": "/api/Login/GetQRMac_oversea",
+                # Pad / 安卓平板
+                "pad": "/api/Login/GetQRPad",
+                "androidpad": "/api/Login/GetQRPad",
+                "padx": "/api/Login/GetQRPadx",
+                "padcloud": "/api/Login/GetQRPadCloud",
+                "padppmt": "/api/Login/GetQRPadPPMT",
+                # Windows
+                "win": "/api/Login/GetQRWin",
+                "winuwp": "/api/Login/GetQRWinUwp",
+                "winunified": "/api/Login/GetQRWinUnified",
+                # 手表
+                "watch": "/api/Login/GetQRWatch",
+                # 鸿蒙
+                "harmony": "/api/Login/HarmonyLoginApi",
+            }.get(_dev)
+            if qr_endpoint_875:
+                qr_path = qr_endpoint_875
+            # 875 body：官方 Login.GetQRReq = {DeviceName, oversea, Proxy}
+            payload = {
+                "DeviceName": str(device_name or "iPad").strip(),
+                "oversea": False,
+            }
+            if proxy_value:
+                payload["Proxy"] = proxy_value
+            login_device = _dev or "ipad"
+
         try:
             response = await self.request(
                 qr_path,

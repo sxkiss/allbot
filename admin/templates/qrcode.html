@@ -131,6 +131,33 @@
                                     <label class="form-label mb-1" for="proxy-input">拉码代理（可选）</label>
                                     <input type="text" class="form-control form-control-sm" id="proxy-input" placeholder="socks5://user:pass@ip:port">
                                 </div>
+                                <div class="mb-2">
+                                    <label class="form-label mb-1" for="device-type-select">登录设备端</label>
+                                    <div class="input-group input-group-sm">
+                                        <select class="form-select" id="device-type-select">
+                                            <option value="ipad" selected>iPad（默认）</option>
+                                            <option value="ipadx">iPad X</option>
+                                            <option value="mac">Mac</option>
+                                            <option value="pad">安卓 Pad</option>
+                                            <option value="padx">安卓 Pad X</option>
+                                            <option value="padcloud">Pad Cloud</option>
+                                            <option value="padppmt">Pad PPMT</option>
+                                            <option value="win">Windows</option>
+                                            <option value="winuwp">Win UWP</option>
+                                            <option value="winunified">Win 统一版</option>
+                                            <option value="watch">手表</option>
+                                            <option value="harmony">鸿蒙</option>
+                                            <option value="ipad_oversea">iPad（海外）</option>
+                                            <option value="mac_oversea">Mac（海外）</option>
+                                            <option value="ipadx_oversea">iPad X（海外）</option>
+                                            <option value="ipad862">iPad 862</option>
+                                        </select>
+                                        <button class="btn btn-outline-secondary" type="button" id="btn-switch-device">
+                                            <i class="bi bi-arrow-repeat me-1"></i>切换
+                                        </button>
+                                    </div>
+                                    <small class="text-muted mt-1 d-block">875 支持多种登录端（对应官方 GetQR* 系列接口）。</small>
+                                </div>
                                 <button class="btn btn-outline-primary w-100" type="button" id="btn-submit-flow">
                                     <i class="bi bi-play-circle me-1"></i>提交并拉码
                                 </button>
@@ -234,6 +261,43 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('btn-retry').addEventListener('click', function() { resetQRCode(); loadQRCode(); });
     document.getElementById('btn-to-dashboard').addEventListener('click', function() { window.location.href = '/index'; });
 
+    // 切换登录设备端（875）
+    var switchDevBtn = document.getElementById('btn-switch-device');
+    if (switchDevBtn) {
+        switchDevBtn.addEventListener('click', async function() {
+            const btn = this;
+            const deviceType = document.getElementById('device-type-select').value;
+            const authKey = document.getElementById('authkey-input').value.trim();
+            const proxy = document.getElementById('proxy-input').value.trim();
+            const original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+            try {
+                const response = await fetch('/api/login/switch_device', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_type: deviceType, auth_key: authKey, qrcode_proxy: proxy, login_challenge: loginChallenge })
+                });
+                const data = await response.json();
+                if (data && data.success && data.data && data.data.qrcode_url) {
+                    resetQRCode();
+                    qrcodeUrl = data.data.qrcode_url;
+                    currentQRCodeUuid = data.data.uuid || '';
+                    currentLoginMode = deviceType;
+                    var badge = document.getElementById('login-mode-badge');
+                    if (badge) badge.textContent = deviceType;
+                    setQRCodeImage(qrcodeUrl);
+                    initialCountdown = data.data.expires_in || 240;
+                    resetCountdown();
+                    updateQRCodeStatus(data.message || ('已切换到 ' + deviceType + '，请重新扫码'));
+                } else {
+                    alert('切换失败: ' + (data && (data.error || data.message) || '未知错误'));
+                }
+            } catch (e) { alert('切换失败: ' + (e.message || e)); }
+            finally { btn.disabled = false; btn.innerHTML = original; }
+        });
+    }
+
     // 提交卡密拉码
     document.getElementById('btn-submit-flow').addEventListener('click', async function() {
         const btn = this;
@@ -243,10 +307,11 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const authKey = document.getElementById('authkey-input').value.trim();
             const proxy = document.getElementById('proxy-input').value.trim();
+            const deviceType = (document.getElementById('device-type-select') || {}).value || 'ipad';
             const response = await fetch('/api/login/restart_875_flow', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ auth_key: authKey, qrcode_proxy: proxy, login_challenge: loginChallenge })
+                body: JSON.stringify({ auth_key: authKey, qrcode_proxy: proxy, device_type: deviceType, login_challenge: loginChallenge })
             });
             const data = await response.json();
             if (data && data.success && data.data && data.data.status === 'online') {
