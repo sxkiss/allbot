@@ -56,6 +56,12 @@ RUN chmod +x /app/wxserver
 COPY wxserver_runtime/assets /app/assets
 COPY wxserver_runtime/static /app/static
 
+# 875 API 控制台静态资源（Swagger UI + swagger.json，313 接口）
+# 875 二进制把 StaticDir["/"] 指向相对目录 swagger，即 /app/swagger；
+# 缺少该目录时根路径与 /swagger 全部 404，故随镜像分发一份种子副本，
+# 由 entrypoint 在 /app/swagger 缺失时自愈还原（防挂载覆盖或误删）。
+COPY wxserver_runtime/swagger /app/swagger_seed
+
 # 875 人脸验证二进制（41MB，静态链接，随镜像分发）
 COPY wxserver_runtime/bin/pad-face-verify-linux-x64 /app/pad-face-verify-linux-x64
 RUN chmod +x /app/pad-face-verify-linux-x64
