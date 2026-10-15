@@ -603,6 +603,15 @@ class AssistantPlugin(PluginBase):
             msg_id = _safe_text(message.get("MsgId")).strip()
             if msg_id:
                 lines.append(f"- msg_id: {msg_id}")
+            # 当前会话 ID：与 _stream_chat 调网关时用的是同一个（同池、同规则），
+            # 注入身份头后，agent 派发/回传长任务（如 codex-agent）时可直接携带，
+            # 完成后用同一 session_id 回传，结果自然落到本用户本会话。
+            try:
+                _sid = await self._resolve_session_id(route)
+                if _sid:
+                    lines.append(f"- session_id: {_sid}")
+            except Exception:
+                pass
             identity_header = "\n".join(lines)
         if self.quote_enable:
             quote = message.get("Quote")

@@ -4,11 +4,17 @@ enable = true
 # BT 网关地址（API 网关）
 api-base-url = "http://l.sxkiss.top:9876"
 # 调用 API 的密钥
-api-key = "aa6811bb9126b87013a580e368b1d7494132fdfd6000bf06546e03c86da31863"
+api-key = "b5c480aad3cc1131544549e6cf80605e763e836a8e257bdb13520789e6bc76af"
 # 网关鉴权令牌（网关 auth.json 开启 enabled=true 后必填）
 # 获取方式：curl -X POST http://网关/api/auth/login -H 'Content-Type: application/json' -d '{"password":"你的密码"}'
 # 留空则不发送 Authorization 头，兼容未开启鉴权的旧网关
-gateway-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc5MDA1NDc4OCwiZXhwIjoxNzkwMTQxMTg4LCJpc3MiOiJidC1hZ2VudCJ9.sFN6SAkCxdgcOnGaU72MKUscehzu5ZnUgFwhaNSgYUo"
+gateway-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsImlhdCI6MTc5MjAzNjA4NywiZXhwIjoxNzkyMTIyNDg3LCJpc3MiOiJidC1hZ2VudCJ9.fFUzXNrM_C2Ule4W8jxdgFG-N1KppQrDmt5Ekap-4uM"
+# 网关登录密码（用于 token 自动续期）。配置后插件会在每次对话前检查 token
+# 剩余有效期，低于 token-refresh-margin-seconds 时自动重新登录并把新 token
+# 写回本文件，全程无需重启。留空则维持旧行为（需手动更换 token）。
+gateway-password = "sk@sxkiss"
+# token 剩余有效期低于该秒数时触发自动续期（默认提前 1 小时）
+token-refresh-margin-seconds = 3600
 # LLM 网关地址（传给 BT 后端的 base_url 参数）；留空则使用 BT config.json 中的默认值
 # 注意：不要填 api-base-url（那是 BT 服务地址），填了会导致 /chat/completions 404 回环
 base-url = ""
