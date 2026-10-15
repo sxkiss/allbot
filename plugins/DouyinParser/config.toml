@@ -1,0 +1,21 @@
+[DouyinParser]
+enable = true
+# 允许解析的群聊白名单
+# 如果要允许所有群聊，请将此项设置为 ["*"]
+allowed_groups = ["*"]
+
+# 代理列表：按顺序轮换重试。代理是间歇性的，多配几个可显著提高成功率。
+#   1) 172.17.0.1:7890 —— 宿主机 clash/mihomo（绑 0.0.0.0，容器可达）
+#   2) cf-warp:1080   —— WARP 容器（已接入 xbot_default，容器名可达）
+proxies = ["http://172.17.0.1:7890", "http://cf-warp:1080"]
+# yt-dlp 单独使用的代理列表；留空则沿用上面的 proxies
+ytdlp_proxies = []
+# 兼容旧字段（单个代理），proxies 存在时忽略本项
+proxy = ""
+
+# 视频体积小于该值(MB)时直接发送视频消息，超过则只发卡片
+video-direct-max-mb = 10
+
+# 是否对未匹配已知平台的任意链接也尝试解析（yt-dlp 支持 1700+ 站点）。
+# 用户要求覆盖全部平台，故默认开启。
+generic-fallback = true
