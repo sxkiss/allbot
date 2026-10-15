@@ -36,10 +36,23 @@ redis-server /etc/redis/redis.conf --daemonize yes --dir /data/redis
 echo "等待系统Redis服务可用..."
 sleep 2
 
-# 启动 875 协议服务（WeChatPadProMAX，监听 0.0.0.0:18062，WS 18089）
+# 875 协议服务（WeChatPadProMAX，监听 0.0.0.0:18062，WS 18089）
 # 注意：875 是 Beego 应用，固定读取 /app/conf/app.conf（不是 conf875/），
 # 必须先部署配置到该路径，否则 user_token_key 等配置读不到会导致启动失败。
 if [ -x /app/wechatpad875 ] && [ -f /app/conf875/app.conf ]; then
+    # 875 API 控制台静态资源自愈：二进制把 StaticDir["/"] 指向相对目录 swagger（即 /app/swagger），
+    # 目录缺失时根路径与 /swagger 全部 404，这里兜底补齐（镜像已内置，此段防挂载覆盖/误删）。
+    if [ ! -d /app/swagger ]; then
+        echo "875 控制台静态目录缺失，尝试自愈..."
+        if [ -d /app/swagger_seed ]; then
+            cp -a /app/swagger_seed /app/swagger
+        else
+            echo "警告：无 /app/swagger_seed 可恢复，控制台将不可用"
+        fi
+    fi
+    if [ -d /app/swagger ] && [ ! -e /app/swagger/swagger ]; then
+        ln -sfn . /app/swagger/swagger
+    fi
     echo "部署 875 配置到 /config/app.conf（入口强制路径）..."
     mkdir -p /config
     cp /app/conf875/app.conf /config/app.conf
