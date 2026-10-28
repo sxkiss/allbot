@@ -52,6 +52,8 @@ progress-working-seconds = 300
 disable-ai-reply = true
 # 重置会话的命令（触发后清空当前会话上下文）
 new-session-commands = ['新对话', '新开对话', '/new', '/reset']
+# 管理员全局重置命令（解除全部会话绑定、取消所有任务、清空会话池；仅管理员可执行）
+admin-reset-commands = ['重置全部会话', '清空全部绑定', '/reset-all', '/clear-all']
 # 分块发送时的间隔（秒）
 send-interval = 0.3
 # 连接超时（秒）
