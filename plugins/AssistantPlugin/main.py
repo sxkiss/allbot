@@ -32,6 +32,7 @@ from utils.plugin_base import PluginBase
 CHUNK_NORMAL = 200
 DEFAULT_TRIGGER_WORDS = ["小助手"]
 DEFAULT_RESET_CMDS = ["新对话", "新开对话", "/new", "/reset"]
+DEFAULT_ADMIN_RESET_CMDS = ["重置全部会话", "清空全部绑定", "/reset-all", "/clear-all"]
 
 SESSION_POOL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wx_session_pool.json")
 
@@ -325,6 +326,12 @@ class AssistantPlugin(PluginBase):
         self.image_public_base_url = _safe_text(cfg.get("image-public-base-url", "http://l.sxkiss.top:9090")).strip()
         self.image_public_route_prefix = _safe_text(cfg.get("image-public-route-prefix", "/media/files")).strip() or "/media/files"
         self.admin_only = bool(cfg.get("admin-only", True))
+        # 管理员全局重置命令：解除所有会话绑定并清空会话池（仅管理员可执行）
+        self.admin_reset_commands = [
+            c.strip().lower()
+            for c in cfg.get("admin-reset-commands", DEFAULT_ADMIN_RESET_CMDS)
+            if str(c).strip()
+        ]
         # 去重已移至框架层 MessageRouter.process()，插件不再维护 _processed_msg_ids
 
         if self.enable and not self.api_base_url:
@@ -1211,6 +1218,50 @@ class AssistantPlugin(PluginBase):
     def _is_reset_cmd(self, text: str) -> bool:
         return text.strip().lower() in self.new_session_commands
 
+    def _is_admin_reset_cmd(self, text: str) -> bool:
+        return text.strip().lower() in self.admin_reset_commands
+
+    async def _admin_reset_all_sessions(self, route: WatchRoute) -> None:
+        """管理员命令：解除全部会话绑定、取消所有活跃任务、清空会话池。
+
+        用于全局重置：网关侧会话堆积、或管理员想一次性清除所有用户的会话绑定，
+        下次任何用户发消息都会以全新 session_id 开始。
+        """
+        # 1. 取消所有活跃任务
+        cancelled = 0
+        for session_id, task in list(self._active_tasks.items()):
+            if task and not task.done():
+                task.cancel()
+                cancelled += 1
+        self._active_tasks.clear()
+
+        # 2. 清除会话路由映射与活跃 sid 跟踪
+        routes_cleared = len(self._session_routes)
+        self._session_routes.clear()
+        self._active_sids.clear()
+
+        # 3. 清空会话池持久化文件（含绑定与重置序号）
+        cleared_keys = 0
+        try:
+            pool = self._load_session_pool()
+            cleared_keys = len(pool)
+            self._save_session_pool({})
+        except Exception as e:
+            logger.warning("[Assistant] 清空会话池失败: {}", e)
+
+        msg = (
+            "✅ 已重置全部会话\n"
+            f"取消活跃任务: {cancelled}\n"
+            f"清除路由映射: {routes_cleared}\n"
+            f"清空会话池: {cleared_keys} 项"
+        )
+        await self._send(route, msg)
+        logger.info(
+            "[Assistant] 管理员 {} 执行全局重置: 取消{} 路由{} 池{}",
+            route.sender_name or route.sender_wxid,
+            cancelled, routes_cleared, cleared_keys,
+        )
+
     # ---------- 主入口 ----------
     @on_text_message(priority=45)
     async def handle_text(self, bot: WechatAPIClient, message: dict):
@@ -1231,6 +1282,13 @@ class AssistantPlugin(PluginBase):
             self._session_routes.pop(self._session_key(route), None)
             self._clear_session_pool_key(route)
             await self._send(route, "✅ 已开启新对话")
+            return bool(self.propagate_to_other_plugins)
+
+        # 重置全部会话命令：仅管理员可执行
+        if self._is_admin_reset_cmd(user_text):
+            if not self._is_admin(message):
+                return bool(self.propagate_to_other_plugins)
+            await self._admin_reset_all_sessions(route)
             return bool(self.propagate_to_other_plugins)
         
         # 普通对话无需 admin，需要触发词
@@ -1270,6 +1328,13 @@ class AssistantPlugin(PluginBase):
             await self._send(route, "✅ 已开启新对话")
             return bool(self.propagate_to_other_plugins)
 
+        # 重置全部会话命令：仅管理员可执行
+        if self._is_admin_reset_cmd(user_text):
+            if not self._is_admin(message):
+                return bool(self.propagate_to_other_plugins)
+            await self._admin_reset_all_sessions(route)
+            return bool(self.propagate_to_other_plugins)
+
         # 普通对话无需 admin
         # @消息处理：被 @ 即视为呼叫机器人，无需额外触发词
         # （保留触发词剥离逻辑：若消息以触发词开头则strip掉，若带触发词则按触发词处理）
@@ -1307,6 +1372,13 @@ class AssistantPlugin(PluginBase):
             self._session_routes.pop(self._session_key(route), None)
             self._clear_session_pool_key(route)
             await self._send(route, "✅ 已开启新对话")
+            return bool(self.propagate_to_other_plugins)
+        
+        # 重置全部会话命令：仅管理员可执行
+        if self._is_admin_reset_cmd(user_text):
+            if not self._is_admin(message):
+                return bool(self.propagate_to_other_plugins)
+            await self._admin_reset_all_sessions(route)
             return bool(self.propagate_to_other_plugins)
         
         # 引用消息需触发词（普通对话无需 admin）
