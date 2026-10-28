@@ -65,6 +65,14 @@ class SSEGiveUp(Exception):
     """
 
 
+class GatewayAuthError(Exception):
+    """网关鉴权失败（401/403），可触发 token 强制续租后重试。"""
+
+    def __init__(self, status: int, body: str):
+        super().__init__(f"HTTP {status}: {body[:200]}")
+        self.status = status
+
+
 class SSEClient:
     """轻量 SSE 客户端，按 event 逐条 yield"""
 
@@ -113,9 +121,11 @@ class SSEClient:
                     start_payload["system_prompt"] = system_prompt
                 job_key = ""
                 async with session.post(start_url, json=start_payload,
-                                       headers=self._auth_headers()) as resp:
+                                        headers=self._auth_headers()) as resp:
                     if resp.status != 200:
                         body = await resp.text()
+                        if resp.status in (401, 403):
+                            raise GatewayAuthError(resp.status, body)
                         raise RuntimeError(
                             f"HTTP {resp.status}: {body[:300]}"
                         )
@@ -165,6 +175,8 @@ class SSEClient:
                                                headers=self._auth_headers()) as resp:
                             if resp.status != 200:
                                 body = await resp.text()
+                                if resp.status in (401, 403):
+                                    raise GatewayAuthError(resp.status, body)
                                 raise RuntimeError(f"HTTP {resp.status}: {body[:300]}")
                             current_event = None
                             buf: list[str] = []
@@ -360,11 +372,13 @@ class AssistantPlugin(PluginBase):
             return True
         return (exp - int(time.time())) < self.token_refresh_margin
 
-    async def _refresh_gateway_token(self) -> bool:
+    async def _refresh_gateway_token(self, force: bool = False) -> bool:
         """重新登录网关换取新 token，并同步到 SSEClient 与 config.toml。
 
         全程静默：失败仅记 warning，不影响本次对话（旧 token 可能仍有效）。
         成功则写回配置，使容器重启后也无需人工干预。
+
+        force=True 时跳过临近过期检查，强制续租（用于 401/403 后的重试）。
         """
         if not self.gateway_password or not self.api_base_url:
             return False
@@ -373,7 +387,7 @@ class AssistantPlugin(PluginBase):
             return False
         async with self._token_lock:
             # 持锁后再次判断：排队期间可能已被别的请求刷新成功
-            if not self._token_needs_refresh():
+            if not force and not self._token_needs_refresh():
                 return True
             url = f"{self.api_base_url.rstrip('/')}/api/auth/login"
             payload = json.dumps({"password": self.gateway_password}).encode("utf-8")
@@ -437,6 +451,29 @@ class AssistantPlugin(PluginBase):
                 await self._refresh_gateway_token()
         except Exception as e:
             logger.warning("[Assistant] token 续期检查异常: {}", e)
+
+    async def _stream_with_auth_retry(self, message: str, session_id: str, *args, **kwargs):
+        """调用 _client.stream()，遇到 401/403 时强制续租 token 并重试一次。
+
+        主动续期（_ensure_gateway_token）只覆盖"临近过期"的情况；若 token 已被
+        网关侧撤销、或容器启动时 config.toml 里就是过期 token，则只会在请求时
+        才暴露 403。这里做兜底：鉴权失败 → 强制重新登录换 token → 重放一次请求。
+        """
+        try:
+            async for evt in self._client.stream(message, session_id, *args, **kwargs):
+                yield evt
+        except GatewayAuthError as gae:
+            logger.warning(
+                "[Assistant] 网关鉴权失败 HTTP {}，强制续租 token 后重试 session={}",
+                gae.status, session_id,
+            )
+            if not await self._refresh_gateway_token(force=True):
+                raise RuntimeError(
+                    f"网关鉴权失败(HTTP {gae.status})，且 token 强制续租失败"
+                ) from gae
+            logger.info("[Assistant] token 已强制续租，重试对话 session={}", session_id)
+            async for evt in self._client.stream(message, session_id, *args, **kwargs):
+                yield evt
 
     def _load_global_admins(self) -> set:
         candidates = [
@@ -1466,7 +1503,7 @@ class AssistantPlugin(PluginBase):
             progress_task = asyncio.create_task(_progress_worker())
 
         try:
-            async for evt in self._client.stream(
+            async for evt in self._stream_with_auth_retry(
                 message, session_id, self.default_base_url, self.default_model,
                 workspace=self.workspace, template=self.template, system_prompt=self.system_prompt,
                 mode=self.api_mode
