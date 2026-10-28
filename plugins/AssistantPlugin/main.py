@@ -549,16 +549,6 @@ class AssistantPlugin(PluginBase):
             if ":\n" in raw:
                 sender_wxid = raw.split(":\n", 1)[0].strip()
         sender_name = self._extract_sender_name(message, sender_wxid=sender_wxid, is_group=is_group)
-        # WeChat869 不主动下发 SenderName/NickName，需走 bot API 查联系人昵称
-        if not sender_name and sender_wxid and hasattr(self, "bot") and self.bot:
-            try:
-                cached = self.bot.get_local_nickname(sender_wxid, to_wxid if is_group else None)
-                if cached:
-                    candidate = _safe_text(cached).strip()
-                    if candidate and not self._looks_like_wxid_text(candidate, wxid=sender_wxid):
-                        sender_name = candidate
-            except Exception as e:
-                logger.warning("[Assistant] 查询昵称失败 wxid={}: {}", sender_wxid, e)
         return WatchRoute(
             route_id=to_wxid, to_wxid=to_wxid,
             sender_wxid=sender_wxid, sender_name=sender_name, is_group=is_group,
