@@ -158,3 +158,37 @@ def test_ablation_old_code_loops(env):
 
     assert fake.push_count >= 5, "旧代码应自增殖（每次发送都回路由）"
     assert len(gateway_calls) == 0, "旧代码从不会真正直发网关"
+
+
+def test_facade_wrapper_does_not_leak_to_delegate():
+    """根因回归：插件给 BotFacade 装发送 wrapper 时，不得污染 delegate(终端客户端)。
+
+    旧行为：facade.__setattr__ 把 send_text_message 转发 setattr 到 delegate，
+    RevokeBotMessage 的 _wrapped(内含 facade 的 ReplyRouter 调用) 覆盖终端客户端原生
+    发送方法 → adapter 出站经 facade 又推回队列，形成回环(gw_http=0)。
+    修复：门面自身已定义的方法只设在门面上，不转发 delegate。
+    """
+    from WechatAPI.facade import WechatAPIClient as BotFacade
+
+    class Delegate:
+        async def send_text_message(self, *args, **kwargs):
+            return ("direct",)
+
+        def _should_route_via_reply_router(self, wxid):
+            return False
+
+    delegate = Delegate()
+    facade = BotFacade(resolver=lambda: delegate)
+    _ = facade.bot  # 触发 delegate 解析（复现真实初始化时序）
+
+    original = facade.send_text_message
+
+    async def wrapped(*args, **kwargs):
+        return await original(*args, **kwargs)
+
+    facade.send_text_message = wrapped  # 模拟 RevokeBotMessage._install_send_wrappers
+
+    # 终端客户端的发送方法必须仍是原生方法，绝不能被 facade 的 wrapper 覆盖
+    assert delegate.send_text_message.__func__ is Delegate.send_text_message, (
+        "wrapper 泄漏到了终端客户端，会导致出站回环"
+    )
