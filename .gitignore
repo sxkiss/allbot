@@ -47,6 +47,7 @@ Thumbs.db
 .*
 tests/*
 !tests/test_*.py
+!tests/INDEX.md
 
 
 # Spec workflow 临时文件
