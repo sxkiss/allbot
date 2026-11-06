@@ -81,6 +81,12 @@ class WechatAPIClient:
         if name in self._INTERNAL or name.startswith("_facade"):
             object.__setattr__(self, name, value)
             return
+        # 门面自身已定义的方法（如 send_text_message）只设在门面上，绝不转发给
+        # delegate。否则插件给门面装发送 wrapper 时会污染终端适配器客户端，
+        # 导致 adapter 出站又经门面 ReplyRouter 回到队列形成回环。
+        if hasattr(type(self), name):
+            object.__setattr__(self, name, value)
+            return
         delegate = object.__getattribute__(self, "_delegate")
         if delegate is not None:
             try:
