@@ -272,6 +272,12 @@ class WechatAPIClient(WechatAPIClientBase):
         self.alias = ""
         self.phone = ""
 
+        # 多账户支持：每个 wxid 绑定自己的 authcode / 设备码 / WS ticket
+        self.current_wxid = ""
+        self.wxid_keys: Dict[str, str] = {}
+        self.key_wxids: Dict[str, str] = {}
+        self.account_sessions: Dict[str, Dict[str, Any]] = {}
+
         self.ignore_protect = False
         self.reply_router = None
 
@@ -325,22 +331,32 @@ class WechatAPIClient(WechatAPIClientBase):
         prefix = base_id.split("-", 1)[0].strip().lower()
         return bool(prefix) and prefix != "wechat"
 
-    def _resolve_active_key(self) -> str:
+    def _resolve_active_key(self, wxid: str = "") -> str:
+        # 多账户：优先取指定账户自己的 authcode（或会话里记录的 auth_key）
+        target = str(wxid or "").strip()
+        if target:
+            key = str(self.wxid_keys.get(target, "") or "").strip()
+            if not key:
+                session = self.account_sessions.get(target) or {}
+                key = str(session.get("auth_key", "") or "").strip()
+            if key:
+                return key
         return self.token_key or self.poll_key or self.auth_key
 
-    def _resolve_request_key(self, path: str, provided: Optional[str]) -> str:
+    def _resolve_request_key(self, path: str, provided: Optional[str], wxid: str = "") -> str:
         """解析请求 key。
 
         约定：
         - 业务接口优先使用授权码（token_key/poll_key/auth_key），避免误用 admin_key；
         - /admin/* 仅在调用方未显式传 key 时才自动使用 admin_key。
+        - 传入 wxid 时优先使用该账户绑定的卡密（多账户并行）。
         """
         if provided is not None:
             return provided
         request_path = self._coerce_path(path).lower()
         if request_path.startswith("/admin/"):
             return self.admin_key or ""
-        return self._resolve_active_key()
+        return self._resolve_active_key(wxid)
 
     async def ensure_auth_key(self, exclude_keys: Optional[Iterable[str]] = None) -> str:
         excluded = {str(item or "").strip() for item in (exclude_keys or []) if str(item or "").strip()}
@@ -481,6 +497,7 @@ class WechatAPIClient(WechatAPIClientBase):
         timeout: int = 30,
         raise_for_api_error: bool = True,
         headers: Optional[Dict[str, str]] = None,
+        account_wxid: Optional[str] = None,
     ) -> Any:
         request_method = method.upper().strip()
         headers_arg = headers  # 避免与下方局部变量 headers 重名
@@ -492,7 +509,9 @@ class WechatAPIClient(WechatAPIClientBase):
             request_path = self._coerce_path(path)
         query: Dict[str, Any] = dict(params or {})
 
-        active_key = self._resolve_request_key(path, key)
+        active_key = self._resolve_request_key(
+            path, key, wxid=str(account_wxid or self.current_wxid or "").strip()
+        )
         headers: Dict[str, str] = {}
         if self.protocol_version == "875":
             # 875 认证：query authcode + header X-Access-Token（卡密即授权码）
@@ -686,8 +705,11 @@ class WechatAPIClient(WechatAPIClientBase):
         key: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         raw: bool = False,
+        account_wxid: Optional[str] = None,
     ) -> Any:
-        payload = await self.request(path, method=method, body=body, params=params, key=key)
+        payload = await self.request(
+            path, method=method, body=body, params=params, key=key, account_wxid=account_wxid
+        )
         if raw:
             return payload
         if isinstance(payload, dict) and "Data" in payload:
@@ -703,6 +725,7 @@ class WechatAPIClient(WechatAPIClientBase):
         key: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
         raw: bool = False,
+        account_wxid: Optional[str] = None,
     ) -> Any:
         path, request_method = await self._resolve_operation(group, action, method)
         return await self.call_path(
@@ -712,6 +735,7 @@ class WechatAPIClient(WechatAPIClientBase):
             key=key,
             params=params,
             raw=raw,
+            account_wxid=account_wxid,
         )
 
     @staticmethod
@@ -741,7 +765,15 @@ class WechatAPIClient(WechatAPIClientBase):
         if key and not self.token_key:
             self.token_key = key
 
-    def set_active_auth_key(self, auth_key: str, *, promote: bool = True) -> str:
+    def set_active_auth_key(
+        self,
+        auth_key: str,
+        *,
+        promote: bool = True,
+        wxid: str = "",
+        device_id: str = "",
+        device_name: str = "",
+    ) -> str:
         value = str(auth_key or "").strip()
         if not value:
             return ""
@@ -758,24 +790,116 @@ class WechatAPIClient(WechatAPIClientBase):
             normalized.append(text)
 
         self.auth_keys = normalized
+
+        target = str(wxid or "").strip()
+        if target:
+            # 多账户：卡密按 wxid 绑定，只有「当前账户/首个账户」才写入全局字段，
+            # 避免后登录的账户覆盖前面账户的凭据。
+            self.wxid_keys[target] = value
+            self.key_wxids[value] = target
+            session = self.account_sessions.setdefault(target, {})
+            session["auth_key"] = value
+            if device_id:
+                session["device_id"] = str(device_id)
+            if device_name:
+                session["device_name"] = str(device_name)
+            if not str(self.current_wxid or "").strip() or self.current_wxid == target:
+                self.current_wxid = target
+                self.auth_key = value
+                if device_id:
+                    self.device_id = str(device_id)
+            return value
+
+        # 无 wxid：保持旧行为（单账户兼容）
         self.auth_key = value
         return value
 
-    def remove_auth_keys(self, auth_keys: Iterable[str]) -> list[str]:
+    def bind_account_session(self, wxid: str, auth_key: str = "", **material: Any) -> Dict[str, Any]:
+        """按 wxid 绑定/合并账户会话（卡密、设备码、WS ticket 等）。
+
+        material 可含 token_key/poll_key/ticket/device_id/device_name/device_type/
+        display_uuid/login_tx_id/data62/nickname。仅首次绑定或当前账户为空时才
+        把该账户设为 current_wxid，不覆盖其它账户。
+        """
+        target = str(wxid or "").strip()
+        if not target:
+            return {}
+        session = self.account_sessions.setdefault(target, {})
+        value = str(auth_key or "").strip()
+        if value:
+            session["auth_key"] = value
+            self.wxid_keys[target] = value
+            self.key_wxids[value] = target
+        for field, raw in material.items():
+            if raw is None:
+                continue
+            text = str(raw).strip()
+            if not text:
+                continue
+            session[str(field)] = text
+        current = str(self.current_wxid or "").strip()
+        if not current or current == target:
+            self.current_wxid = target
+            if value:
+                self.auth_key = value
+            for field in ("device_id", "device_name", "device_type"):
+                if session.get(field):
+                    setattr(self, field, session[field])
+            if session.get("token_key"):
+                self.token_key = session["token_key"]
+            if session.get("poll_key"):
+                self.poll_key = session["poll_key"]
+            if session.get("ticket"):
+                self.ticket = session["ticket"]
+        return session
+
+    def remove_auth_keys(self, auth_keys: Iterable[str], wxid: str = "") -> list[str]:
         removed = {str(item or "").strip() for item in auth_keys if str(item or "").strip()}
         existing = self.auth_keys if isinstance(self.auth_keys, list) else []
         self.auth_keys = [str(item).strip() for item in existing if str(item).strip() and str(item).strip() not in removed]
         if str(self.auth_key or "").strip() in removed:
             self.auth_key = self.auth_keys[0] if self.auth_keys else ""
+        target = str(wxid or "").strip()
+        if target:
+            current_key = str(self.wxid_keys.get(target, "") or "").strip()
+            if not removed or current_key in removed:
+                self.wxid_keys.pop(target, None)
+                session = self.account_sessions.get(target)
+                if isinstance(session, dict):
+                    session.pop("auth_key", None)
+            for key in removed:
+                if self.key_wxids.get(key) == target:
+                    self.key_wxids.pop(key, None)
         return list(self.auth_keys)
 
-    def clear_login_session_cache(self) -> None:
+    def clear_login_session_cache(self, wxid: str = "") -> None:
+        target = str(wxid or "").strip()
+        if target:
+            # 只清该账户
+            session = self.account_sessions.pop(target, None) or {}
+            key = str(self.wxid_keys.pop(target, "") or session.get("auth_key", "") or "").strip()
+            if key and self.key_wxids.get(key) == target:
+                self.key_wxids.pop(key, None)
+            if self.current_wxid == target:
+                self.current_wxid = ""
+                self.token_key = ""
+                self.poll_key = ""
+                self.display_uuid = ""
+                self.login_tx_id = ""
+                self.data62 = ""
+                self.ticket = ""
+            return
+
         self.token_key = ""
         self.poll_key = ""
         self.display_uuid = ""
         self.login_tx_id = ""
         self.data62 = ""
         self.ticket = ""
+        self.current_wxid = ""
+        self.wxid_keys.clear()
+        self.key_wxids.clear()
+        self.account_sessions.clear()
 
     def _append_key_to_ws_url(self, ws_url: str, key: str) -> str:
         parsed = urlparse(ws_url)
@@ -889,12 +1013,23 @@ class WechatAPIClient(WechatAPIClientBase):
         top = payload if isinstance(payload, dict) else {}
         data = top.get("Data") if isinstance(top.get("Data"), dict) else {}
 
+        # 先解析 wxid：多账户下凭据需按账户落到各自会话，避免相互覆盖
+        wxid = (
+            _extract_text(_pick_first(data, KEY_WXID_CANDIDATES, ""), "").strip()
+            or _extract_text(_pick_first(top, KEY_WXID_CANDIDATES, ""), "").strip()
+        )
+
         auth_key_value = _extract_text(
             _pick_first(data, KEY_AUTH_KEY_CANDIDATES, "") or _pick_first(top, KEY_AUTH_KEY_CANDIDATES, ""),
             "",
         ).strip() or str(auth_key or "").strip()
         if auth_key_value:
-            self.set_active_auth_key(auth_key_value)
+            self.set_active_auth_key(
+                auth_key_value,
+                wxid=wxid,
+                device_id=device_id,
+                device_name=device_name,
+            )
 
         token_key = _extract_text(
             _pick_first(data, KEY_TOKEN_CANDIDATES, "") or _pick_first(top, KEY_TOKEN_CANDIDATES, ""),
@@ -928,34 +1063,60 @@ class WechatAPIClient(WechatAPIClientBase):
             _pick_first(top, KEY_TICKET_CANDIDATES, "") or _pick_first(data, KEY_TICKET_CANDIDATES, ""),
             "",
         ).strip()
-        wxid = _extract_text(_pick_first(data, KEY_WXID_CANDIDATES, ""), "").strip()
+
+        target = str(wxid or "").strip()
+        is_current = (not str(self.current_wxid or "").strip()) or self.current_wxid == target
+        session: Optional[Dict[str, Any]] = self.account_sessions.setdefault(target, {}) if target else None
+
+        def _store(field: str, value: str) -> None:
+            if not value:
+                return
+            if session is not None:
+                session[field] = value
+            if is_current:
+                setattr(self, field, value)
 
         if token_key:
-            self.token_key = token_key
+            _store("token_key", token_key)
+        effective_poll_key = str(
+            (session or {}).get("poll_key", "") if session is not None else self.poll_key
+        ).strip()
         if poll_key:
-            self.poll_key = poll_key
-        elif uuid and not self.poll_key:
-            self.poll_key = uuid
-        elif auth_key_value and not self.poll_key:
-            self.poll_key = auth_key_value
+            _store("poll_key", poll_key)
+        elif uuid and not effective_poll_key:
+            _store("poll_key", uuid)
+        elif auth_key_value and not effective_poll_key:
+            _store("poll_key", auth_key_value)
 
         if display_uuid:
-            self.display_uuid = display_uuid
+            _store("display_uuid", display_uuid)
         elif uuid:
-            self.display_uuid = uuid
+            _store("display_uuid", uuid)
         if login_tx_id:
-            self.login_tx_id = login_tx_id
+            _store("login_tx_id", login_tx_id)
         if data62:
-            self.data62 = data62
+            _store("data62", data62)
         if ticket:
-            self.ticket = ticket
+            _store("ticket", ticket)
         if wxid:
-            self.wxid = wxid
-        if device_id:
-            self.device_id = str(device_id)
+            _store("wxid", wxid)
+            if is_current:
+                self.wxid = wxid
+        device_type = ""
         if device_name:
             requested_device = str(device_name).strip().lower()
-            self.device_type = "mac" if requested_device == "mac" else "ipad"
+            device_type = "mac" if requested_device == "mac" else "ipad"
+        if device_id:
+            _store("device_id", str(device_id))
+        if device_type:
+            _store("device_type", device_type)
+        if target:
+            self.bind_account_session(
+                target,
+                auth_key_value,
+                device_id=str(device_id or "") if device_id else "",
+                device_name=str(device_name or "") if device_name else "",
+            )
         if qr_url:
             self._sync_key_from_url(qr_url)
 
@@ -1296,10 +1457,15 @@ class WechatAPIClient(WechatAPIClientBase):
         parsed = protocol875.parse_875_login_status(response)
         parsed["raw"] = response if isinstance(response, dict) else {}
 
-        # 登录成功时落库 wxid / nickname
+        # 登录成功时落库 wxid / nickname（多账户：不覆盖已存在的 current_wxid）
         if parsed.get("ok"):
             if parsed.get("wxid"):
-                self.wxid = parsed["wxid"]
+                target = str(parsed["wxid"]).strip()
+                if target and not str(self.current_wxid or "").strip():
+                    self.current_wxid = target
+                    self.wxid = target
+                elif target and self.current_wxid == target:
+                    self.wxid = target
             if parsed.get("nickname"):
                 self.nickname = parsed["nickname"]
 
@@ -1331,7 +1497,13 @@ class WechatAPIClient(WechatAPIClientBase):
         parsed["raw"] = response if isinstance(response, dict) else {}
 
         if parsed.get("wxid"):
-            self.wxid = parsed["wxid"]
+            # 多账户：已有 current_wxid 时不再无条件覆盖全局 wxid
+            target = str(parsed["wxid"]).strip()
+            if target and not str(self.current_wxid or "").strip():
+                self.current_wxid = target
+                self.wxid = target
+            elif target and self.current_wxid == target:
+                self.wxid = target
         if parsed.get("nickname"):
             self.nickname = parsed["nickname"]
 
@@ -1358,17 +1530,22 @@ class WechatAPIClient(WechatAPIClientBase):
             return True
         return code in (None, 0, 200)
 
-    async def get_websocket_ticket_875(self) -> str:
+    async def get_websocket_ticket_875(self, auth_key: str = "", *, wxid: str = "") -> str:
         """875 协议：换取 WebSocket 短时票据（用于收消息）。
 
         调用 /api/Runtime/WebSocketTicket，返回 ticket 字符串。
         未扫码登录时 875 返回 SESSION_NOT_READY，此时返回空串。
+        多账户：可传 auth_key/wxid 换取指定账户的 ticket。
         """
+        target = str(wxid or "").strip()
+        request_key = str(auth_key or "").strip() or self._resolve_active_key(target)
         try:
             response = await self.request(
                 "/runtime/WebSocketTicket",
                 method="POST",
+                key=request_key or None,
                 raise_for_api_error=False,
+                account_wxid=target or None,
             )
         except Exception:
             return ""
@@ -1380,8 +1557,15 @@ class WechatAPIClient(WechatAPIClientBase):
         if isinstance(data, dict):
             ticket = data.get("ticket") or data.get("Ticket") or ""
             if ticket:
-                self.ticket = str(ticket)
-                return str(ticket)
+                ticket = str(ticket)
+                if target:
+                    # 按账户保存 ticket，不覆盖其它账户
+                    self.account_sessions.setdefault(target, {})["ticket"] = ticket
+                    if not str(self.current_wxid or "").strip() or self.current_wxid == target:
+                        self.ticket = ticket
+                else:
+                    self.ticket = ticket
+                return ticket
 
         # 未就绪（SESSION_NOT_READY）时静默返回空串
         return ""
@@ -1429,12 +1613,22 @@ class WechatAPIClient(WechatAPIClientBase):
             return {}
         return response if isinstance(response, dict) else {}
 
-    async def fetch_ws_url_875(self) -> str:
+    async def fetch_ws_url_875(self, wxid: str = "") -> str:
         """875 协议：拼接收消息的 WebSocket 地址。
 
         端口取配置里的 websocketport（默认 18089），路径 /ws/sync?ticket=xxx
+        多账户：优先用该账户自己的 ticket（wxid 为空时沿用全局 ticket）。
         """
-        ticket = await self.get_websocket_ticket_875()
+        target = str(wxid or "").strip()
+        session_ticket = ""
+        if target:
+            session_ticket = str((self.account_sessions.get(target) or {}).get("ticket", "") or "").strip()
+        if session_ticket:
+            ticket = session_ticket
+        else:
+            ticket = await self.get_websocket_ticket_875(wxid=target) if target else await self.get_websocket_ticket_875()
+            if not ticket:
+                ticket = str(self.ticket or "").strip()
         if not ticket:
             return ""
         ws_port = getattr(self, "ws_port", 0) or 18089
@@ -1694,13 +1888,18 @@ class WechatAPIClient(WechatAPIClientBase):
             await asyncio.sleep(interval_seconds)
         return False
 
-    async def log_out(self) -> bool:
-        key = self._resolve_active_key()
+    async def log_out(self, wxid: str = "") -> bool:
+        target = str(wxid or "").strip()
+        key = self._resolve_active_key(target)
         if not key:
             return False
         try:
-            await self.request("/login/LogOut", method="GET", key=key)
-            self.wxid = ""
+            await self.request("/login/LogOut", method="GET", key=key, account_wxid=target or None)
+            if target:
+                # 多账户：只清该账户会话，不影响其它账户
+                self.clear_login_session_cache(wxid=target)
+            else:
+                self.wxid = ""
             return True
         except Exception:
             return False

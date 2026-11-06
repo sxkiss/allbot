@@ -176,9 +176,10 @@ async def message_consumer(allbot, redis, message_db, worker_id: int = 0):
             await asyncio.sleep(1)
 
 
-async def listen_ws_messages(allbot, ws_url: str | Callable[[], str], redis, message_db):
+async def listen_ws_messages(allbot, ws_url: str | Callable[[], str], redis, message_db, account_wxid: str = ""):
     reconnect_interval = 5
     reconnect_count = 0
+    _account_wxid = str(account_wxid or "").strip()
 
     while True:
         try:
@@ -188,9 +189,9 @@ async def listen_ws_messages(allbot, ws_url: str | Callable[[], str], redis, mes
             if _bot is not None and str(getattr(_bot, "protocol_version", "") or "").lower() == "875":
                 if hasattr(_bot, "get_websocket_ticket_875"):
                     try:
-                        _new_ticket = await _bot.get_websocket_ticket_875()
+                        _new_ticket = await _bot.get_websocket_ticket_875(wxid=_account_wxid)
                         if _new_ticket:
-                            logger.info("875 已刷新 WebSocket ticket（重连前换票）")
+                            logger.info("875 已刷新 WebSocket ticket（重连前换票）account={}", _account_wxid or "-")
                         else:
                             logger.warning("875 刷新 ticket 返回空，可能未登录，稍后重试")
                     except Exception as _e:
@@ -558,6 +559,29 @@ class MessageListener:
         except Exception:
             pass
 
+        # 多账户：按 wxid 合并写入 accounts.json，保留其它账户
+        account_wxid = str(payload.get("wxid", "") or "").strip()
+        if account_wxid:
+            accounts_path = self.script_dir / "resource" / "accounts.json"
+            accounts: Dict[str, Any] = {}
+            if accounts_path.exists():
+                try:
+                    with open(accounts_path, "r", encoding="utf-8") as file:
+                        loaded = json.load(file)
+                    if isinstance(loaded, dict):
+                        accounts = loaded
+                except Exception:
+                    accounts = {}
+            merged = dict(accounts.get(account_wxid) or {})
+            merged.update({k: v for k, v in payload.items() if k != "wxid" and v not in (None, "", [])})
+            accounts[account_wxid] = merged
+            try:
+                accounts_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(accounts_path, "w", encoding="utf-8") as file:
+                    json.dump(accounts, file, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
     def _resolve_qrcode_url_from_bot(self, bot: Any) -> str:
         if bot is None:
             return ""
@@ -681,9 +705,8 @@ class MessageListener:
     async def _start_listening_875(self, message_db) -> None:
         """875 协议：登录后先换取 WebSocket ticket，再启动收消息监听。
 
-        与 869 的区别：875 需先调 /api/Runtime/WebSocketTicket 拿短时票据，
-        再连 ws://host:18089/ws/sync?ticket=xxx。此流程与 869 的
-        ws://host:port/ws/GetSyncMsg?key=xxx 完全独立。
+        多账户：account_sessions 非空时按账户 fan-out，每个 wxid 一条独立 WS；
+        否则保持原有单连接行为（兼容单账户）。
         """
         bot = getattr(self.allbot, "bot", None)
         if bot is None:
@@ -698,6 +721,18 @@ class MessageListener:
             except Exception as error:
                 logger.error("875 登录任务异常: {}", error)
 
+        sessions = getattr(bot, "account_sessions", None)
+        account_wxids = [
+            str(wxid).strip()
+            for wxid in (sessions or {})
+            if str(wxid).strip() and not str(wxid).startswith("pending:")
+        ]
+        if account_wxids:
+            logger.info("875 多账户收消息：启动 {} 条账户级 WebSocket 监听", len(account_wxids))
+            for wxid in account_wxids:
+                asyncio.create_task(self._listen_account_875(bot, wxid, message_db))
+            return
+
         if not await bot.is_logged_in(None):
             logger.warning("875 尚未登录，暂时不启动 WS 监听")
             return
@@ -711,6 +746,30 @@ class MessageListener:
         ws_url = self._get_websocket_url
         logger.info("875 WebSocket 消息推送地址: {}", _mask_ws_url(ws_url()))
         await listen_ws_messages(self.allbot, ws_url, self.redis, message_db)
+
+    async def _listen_account_875(self, bot: Any, wxid: str, message_db) -> None:
+        """单账户 875 WS 监听：用该账户自己的 ticket 换连，断线后由 listen_ws_messages 刷新。"""
+        try:
+            session = (getattr(bot, "account_sessions", {}) or {}).get(wxid) or {}
+            auth_key = str(session.get("auth_key", "") or "").strip()
+            ticket = await bot.get_websocket_ticket_875(auth_key=auth_key, wxid=wxid)
+            if not ticket:
+                logger.warning("875 账户 {} 未能获取 WebSocket ticket，等待后续重试", wxid)
+        except Exception as error:
+            logger.warning("875 账户 {} 换票异常: {}", wxid, error)
+
+        def _ws_url_provider(_bot: Any = bot, _wxid: str = wxid) -> str:
+            sess = (getattr(_bot, "account_sessions", {}) or {}).get(_wxid) or {}
+            return self._normalize_875_ws_url(
+                self._build_default_ws_url(),
+                ticket=str(sess.get("ticket", "") or ""),
+            )
+
+        logger.info("875 账户 {} WebSocket 地址: {}", wxid, _mask_ws_url(_ws_url_provider()))
+        try:
+            await listen_ws_messages(self.allbot, _ws_url_provider, self.redis, message_db, account_wxid=wxid)
+        except Exception as error:
+            logger.error("875 账户 {} WS 监听异常退出: {}", wxid, error)
 
     def _build_default_ws_url(self) -> str:
         api_config = self.config.wechat_api
@@ -763,10 +822,10 @@ class MessageListener:
 
         return ws_url
 
-    def _normalize_875_ws_url(self, ws_url: str) -> str:
+    def _normalize_875_ws_url(self, ws_url: str, ticket: str = "") -> str:
         """875 收消息 WS 地址：补 /ws/sync 路径并附加 ticket 票据。
 
-        ticket 从 bot.get_websocket_ticket_875() 获取（异步，此处用缓存值）。
+        ticket 由调用方传入（多账户按账户取 ticket）；未传时回退全局 bot.ticket。
         若已有 ticket 参数则不重复追加。
         """
         runtime_url = (ws_url or "").strip() or self._build_default_ws_url()
@@ -774,8 +833,8 @@ class MessageListener:
         if "/ws/sync" not in runtime_url:
             runtime_url = runtime_url.rstrip("/") + "/ws/sync"
 
-        # 优先使用 bot 缓存的 ticket（由登录流程/WS 重建时刷新）
-        ticket = str(getattr(self.allbot.bot, "ticket", "") or "").strip()
+        # 优先使用传入的账户级 ticket，其次回退 bot 缓存的全局 ticket
+        ticket = str(ticket or "").strip() or str(getattr(self.allbot.bot, "ticket", "") or "").strip()
         if ticket and "ticket=" not in runtime_url:
             sep = "&" if "?" in runtime_url else "?"
             runtime_url = f"{runtime_url}{sep}ticket={ticket}"
