@@ -1092,7 +1092,9 @@ class Wechat875Adapter:
                 "account": key,
                 "display_name": key or "account",
                 "enabled": self.enabled,
-                "connected": bool(account.online),
+                # connected = 协议登录态 AND 本适配器到协议服务的 WS 真实连接。
+                # 不能只用协议侧 online：它是缓存登录态，上游断链（MM_ERR_SYS）时仍返回 true（假在线）。
+                "connected": bool(account.online and account.ws_connected),
                 "wxid": key,
                 "device": str(session.get("device") or account.device_name or "iPad"),
                 "qr_status": session.get("qr_status") or ("confirmed" if account.online else "wait"),
@@ -1178,7 +1180,8 @@ class Wechat875Adapter:
         key = self._account_key(target)
         with self._login_lock:
             session = dict(self._login_sessions.get(key) or {})
-        connected = bool(target.online)
+        # 与 list_accounts 一致：真实在线 = 协议登录态 AND 本适配器 WS 链路存活
+        connected = bool(target.online and target.ws_connected)
         return {
             "success": True,
             "account": key,
@@ -1313,15 +1316,27 @@ class Wechat875Adapter:
         - 离线→在线：恢复并同步真实 wxid
         """
         interval = max(10.0, float(self.wx_cfg.get("onlinePollIntervalSec", 30)))
+        fail_times: Dict[Any, int] = {}
+        max_fail = max(1, int(self.wx_cfg.get("onlinePollMaxFail", 3)))
         while not self._stop_event.is_set():
             for account in list(self._accounts):
                 try:
-                    status = await account.client.get_login_status_875()
+                    status = await asyncio.wait_for(
+                        account.client.get_login_status_875(), timeout=10
+                    )
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    self._logger.debug(f"账户 {account.wxid} 在线轮询失败: {exc}")
+                    # 轮询超时/失败本身即链路异常的强信号（协议侧假在线时会超时）
+                    n = fail_times.get(account, 0) + 1
+                    fail_times[account] = n
+                    if account.online and n >= max_fail:
+                        self._logger.warning(
+                            f"账户 {account.wxid} 在线轮询连续 {n} 次失败（{type(exc).__name__}），判离线"
+                        )
+                        account.online = False
                     continue
+                fail_times[account] = 0
                 was = bool(account.online)
                 now = bool(status.get("online"))
                 if was and not now:
