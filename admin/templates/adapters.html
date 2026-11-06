@@ -545,7 +545,7 @@
      */
     const LOGIN_GUIDES = {
         wechat_875: {
-            hint: '875 登录 = 扫码 + 可能的人脸验证（Pad 验证）。两段都完成，账号才会上线；只扫码不算成功。',
+            hint: '875 登录 = 扫码 + 可能的人脸验证。人脸需第二台手机装 CA、Wi-Fi 代理指向服务器 18080，在手机微信内打开 verification_url 完成；详见官方教程 /swagger/pad-face-guide.html。',
             html: ''
                 + '<p class="mb-2">875 登录分两段：后台扫码 + 可能触发的人脸验证（Pad 验证）；后者不做，登录不生效。</p>'
                 + '<p class="fw-semibold mb-1">扫码登录</p>'
@@ -555,23 +555,26 @@
                 + '<li>点「开始 / 重新登录」→ 微信扫码，状态走「等待扫码 → 已扫码等待确认 → 已确认」，自动回填 wxid、开心跳并转在线。</li>'
                 + '<li>换设备须重新拉码；二维码须为真实 <code>http://weixin.qq.com/x/</code>，套壳网址无效。</li>'
                 + '</ol>'
-                + '<p class="fw-semibold mb-1">人脸验证（如需）</p>'
+                + '<p class="fw-semibold mb-1">人脸验证（如需）— 按官方教程操作</p>'
                 + '<ol class="mb-2 ps-3">'
-                + '<li>新设备 / 部分账号扫码后需人脸，独立于适配器，走协议服务 18062 端口。</li>'
-                + '<li>打开 <code>http://&lt;协议服务&gt;:18062/api/Login/PadFacePage?authcode=&lt;卡密&gt;</code>，按「Pad 验证」页引导完成。</li>'
-                + '<li><code>PadFaceVerifierStatus</code> = <code>running:true</code> 即人脸桥正常（宿主 18180→容器 18080）。</li>'
-                + '<li>直访 18180 根路径报 502 “Request destination unknown” 属正常、非故障；须带 Host 头或走 <code>/__padface_api/</code> 前缀。</li>'
+                + '<li><b>官方完整教程</b>：<code>http://&lt;服务器IP&gt;:18062/swagger/pad-face-guide.html</code>（协议自带，以此为准）。</li>'
+                + '<li>电脑端持续 CheckQR；返回 <code>requires_face_verification=true</code> 时复制最新 <code>verification_url</code>（每次登录都不同，旧的会过期）。</li>'
+                + '<li>验证手机装 CA 并完全信任：iPhone 走 Safari 下载描述文件 + 证书信任设置；Android 按「CA 证书」类型安装（<code>http://&lt;服务器IP&gt;:18062/wechatpadpro-ca.cer</code>）。</li>'
+                + '<li>验证手机 Wi-Fi 手动代理：服务器填 <code>&lt;服务器IP&gt;</code>（不写 http://），端口 <code>18080</code>；手机不能填 127.0.0.1。</li>'
+                + '<li>把 verification_url 发到验证手机，<b>在手机微信内打开</b>完成人脸/滑块；不要用授权手机再扫 PadFacePage。</li>'
+                + '<li>人脸通过后电脑端继续 CheckQR 直到登录成功；然后把验证手机代理改回「关闭」。</li>'
                 + '</ol>'
                 + '<p class="fw-semibold mb-1">如何确认成功</p>'
                 + '<p class="mb-2">账户 <code>connected=true</code>，且 <code>login/status</code> 返回 <code>qr_status=confirmed</code>。</p>'
                 + '<p class="fw-semibold mb-1">常见问题</p>'
                 + '<ul class="mb-0 ps-3">'
-                + '<li>一直连不上？多为未做人脸，<code>connected</code> 恒 false，补做即可。</li>'
+                + '<li>一直连不上？多为未做人脸验证，按上面流程补做。</li>'
                 + '<li>无「登录」按钮？查 <code>enabled=false</code> 或未配 accounts。</li>'
                 + '<li>提示已在线？<code>online=true</code> 属正常保护，先到协议端解绑。</li>'
                 + '<li>二维码过期？TTL 240s，重点「开始」拉新码。</li>'
+                + '<li>公网部署：安全组需放行 <b>18062 与 18080</b> 两端口；服务器 IP 不可达时手机装不了证书也连不上代理。</li>'
                 + '</ul>'
-        },
+},
         wechat_869: {
             hint: '869 扫码登录：点「开始登录」→ 微信扫码 → 状态变「已确认」即上线。',
             html: ''
