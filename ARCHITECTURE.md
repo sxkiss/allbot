@@ -7,9 +7,8 @@ Runtime updates are handled by the admin update subsystem (download -> backup ->
 The adapter layer now includes QQ, Telegram, Web, Win, wx-filehelper-api, ocwx clawbot, WeChat Observatory public API, and WeCom aibot long-connection bridges (wecom_bot defaults off; voice AMR-NB transcode + link template cards).
 Default runtime ships with only the web adapter enabled and all plugins disabled.
 Adapters are started inside bot core initialization before message listening starts.
-Wechat login runs asynchronously to avoid blocking adapter message ingestion.
-Wechat protocol access is encapsulated in `WechatAPI/`, including a dedicated 869 client.
-869 login recovery now uses a shared state machine across startup and QR helper APIs: token/poll restore -> cached auth probe -> wakeup -> same-auth QR -> last-resort new auth.
+Wechat protocol access is fully delegated to adapters (`adapter/wechat_869`, `adapter/wechat_875`); `WechatAPI/` keeps only a protocol-independent BotFacade plus legacy bases. The main framework holds **no** protocol connection and consumes only the Redis `allbot` queue.
+Login (QR) is available only from the admin Adapters page, per adapter. `adapter/loader.py` hot-swaps adapters idempotently (stops old instance before start, `instance_id` tracked). Outbound: BotFacade -> ReplyRouter(`allbot_reply`) -> ReplyDispatcher -> adapter `replyQueue` -> terminal client sends directly to gateway. A facade `__setattr__` guard prevents plugin send-wrappers from leaking onto the terminal client (root cause of the outbound loop, fixed in 5e212db).
 Config loading accepts both section-scoped and legacy top-level transport keys for WechatAPI connectivity.
 Admin security now enforces non-default credentials, challenge-protected 869 login helpers, authenticated WebSocket access, and file access whitelists.
 Admin UI includes a right-side feedback widget that posts to a fixed xxtui channel (title: allbot反馈).
@@ -22,6 +21,6 @@ Built-in plugins also cover lightweight live information retrieval such as offic
 - `admin/INDEX.md`: Admin server, update pipeline, and related APIs
 - `bot_core/INDEX.md`: Core orchestrator, login, and message pipeline
 - `plugins/INDEX.md`: Built-in plugins and lifecycle integration points
-- `tests/INDEX.md`: Project regression tests
+- `tests/INDEX.md`: Project regression tests (offline reply-chain no-loop harness)
 - `WechatAPI/INDEX.md`: Wechat protocol clients (legacy + 869)
 - `utils/INDEX.md`: Shared utilities (config, protocol mapping, etc.)

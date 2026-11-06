@@ -1,3 +1,10 @@
+<!-- 现状校正 2026-11-06 -->
+> **本轮变更（详见 `docs/CHANGELOG.md`）**：
+> - `loader.py` 热插拔幂等化：启动前先停旧实例、`instance_id`/`stopped` 防重复消费者（61d83e7）。
+> - `utils/reply_router.py`：ReplyDispatcher 找不到规则时动态重载（3s 节流）；`_hop` 跳数保护。
+> - `WechatAPI/facade.py::__setattr__` 不再把门面自身方法转发 delegate，阻断插件发送 wrapper 污染终端客户端（5e212db，出站回环真根因）。
+> - 回归测试：`tests/test_reply_chain_no_loop.py`（见 `tests/INDEX.md`）。
+
 <!-- AUTO-DOC: Update me when files in this folder change -->
 
 # WechatAPI
