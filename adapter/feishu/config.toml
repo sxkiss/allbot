@@ -1,0 +1,31 @@
+# 飞书 适配器（源自 bt 网关 octop-gateway 通道桥接）
+# 说明：通道实现代码随仓库携带在 vendor/octop_gateway；平台 SDK 需按需安装：lark-oapi (pip install lark-oapi)
+# 启停为热插拔即时生效；缺少凭据或 SDK 时适配器不会崩溃，仅记录 warning 并等待。
+
+[adapter]
+name = "feishu"
+enabled = false
+module = "adapter.feishu"
+class = "FeishuGatewayAdapter"
+replyQueue = "allbot_reply:feishu"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[feishu]
+enable = false
+platform = "feishu"
+kind = "feishu"
+app_id = ""
+app_secret = ""
+verification_token = ""
+encrypt_key = ""
+botWxid = "feishu-bot"
+
+[feishu.redis]
+queue = "allbot"
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""
