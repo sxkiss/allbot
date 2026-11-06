@@ -11,7 +11,7 @@ on:
       image:
         description: "官方镜像（含 tag）。默认 main = 最新版"
         required: false
-        default: "wechatpadpro/wechatpadprobusiness:main"
+        default: "wechatpadpro/wechatpadpro:main"
       mode:
         description: "release=上传 Release；commit=提交回当前分支"
         required: true
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SYNC_MODE: ${{ github.event.inputs.mode || 'commit' }}
-      SYNC_IMAGE: ${{ github.event.inputs.image || 'wechatpadpro/wechatpadprobusiness:main' }}
+      SYNC_IMAGE: ${{ github.event.inputs.image || 'wechatpadpro/wechatpadpro:main' }}
       EXPECTED_PAD: ${{ github.event.inputs.expected_pad_version || '' }}
     steps:
       - uses: actions/checkout@v4
@@ -51,6 +51,14 @@ jobs:
           fi
           [ -n "$IMAGE" ] || { echo "无法解析镜像 tag"; exit 1; }
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          python3 -c 'import json,urllib.request
+for repo in ("wechatpadpro/wechatpadpro","wechatpadpro/wechatpadprobusiness"):
+    try:
+        u=f"https://hub.docker.com/v2/repositories/{repo}/tags?page_size=30&ordering=last_updated"
+        d=json.load(urllib.request.urlopen(u,timeout=20))
+        print(repo,[t["name"] for t in d.get("results",[])][:20])
+    except Exception as e:
+        print(repo,"tags 查询失败",e)' 
 
       - name: 拉取镜像并提取 /app
         id: extract
@@ -58,7 +66,16 @@ jobs:
           IMAGE: ${{ steps.resolve.outputs.image }}
         run: |
           set -euo pipefail
-          docker pull "$IMAGE"
+          if ! docker pull "$IMAGE"; then
+            if [[ "$IMAGE" == *:main ]]; then
+              FALLBACK="${IMAGE%:main}:latest"
+              echo "main 拉取失败，回退 $FALLBACK"
+              IMAGE="$FALLBACK"
+              docker pull "$IMAGE"
+            else
+              exit 1
+            fi
+          fi
           CID=$(docker create "$IMAGE")
           rm -rf /tmp/upstream && mkdir -p /tmp/upstream/app
           docker cp "$CID":/app/. /tmp/upstream/app/
