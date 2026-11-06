@@ -51,14 +51,7 @@ jobs:
           fi
           [ -n "$IMAGE" ] || { echo "无法解析镜像 tag"; exit 1; }
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-          python3 -c 'import json,urllib.request
-for repo in ("wechatpadpro/wechatpadpro","wechatpadpro/wechatpadprobusiness"):
-    try:
-        u=f"https://hub.docker.com/v2/repositories/{repo}/tags?page_size=30&ordering=last_updated"
-        d=json.load(urllib.request.urlopen(u,timeout=20))
-        print(repo,[t["name"] for t in d.get("results",[])][:20])
-    except Exception as e:
-        print(repo,"tags 查询失败",e)' 
+
 
       - name: 拉取镜像并提取 /app
         id: extract
