@@ -47,7 +47,7 @@ jobs:
           set -euo pipefail
           IMAGE="$INPUT_IMAGE"
           if [ -z "$IMAGE" ]; then
-            IMAGE=$(python3 -c 'import json,urllib.request;u="https://hub.docker.com/v2/repositories/wechatpadpro/wechatpadprobusiness/tags?page_size=100&ordering=last_updated";d=json.load(urllib.request.urlopen(u,timeout=30));print(next((t["name"] for t in d.get("results",[]) if "arm" not in t["name"].lower()),""))')
+            IMAGE=$(python3 -c 'import json,urllib.request;u="https://hub.docker.com/v2/repositories/wechatpadpro/wechatpadprobusiness/tags?page_size=100&ordering=last_updated";d=json.load(urllib.request.urlopen(u,timeout=30));t=next((x["name"] for x in d.get("results",[]) if "arm" not in x["name"].lower()),"");print("wechatpadpro/wechatpadprobusiness:"+t if t else "")')
           fi
           echo "--- 候选 tags ---"
           python3 -c 'import json,urllib.request;u="https://hub.docker.com/v2/repositories/wechatpadpro/wechatpadprobusiness/tags?page_size=20&ordering=last_updated";print([t["name"] for t in json.load(urllib.request.urlopen(u,timeout=20)).get("results",[])])'
