@@ -227,4 +227,26 @@ curl 'http://127.0.0.1:9090/api/adapters/wechat_875/login/status?account=wxid_a'
 - **「账号已在线，无需重新扫码」**：网关返回 `online=true`，属正常保护；先在协议端解绑再验证扫码流程。
 - **二维码是套壳网址**：已修复，`_extract_qr_content` 从 `pwmqr.com/.../?url=` 还原真实 `weixin.qq.com/x/` 链接。
 - **无登录按钮**：`enabled=false` 或未配置任何 `accounts`，实例不注册 LoginCapable。
-- **人脸验证**：875 协议独立的人脸验证入口走 `18062 /api/Login/PadFacePage`，与本适配器扫码登录不是同一路径。
+- **人脸验证**：见下方「人脸验证（Pad 验证）教程」独立章节——它与适配器扫码登录是两段流程，不做完账号不会上线。
+
+## 人脸验证（Pad 验证）教程
+
+> 875 登录分两段：**① 后台扫码（上一节）+ ② 可能触发的人脸验证（本节）**。新设备 / 部分账号扫码后微信会要求人脸验证，且该能力**独立于本适配器**，走 875 协议服务自身的人脸桥，适配器 `capabilities` 不含人脸相关项。只扫码、未做人脸时 `connected` 会一直是 `false`。
+
+### 前置条件
+1. 875 协议服务可达：HTTP `18062`（默认 `baseUrl`）、WS `18089`。
+2. 人脸桥服务已启动：容器内 `/app/pad-face-verify-linux-x64 -port 18080` 拉起 mitmdump 中间人桥，只代理 `weixin110.qq.com` / `security.wechat.com`；宿主端口映射 `18180 → 容器 18080`。
+3. `app.conf` 关键项：`pad_face_verifier_enabled=true`、`pad_face_verifier_port=18080`、`padfaceofficialhandoff=true`。
+4. 拿到该账户的卡密（`authcode`，即 `user_token_key`）。
+
+### 验证步骤
+1. **打开人脸入口**：浏览器访问 `GET http://<协议服务>:18062/api/Login/PadFacePage?authcode=<卡密>`，返回「Pad 验证」HTML 页面。
+2. **按页面引导完成**：在 Pad 验证页面按微信提示完成人脸/辅助验证（该页面由 875 协议服务提供，与后台适配器登录弹窗无关）。
+3. **确认人脸桥状态**：调 `/api/Login/PadFaceVerifierStatus`，返回 `running:true` 即人脸桥正常；配套状态接口还有 `PadFaceStatus`、`PadFaceOpen`、`PadFaceResume`、`PadFaceBootstrap`、`PadFaceBridge`。
+4. **回到后台看上线**：`GET /api/adapters/wechat_875/accounts` 里该账户 `connected=true`，且 `login/status?account=<key>` 返回 `qr_status=confirmed`。
+
+### 常见坑与自检
+- **直接 curl `http://<宿主>:18180/` 返回 502 `Request destination unknown`**：这是**正常**现象（mitmproxy 不知道转发目标），不是人脸桥挂了。必须带 `Host: weixin110.qq.com` / `security.wechat.com` 头，或走 `/__padface_api/<Action>` 前缀访问。
+- **人脸桥无鉴权**：18180 若公网暴露存在中间人桥被滥用风险，建议限制来源 IP 或仅走内网。
+- **一直 `connected=false`**：优先排查是否漏做人脸验证；先看 `PadFaceVerifierStatus` 是否 `running:true`，再回 PadFacePage 补做。
+- **与扫码登录的关系**：本适配器只负责拉码/轮询/会话接管，人脸验证完成后协议侧登录态才会真正确立，两段都完成账号才上线。
