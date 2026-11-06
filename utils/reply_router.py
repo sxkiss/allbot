@@ -3,6 +3,9 @@ import base64
 import json
 import os
 import time
+
+_PUSH_DEDUP = {}
+_PUSH_DEDUP_WINDOW = 5.0
 import tomllib
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
@@ -217,6 +220,11 @@ class ReplyRouter:
 
     async def _push(self, payload: Dict[str, Any]):
         from loguru import logger
+        hop = int(payload.get("_hop", 0) or 0) + 1
+        if hop > 5:
+            logger.error(f"[ReplyRouter] 检测到回复路由回环，丢弃: platform={payload.get('platform')} wxid={payload.get('wxid')}")
+            return self._build_result()
+        payload["_hop"] = hop
         payload["timestamp"] = int(time.time())
         payload_str = json.dumps(payload, ensure_ascii=False)
         logger.info(f"[ReplyRouter] 推送消息到队列 {self.queue_name}: platform={payload.get('platform')}, wxid={payload.get('wxid')}, msg_type={payload.get('msg_type')}")
@@ -343,6 +351,7 @@ class ReplyDispatcher:
         self.base_dir = Path(base_dir)
         self.main_queue = main_queue
         self.routing_rules: Dict[str, str] = {}
+        self._last_rule_reload: float = 0.0
         self.stop_event = asyncio.Event()
 
         # 初始化 Redis 连接
@@ -431,6 +440,13 @@ class ReplyDispatcher:
                 # 查找目标队列
                 target_queue = self.routing_rules.get(platform)
 
+                if not target_queue:
+                    # 动态重载：适配器热启用后规则可能尚未加载，消除启动顺序依赖
+                    import time as _time
+                    if _time.time() - getattr(self, "_last_rule_reload", 0) > 3:
+                        self._last_rule_reload = _time.time()
+                        self._load_routing_rules()
+                        target_queue = self.routing_rules.get(platform)
                 if not target_queue:
                     logger.error(f"未找到平台 {platform} 的路由规则，消息将被丢弃")
                     logger.error(f"请检查 adapter/{platform}/config.toml 中 [adapter] 部分是否配置了 name 和 replyQueue")

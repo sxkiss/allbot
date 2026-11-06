@@ -213,6 +213,13 @@ class Wechat869Adapter:
         for account in self._accounts:
             if account.client is None:
                 account.client = self._create_client(account)
+            # 终端客户端禁止再走 ReplyRouter，否则 reply_queue 消费→发送→回队列 形成回环
+            try:
+                account.client.reply_router = None
+                account.client._force_reply_router = False
+                account.client._adapter_terminal = True
+            except Exception:
+                pass
             # 灌入该账户的会话（会话文件优先；卡密模式下可为空）
             try:
                 from adapter.session_store import apply_robot_stat_to_bot
@@ -499,6 +506,10 @@ class Wechat869Adapter:
                 if not item:
                     continue
                 payload = json.loads(item[1])
+                hop = int(payload.get("_hop", 0) or 0)
+                if hop >= 3:
+                    self._logger.error(f"检测到回复路由回环，丢弃消息: wxid={payload.get('wxid')} hop={hop}")
+                    continue
                 platform = str(payload.get("platform") or "").lower()
                 if platform and platform not in self.platform_aliases:
                     continue
@@ -583,6 +594,13 @@ class Wechat869Adapter:
             self._logger.warning("869 出站失败：无可用账户")
             return
         bot = account.client
+        # 防御：终端客户端绝不能把发送再次路由回队列
+        try:
+            bot.reply_router = None
+            bot._force_reply_router = False
+            bot._adapter_terminal = True
+        except Exception:
+            pass
         msg_type = str(payload.get("msg_type") or "text").lower()
         content = payload.get("content")
         if content is None:
