@@ -470,9 +470,11 @@ class Wechat875Adapter:
                     self.redis_queue,
                     json.dumps(normalized, ensure_ascii=False),
                 )
-                self._logger.debug(
-                    f"入队 platform={self.platform} account={account.wxid} "
-                    f"from={normalized['FromWxid']} msg_id={normalized['MsgId']}"
+                # INFO 级：确保默认 logLevel=INFO 下能看到真实入站消息（便于判断「有没有消息」）
+                self._logger.info(
+                    f"入站消息 platform={self.platform} account={account.wxid} "
+                    f"from={normalized['FromWxid']} msg_id={normalized['MsgId']} "
+                    f"content={str(normalized.get('Content', {}).get('string', ''))[:40]}"
                 )
             except Exception as exc:
                 self._logger.error(f"消息入队失败: {exc}")
