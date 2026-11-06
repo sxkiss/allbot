@@ -20,6 +20,9 @@ kind = "xiaoyi"
 ak = ""
 sk = ""
 agent_id = ""
+# 可选：留空使用默认网关
+ws_url = ""
+ws_url_backup = ""
 botWxid = "xiaoyi-bot"
 
 [xiaoyi.redis]

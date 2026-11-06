@@ -18,7 +18,12 @@ enable = false
 platform = "discord"
 kind = "discord"
 bot_token = ""
-httpProxy = ""
+# 注意：字段名必须是 http_proxy（octop DiscordConfig 的真实字段，from_dict 会静默丢弃未知键）
+http_proxy = ""
+http_proxy_auth = ""
+allow_all_channels = true
+allowed_user_ids = []
+allowed_channel_ids = []
 botWxid = "discord-bot"
 
 [discord.redis]

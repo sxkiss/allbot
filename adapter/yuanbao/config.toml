@@ -20,6 +20,15 @@ kind = "yuanbao"
 app_key = ""
 app_secret = ""
 token = ""
+# 可选（留空使用 octop 默认值）
+api_base = ""
+api_domain = ""
+ws_url = ""
+bot_id = ""
+bot_version = ""
+heartbeat_interval = 30
+request_timeout = 20
+connect_timeout = 15
 botWxid = "yuanbao-bot"
 
 [yuanbao.redis]
