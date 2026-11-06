@@ -1,81 +1,58 @@
 #!/bin/bash
 set -e
-# @input: /app/main_config.toml, /app/requirements.txt, /etc/redis/redis.conf
-# @output: 每次启动安装 Python 依赖，启动容器内 Redis，并运行 /app/main.py
-# @position: Docker 容器入口脚本（安装依赖 -> 启动 Redis -> 启动主程序）
-# @auto-doc: Update header and related docs when startup flow changes
+# @input: conf875/app.conf、环境变量 WX_TOKEN_KEY / WX_REDIS_LINK
+# @output: 启动容器内 Redis + 875 协议服务（人脸验证由 875 二进制按配置拉起）
+# @position: 875 纯协议服务容器入口（不含 AllBot 框架）
 
-# 配置 pip 镜像源（必须在所有 pip 操作之前）
-pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
-pip config set global.trusted-host mirrors.tuna.tsinghua.edu.cn
+APP_DIR=/app
+CONF_SRC="$APP_DIR/conf875/app.conf"
+CONF_DST=/config/app.conf
 
-if ! python3 -c "import sys; assert sys.version_info >= (3,11,3)"; then
-    python -m pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --upgrade pip
-    wget https://www.python.org/ftp/python/3.11.3/Python-3.11.3.tgz
-    tar xzf Python-3.11.3.tgz
-    cd Python-3.11.3
-    apt-get install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev libsqlite3-dev
-    ./configure --enable-optimizations --enable-loadable-sqlite-extensions
-    make -j $(nproc)
-    make install
-    python3.11 --version
-fi
-cd ..
-echo "启动 Python 运行环境...请确保 /app/main_config.toml 已按当前部署环境填写"
-cd /app
-echo "安装 Python 依赖..."
-pip install -r requirements.txt
-pip install --upgrade pip
-echo "Python 依赖安装完成"
-
-# 启动系统Redis服务（使用持久化目录）
-echo "启动系统Redis服务..."
+echo "[entrypoint] 启动 Redis..."
 redis-server /etc/redis/redis.conf --daemonize yes --dir /data/redis
+for i in $(seq 1 20); do
+    redis-cli ping >/dev/null 2>&1 && break
+    sleep 0.5
+done
+redis-cli ping >/dev/null 2>&1 || { echo "[entrypoint] Redis 启动失败"; exit 1; }
 
-# 等待系统Redis服务启动
-echo "等待系统Redis服务可用..."
-sleep 2
-
-# 875 协议服务（WeChatPadProMAX，监听 0.0.0.0:18062，WS 18089）
-# 注意：875 是 Beego 应用，固定读取 /app/conf/app.conf（不是 conf875/），
-# 必须先部署配置到该路径，否则 user_token_key 等配置读不到会导致启动失败。
-if [ -x /app/wechatpad875 ] && [ -f /app/conf875/app.conf ]; then
-    # 875 API 控制台静态资源自愈：二进制把 StaticDir["/"] 指向相对目录 swagger（即 /app/swagger），
-    # 目录缺失时根路径与 /swagger 全部 404，这里兜底补齐（镜像已内置，此段防挂载覆盖/误删）。
-    if [ ! -d /app/swagger ]; then
-        echo "875 控制台静态目录缺失，尝试自愈..."
-        if [ -d /app/swagger_seed ]; then
-            cp -a /app/swagger_seed /app/swagger
-        else
-            echo "警告：无 /app/swagger_seed 可恢复，控制台将不可用"
-        fi
-    fi
-    if [ -d /app/swagger ] && [ ! -e /app/swagger/swagger ]; then
-        ln -sfn . /app/swagger/swagger
-    fi
-    echo "部署 875 配置到 /config/app.conf（入口强制路径）..."
-    mkdir -p /config
-    cp /app/conf875/app.conf /config/app.conf
-    # 兼容 Beego 默认路径（部分版本读 /app/conf/app.conf）
-    mkdir -p /app/conf
-    cp /app/conf875/app.conf /app/conf/app.conf
-    # 卡密：优先用环境变量 WX_TOKEN_KEY，未设置则兜底默认值，
-    # 保证容器在任何情况下都能启动（授权是否有效由控制面 authserver 裁决）
-    WX_TOKEN_KEY_EFFECTIVE="${WX_TOKEN_KEY:-local-dev-placeholder}"
-    sed -i "s|^user_token_key = .*|user_token_key = \"${WX_TOKEN_KEY_EFFECTIVE}\"|" /config/app.conf /app/conf/app.conf
-    echo "875 卡密已设置（来源: ${WX_TOKEN_KEY:+环境变量}${WX_TOKEN_KEY:-兜底默认值}）"
-    # redis 地址从环境变量注入（容器内 redis 默认 127.0.0.1:6379）
-    if [ -n "${WX_REDIS_LINK:-}" ]; then
-        sed -i "s|^redislink = .*|redislink = ${WX_REDIS_LINK}|" /config/app.conf /app/conf/app.conf
-    fi
-    echo "启动 875 协议服务..."
-    # 强制指定 Beego 配置文件路径，确保主程序读取正确的端口和人脸验证配置
-    export BEEGO_CONFIG_PATH=/config/app.conf
-    cd /app && nohup ./wechatpad875 > /tmp/875.log 2>&1 &
-    sleep 3
-    cd /app
+if [ ! -x "$APP_DIR/wechatpad875" ]; then
+    echo "[entrypoint] 缺少可执行文件 $APP_DIR/wechatpad875"
+    exit 1
+fi
+if [ ! -f "$CONF_SRC" ]; then
+    echo "[entrypoint] 缺少配置 $CONF_SRC"
+    exit 1
 fi
 
+# 875 控制台静态资源自愈
+if [ ! -d "$APP_DIR/swagger" ] && [ -d "$APP_DIR/swagger_seed" ]; then
+    cp -a "$APP_DIR/swagger_seed" "$APP_DIR/swagger"
+fi
+if [ -d "$APP_DIR/swagger" ] && [ ! -e "$APP_DIR/swagger/swagger" ]; then
+    ln -sfn . "$APP_DIR/swagger/swagger"
+fi
 
-echo "启动XXXBot主应用..."
-exec python3 ./main.py
+# 部署配置到 875 强制读取路径
+mkdir -p /config "$APP_DIR/conf"
+cp "$CONF_SRC" "$CONF_DST"
+cp "$CONF_SRC" "$APP_DIR/conf/app.conf"
+
+WX_TOKEN_KEY_EFFECTIVE="${WX_TOKEN_KEY:-local-dev-placeholder}"
+sed -i "s|^user_token_key = .*|user_token_key = \"${WX_TOKEN_KEY_EFFECTIVE}\"|" "$CONF_DST" "$APP_DIR/conf/app.conf"
+if [ -n "${WX_REDIS_LINK:-}" ]; then
+    sed -i "s|^redislink = .*|redislink = ${WX_REDIS_LINK}|" "$CONF_DST" "$APP_DIR/conf/app.conf"
+fi
+echo "[entrypoint] 875 卡密来源: ${WX_TOKEN_KEY:+环境变量}${WX_TOKEN_KEY:-兜底默认值}"
+
+if [ -x "$APP_DIR/pad-face-verify-linux-x64" ]; then
+    echo "[entrypoint] 人脸验证二进制就绪（由 875 按 pad_face_verifier_enabled 拉起，端口 18080）"
+else
+    echo "[entrypoint] 警告：缺少 pad-face-verify-linux-x64，人脸验证不可用"
+fi
+
+export BEEGO_CONFIG_PATH="$CONF_DST"
+export PAD_FACE_VERIFY_BIN="$APP_DIR/pad-face-verify-linux-x64"
+cd "$APP_DIR"
+echo "[entrypoint] 启动 875 协议服务（HTTP 18062 / WS 18089 / 人脸 18080）..."
+exec ./wechatpad875

@@ -1,392 +1,50 @@
-# 🤖 AllBot - 多平台智能机器人系统
+# 875 协议服务（纯协议 + 人脸验证）
 
-<div align="center">
+本仓库仅包含 875（WeChatPadProMAX）协议服务运行所需的二进制、配置与启动脚本，
+**不含 AllBot 框架**。框架侧通过 `adapter/wechat_875`（AllBot dev 分支）接入。
 
-[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://hub.docker.com/r/sxkiss/allbot)
-[![Telegram](https://img.shields.io/badge/telegram-join-blue.svg)](https://t.me/+--ToAPQBj-Q2YjM1)
+## 组件
 
-**支持微信、QQ、Telegram、企业微信智能机器人等多平台的插件化智能机器人系统**
+| 路径 | 说明 |
+|---|---|
+| `wechatpad875` | 875 协议服务二进制（HTTP 18062 / WS 18089） |
+| `conf875/app.conf` | 875 配置（端口、Redis、人脸验证开关） |
+| `wxserver_runtime/bin/pad-face-verify-linux-x64` | 人脸验证二进制（18080） |
+| `wxserver_runtime/assets|static|swagger` | 运行时资源与控制台静态资源 |
+| `lib/`、`lib875/` | 授权/运行库与 key |
+| `08sae.dat` | 运行时数据资源 |
+| `entrypoint.sh` | 启动 Redis → 部署配置 → 启动 875 |
+| `Dockerfile` / `docker-compose.yml` | 协议服务镜像与编排 |
 
-[快速开始](#-快速开始) • [功能特性](#-核心特性) • [文档](#-文档导航) • [插件开发](#-插件开发) • [交流群](#-联系方式)
+## 端口
 
-</div>
+- `18062`：875 HTTP API（带卡密 `?authcode=<key>` 或 Header `X-Access-Token`）
+- `18089`：875 WebSocket（`/ws/sync`）
+- `18080`：人脸验证（由 875 按 `pad_face_verifier_enabled=true` 拉起）
 
----
-
-> ## ⚠️ 免责声明
->
-> **本项目仅供学习交流使用，严禁用于商业用途！**
-> 使用本项目所产生的一切法律责任和风险，由使用者自行承担，与项目作者无关。
-> 请遵守相关法律法规，合法合规使用本项目。
-
----
-
-## 📝 项目概述
-
-AllBot 是一个**支持多平台的智能机器人系统**，采用插件化架构和事件驱动设计，提供了丰富的交互体验和强大的扩展能力。
-
-### 核心特性
-
-- 🎯 **插件化架构**：内置 13 个插件（`plugins/`），支持热加载，并可通过插件市场安装更多
-- 🤖 **多 AI 平台**：Dify、OpenAI、FastGPT、SiliconFlow 等
-- 🌐 **多平台支持**：微信、微信 clawbot 渠道（ocwx）、QQ、Telegram、Web、Windows、企业微信智能机器人（wecom_bot，默认关闭）
-- 💻 **Web 管理后台**：FastAPI + Bootstrap 5 现代化界面
-- 🐳 **容器化部署**：Docker Compose 一键启动
-- ⚡ **高性能异步**：全异步架构，优先级调度（0-99）
-
-### 技术栈
-
-Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Bootstrap 5
-
-## 📚 文档导航
-
-### 用户文档
-- [用户手册](docs/用户手册.md) - 完整使用指南
-- [配置指南](docs/配置指南.md) - 详细配置说明
-- [插件列表](docs/插件列表.md) - 插件市场与可用插件概览
-- [多平台适配器](docs/multi-platform-adapter.md) - QQ/Telegram/Web/Win/ocwx/wecom_bot
-
-### 开发文档
-- [系统架构文档](docs/系统架构文档.md) - 架构设计
-- [插件开发指南](docs/插件开发指南.md) - 插件开发教程
-- [API 文档](docs/API文档.md) - API 接口说明
-- [AI 开发指南](CLAUDE.md) - AI 辅助开发
-
-### 平台支持
-
-| 平台 | 协议 | 说明 |
-|------|------|------|
-| **微信** | 875（WeChatPadProMAX） | 卡密授权 + 多端登录 |
-| **微信 clawbot 渠道（ocwx）** | openclaw-weixin HTTP JSON | 多账号扫码登录与 ReplyQueue 回写 |
-| **QQ** | NTQQ | 私聊和群聊 |
-| **Telegram** | Bot API | 长轮询/Webhook |
-| **企业微信智能机器人（wecom_bot）** | aibot 长连接（BotID+Secret） | 默认关闭；text/media/voice(AMR-NB)/template_card |
-| **Web** | WebSocket/HTTP | 管理后台聊天 |
-| **Windows** | WebSocket/HTTP | 本地消息通道 |
-
-详细配置请参考 [配置指南](docs/配置指南.md)。
-
-## 🚀 快速开始
-
-### 分支说明
-
-| 分支 | 说明 |
-|------|------|
-| `main` | 纯 allbot 框架（不含 wxserver/875 二进制） |
-| `feat/wxserver875-license` | 含 wxserver + 875 协议服务 + 远程卡密授权 + 多端登录支持 |
-
-> **需要微信协议服务（875）+ 卡密授权的用户**：请使用 `feat/wxserver875-license` 分支，见下方说明。
-
-### feat/wxserver875-license 分支（含 875 协议 + 卡密授权）
-
-> 该分支自带 **MySQL + Redis + 875 协议服务**，`docker compose up -d` 一条命令拉起全部依赖，无需手动装数据库。
+## 运行
 
 ```bash
-# 克隆项目并切换到 feat 分支
-git clone -b feat/wxserver875-license https://github.com/sxkiss/allbot.git
-cd allbot
-
-# 启动（自动起 MySQL / Redis / 875 / 管理后台）
-docker compose up -d
-
-# 查看日志
-docker compose logs -f
+cp .env.example .env   # 或自行创建：WX_TOKEN_KEY=<卡密>
+docker compose up -d --build
 ```
 
-**端口：**
+`.env`：
 
-| 端口 | 用途 |
-|------|------|
-| `9091` | 管理后台（宿主机访问 `http://<你的IP>:9091`） |
-| `18062` | 875 协议 HTTP API（容器内） |
-| `18089` | 875 协议 WebSocket（容器内） |
+```env
+WX_TOKEN_KEY=你的卡密
+# 可选：WX_REDIS_LINK=127.0.0.1:6379
+```
 
-**使用：**
-1. 浏览器打开 `http://<你的IP>:9091`，进入二维码登录页
-2. 卡密输入框填入卡密 → 提交拉码
-3. 页面可切换登录端（iPad / Mac / Pad / Windows / 车载 等）
-
-**卡密配置（二选一）：**
-- **页面填写**：在二维码页直接输入卡密（推荐，无需重启）
-- **文件配置**：仓库自带 `.env` 文件，把里面的 `WX_TOKEN_KEY` 改成你的卡密，`docker compose up -d` 生效（其他环境变量已内置镜像，无需再配）
-
-**特性：**
-- **875 协议**：WeChatPadProMAX，卡密授权拉码登录
-- **多端登录**：iPad / Mac / 安卓 Pad / Windows / 车载 等多种设备类型
-- **授权管理**：基于卡密使用授权，绑定设备
-- **开箱即用**：环境变量内置镜像，只有卡密需要在 `.env` 填写
-
-### main 分支（纯 allbot 框架）
+健康检查：
 
 ```bash
-git clone https://github.com/sxkiss/allbot.git
-cd allbot
-cp main_config.template.toml main_config.toml
-docker compose up -d
+curl -s http://127.0.0.1:18062/api/Login/GetLoginStatus?authcode=<key>
+curl -s "http://127.0.0.1:18062/api/Login/PadFaceVerifierStatus?authcode=<key>"
 ```
 
-> 纯框架版，不含 875 协议服务，管理后台端口为 `9090`。需要微信协议能力请使用 `feat/wxserver875-license` 分支。
+## 说明
 
-### 访问管理后台
-
-- 875 分支：`http://<你的IP>:9091`
-- main 分支：`http://<你的IP>:9090`
-- 用户名/密码：在 `main_config.toml` 的 `[Admin]` 中配置
-- `[Admin].secret-key` 可留空；未设置、默认值或过短时启动会自动生成并写回配置文件
-
-
-## ✨ 主要功能
-
-### 管理后台
-控制面板 | 插件管理 | 适配器管理 | 文件管理 | 联系人管理 | 通知管理 | 意见反馈 | AI 平台配置 | 系统监控
-
-### 智能对话
-多模型支持 | 图文识别 | 语音交互 | 上下文记忆 | 聊天室模式 | 积分系统
-
-### 插件系统
-内置 13 个插件（`plugins/`），并支持通过插件市场扩展更多能力，覆盖 AI 对话、娱乐游戏、工具实用、文件媒体、系统管理等领域。
-
-详细功能列表请查看 [插件列表](docs/插件列表.md)。
-
-## 🔌 插件开发
-
-### 插件结构
-
-```
-plugins/YourPlugin/
-├── __init__.py      # 导出插件类
-├── main.py          # 插件逻辑
-├── config.toml      # 配置文件
-└── README.md        # 说明文档
-```
-
-### 最小示例
-
-```python
-from utils.plugin_base import PluginBase
-from utils.decorators import on_text_message
-
-class YourPlugin(PluginBase):
-    description = "插件功能描述"
-    author = "作者名称"
-    version = "1.0.0"
-
-    @on_text_message(priority=50)
-    async def handle_text(self, bot, message: dict):
-        content = message.get("content", "")
-        if content.startswith("你的命令"):
-            await bot.send_text(
-                to_wxid=message["from_wxid"],
-                msg="回复内容"
-            )
-            return False  # 停止后续插件处理
-        return True  # 继续传递给后续插件
-```
-
-### 配置文件
-
-```toml
-[basic]
-enable = true      # 是否启用
-priority = 80      # 全局优先级（可选）
-
-[settings]
-option_1 = "value"
-```
-
-### 优先级系统
-
-| 范围 | 用途 | 示例 |
-|------|------|------|
-| 90-99 | 系统级 | 管理插件、监控 |
-| 70-89 | 高优先级 | AI 对话、命令 |
-| 50-69 | 普通功能 | 工具、娱乐 |
-| 30-49 | 低优先级 | 自动回复 |
-| 0-29 | 兜底处理 | 默认回复 |
-
-### 可用装饰器
-
-`@on_text_message` | `@on_image_message` | `@on_voice_message` | `@on_video_message` | `@on_file_message` | `@on_friend_request` | `@on_group_invite` | `@schedule`
-
-详细教程请参考 [插件开发指南](docs/插件开发指南.md)。
-
-## 🔴 常见问题
-
-### 安装与部署
-
-**依赖安装失败**
-- 更新 pip：`pip install --upgrade pip`
-- 安装开发工具：`apt-get install python3-dev`
-
-**无法连接协议服务**
-- 确认协议服务正常运行
-- 检查网络连接和端口设置
-- 验证 `main_config.toml` 中的服务地址
-
-**Redis 连接错误**
-- 确认 Redis 服务运行中
-- 检查端口和访问权限
-- Windows 用户：先启动 Redis，再启动协议服务
-
-### 功能问题
-
-**语音识别失败**
-- 确认 FFmpeg 已安装并添加到 PATH
-- 检查 SpeechRecognition 依赖
-
-**插件不生效**
-- 检查插件 `config.toml` 中主开关为 `enable = true`（默认均为关闭）
-- 查看日志 `logs/allbot_*.log`
-- 确认优先级未被覆盖
-
-**无法访问管理后台**
-- 确认服务运行在 9090 端口
-- 检查用户名密码配置
-- 检查 `[Admin].secret-key`：未设置、默认值或过短（<24）时启动会自动生成并写回配置
-- 如果使用 HTTPS/反向代理，检查 `session-cookie-secure` 与 `cors-origins` 是否按部署环境正确配置
-- 检查防火墙设置
-
-详细问题排查请参考 [用户手册](docs/用户手册.md)。
-
-## 📂 项目结构
-
-```
-AllBot/
-├── admin/              # 管理后台（FastAPI + Bootstrap 5）
-├── adapter/            # 多平台适配器（QQ/TG/Web/Win/ocwx/wx/wecom_bot 等）
-├── plugins/            # 内置插件（默认 13 个，可通过插件市场扩展）
-├── database/           # 数据持久化（SQLite + Redis）
-├── utils/              # 工具模块（插件管理、事件系统）
-├── WechatAPI/          # 微信协议封装
-├── bot_core/           # 核心调度引擎（重构后 7 个子模块）
-├── docs/               # 文档目录
-├── main.py             # 程序入口
-├── main_config.toml    # 主配置文件
-└── docker-compose.yml  # Docker 部署配置
-```
-
-详细架构说明请参考 [CLAUDE.md](CLAUDE.md)。
-
-## 🙏 鸣谢
-
-本项目的开发离不开以下作者和项目的支持与贡献：
-
-<table style="border-collapse: collapse; border: none;">
-  <tr style="border: none;">
-    <td width="180" align="center" style="border: none; padding: 10px;">
-      <div style="border-radius: 50%; overflow: hidden; width: 120px; height: 120px; margin: 0 auto;">
-        <img src="https://avatars.githubusercontent.com/u/83214045" width="120" height="120">
-      </div>
-      <br>
-      <strong style="font-size: 16px;">HenryXiaoYang</strong>
-      <br>
-      <a href="https://github.com/HenryXiaoYang" style="text-decoration: none; color: #0366d6;">个人主页</a>
-    </td>
-    <td style="border: none; padding: 10px;">
-      <p style="margin-bottom: 8px; font-size: 15px;">项目：<a href="https://github.com/HenryXiaoYang/AllBotV2" style="text-decoration: none; color: #0366d6;">AllBotV2</a> - 本项目的重要参考源</p>
-      <p style="margin-top: 0; font-size: 15px;">提供了微信机器人的基础架构和核心功能，为本项目的开发提供了宝贵的参考。</p>
-    </td>
-  </tr>
-  <tr style="border: none;">
-    <td width="180" align="center" style="border: none; padding: 10px;">
-      <div style="border-radius: 50%; overflow: hidden; width: 120px; height: 120px; margin: 0 auto;">
-        <img src="https://avatars.githubusercontent.com/u/178422005" width="120" height="120">
-      </div>
-      <br>
-      <strong style="font-size: 16px;">heaven2028</strong>
-      <br>
-      <a href="https://github.com/heaven2028" style="text-decoration: none; color: #0366d6;">个人主页</a>
-    </td>
-    <td style="border: none; padding: 10px;">
-      <p style="margin-bottom: 8px; font-size: 15px;">与本项目作者共同完成的开发工作</p>
-      <p style="margin-top: 0; font-size: 15px;">在功能扩展、界面设计和系统优化方面做出了重要贡献。</p>
-    </td>
-  </tr>
-  <tr style="border: none;">
-    <td width="180" align="center" style="border: none; padding: 10px;">
-      <div style="border-radius: 50%; overflow: hidden; width: 120px; height: 120px; margin: 0 auto;">
-        <img src="https://avatars.githubusercontent.com/u/169164040?v=4" width="120" height="120">
-      </div>
-      <br>
-      <strong style="font-size: 16px;">NanSsye</strong>
-      <br>
-      <a href="https://github.com/NanSsye" style="text-decoration: none; color: #0366d6;">个人主页</a>
-    </td>
-    <td style="border: none; padding: 10px;">
-      <p style="margin-bottom: 8px; font-size: 15px;">项目：<a href="https://github.com/NanSsye/xbot" style="text-decoration: none; color: #0366d6;">xbot</a></p>
-      <p style="margin-top: 0; font-size: 15px;">为项目演进提供了重要参考与启发。</p>
-    </td>
-  </tr>
-</table>
-
-同时感谢所有其他贡献者和使用的开源项目。
-
-## 📞 联系方式
-
-- **GitHub**: [https://github.com/sxkiss/allbot](https://github.com/sxkiss/allbot)
-- **官方交流群**： [https://t.me/+--ToAPQBj-Q2YjM1](https://t.me/+--ToAPQBj-Q2YjM1)
-- **意见反馈**：登录管理后台后，点击右侧悬浮「意见反馈」提交内容与联系方式
-- **版权说明**：© 2025 老夏的金库 & sxkiss 二次开发
-
-## 💻 管理后台界面展示
-
-<table>
-  <tr>
-    <td width="50%" align="center">
-      <img src="https://github.com/user-attachments/assets/2f716d30-07df-4e50-8b2d-d18371a7b4ed" width="400">
-    </td>
-    <td width="50%" align="center">
-      <img src="https://github.com/user-attachments/assets/50bc4c43-930b-4332-ad07-aaeb432af37f" width="400">
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="https://github.com/user-attachments/assets/a60c5ce4-bae4-4eed-82a6-e9f0f8189b84" width="400">
-    </td>
-    <td width="50%" align="center">
-      <img src="https://github.com/user-attachments/assets/5aaa5450-7c13-43a1-9310-471af304408d" width="400">
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="https://github.com/user-attachments/assets/267b8be9-8287-4ab8-8ad7-e01e17099296" width="400">
-    </td>
-    <td width="50%" align="center">
-      <img src="https://github.com/user-attachments/assets/adfee5d7-dbfb-4ab4-9f7d-0e1321093cd3" width="400">
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <img src="https://github.com/user-attachments/assets/05e8f4c0-6ab2-4c60-b168-36bb62d40058" width="400">
-    </td>
-    <td width="50%" align="center">
-      <img src="https://github.com/user-attachments/assets/5c77ef23-85d6-40f3-9f93-920f115821b9" width="400">
-    </td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <td width="33%" align="center">
-      <img src="https://github.com/user-attachments/assets/f61afa92-d7b3-4445-9cd1-1d72aa35acb9" width="260">
-    </td>
-    <td width="33%" align="center">
-      <img src="https://github.com/user-attachments/assets/81473990-dc0e-435a-8b45-0732d92d3201" width="260">
-    </td>
-    <td width="33%" align="center">
-      <img src="https://github.com/user-attachments/assets/f82dd319-69f0-4585-97df-799bed5d2948" width="260">
-    </td>
-  </tr>
-</table>
-
----
-
-<div align="center">
-
-**⭐ 如果这个项目对你有帮助，请给一个 Star ⭐**
-
-**Made with ❤️ by AllBot Team**
-
-</div>
+- 人脸验证二进制由 875 服务按配置自动拉起，入口脚本只做存在性检查与提示。
+- 卡密通过环境变量注入到 `/config/app.conf` 与 `/app/conf/app.conf`，不写入仓库。
+- 本仓库不再包含管理后台、插件、适配器或消息框架；这些由 AllBot 主线负责。

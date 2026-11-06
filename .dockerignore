@@ -1,7 +1,10 @@
+.git/
+.github/
 data/
 logs/
-resource/
-.git/
 __pycache__/
 *.pyc
 *.bak
+.env
+README.md
+*.md
