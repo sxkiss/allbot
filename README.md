@@ -55,7 +55,7 @@ curl -s "http://127.0.0.1:18062/api/Login/PadFaceVerifierStatus?authcode=<key>"
 
 工作流：`.github/workflows/sync-upstream-binaries.yml`（手动触发 `workflow_dispatch`）
 
-- **image**：官方镜像，如 `wechatpadpro/wechatpadprobusiness:v2026.11.06.1`；留空自动取 Docker Hub 最新 tag
+- **image**：官方镜像，默认 `wechatpadpro/wechatpadprobusiness:main`（main = 最新版）；也可指定日期 tag
 - **mode**：
   - `release`：把官方镜像 `/app` 全量打包为 `wppro-<version>.tar.gz` 上传 Release
   - `commit`：把主程序/人脸验证/metadata/swagger/runtime 资源按仓库布局提交回当前分支
