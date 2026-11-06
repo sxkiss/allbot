@@ -9,7 +9,7 @@
 
 **支持微信、QQ、Telegram、企业微信智能机器人等多平台的插件化智能机器人系统**
 
-[快速开始](#-快速开始) • [功能特性](#-核心特性) • [文档](#-文档导航) • [插件开发](#-插件开发) • [交流群](#-联系方式)
+[更新日志](docs/CHANGELOG.md) • [快速开始](#-快速开始) • [功能特性](#-核心特性) • [文档](#-文档导航) • [插件开发](#-插件开发) • [交流群](#-联系方式)
 
 </div>
 
@@ -46,7 +46,7 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 - [用户手册](docs/用户手册.md) - 完整使用指南
 - [配置指南](docs/配置指南.md) - 详细配置说明
 - [插件列表](docs/插件列表.md) - 插件市场与可用插件概览
-- [多平台适配器](docs/multi-platform-adapter.md) - QQ/Telegram/Web/Win/ocwx/wecom_bot
+- [多平台适配器](docs/multi-platform-adapter.md) - QQ/Telegram/Web/Win/ocwx/wecom_bot/**wechat_869/wechat_875（多账户扫码）**
 
 ### 开发文档
 - [系统架构文档](docs/系统架构文档.md) - 架构设计
@@ -297,7 +297,7 @@ option_1 = "value"
 ```
 AllBot/
 ├── admin/              # 管理后台（FastAPI + Bootstrap 5）
-├── adapter/            # 多平台适配器（QQ/TG/Web/Win/ocwx/wx/wecom_bot 等）
+├── adapter/            # 多平台适配器（QQ/TG/Web/Win/ocwx/wx/wecom_bot/wechat_869/wechat_875 等）
 ├── plugins/            # 内置插件（默认 13 个，可通过插件市场扩展）
 ├── database/           # 数据持久化（SQLite + Redis）
 ├── utils/              # 工具模块（插件管理、事件系统）

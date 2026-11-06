@@ -1,3 +1,16 @@
+<!-- 现状校正 2026-11-06：本文件部分条目为旧版描述，以下为当前准确状态 -->
+> **⚠️ 现状校正（2026-11-06 架构变更）**
+> 主框架已完成「协议剥离」：**不再建立任何微信协议连接、不再有主框架登录/扫码流程**。
+> 登录唯一入口 = 管理后台 → 适配器页面 → 对应适配器「登录」弹窗。
+> 常量见下方「已移除条目」，凡与本文冲突处，以本校正块与 `docs/CHANGELOG.md` 为准。
+> 出站链路：`bot.send_*` → ReplyRouter(`allbot_reply`) → ReplyDispatcher → 各适配器 `replyQueue` → 终端 client 直发网关。
+> 适配器启停为**热插拔即时生效**（`adapter/loader.py` 已幂等化，启动前先停旧实例，带 `instance_id`）。
+> **已移除的核心条目（6235df5）**：`bot_core/login_handler.py`（`WechatLoginHandler`）已删除。
+> `bot_core/message_listener.py` 仅保留 3 个入队函数供 869 适配器复用，不再含 WS 监听/登录唤醒逻辑。
+> `bot_core/orchestrator.py` 为纯适配器模式：不建登录处理器、不建协议连接，只初始化客户端 → 灌适配器会话 → 起服务 → 起适配器 → 消费队列。
+> 本文下方若仍描述 `login_handler.py` / 扫码登录 / 869 主 WS 状态机，属旧版，不代表现状。
+
+
 # bot_core/ - 核心调度引擎模块
 
 > **导航**: [← 返回项目根目录](../CLAUDE.md)

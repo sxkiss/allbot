@@ -213,30 +213,6 @@ def register_external_apis():
     except Exception as e:
         logger.warning(f"提醒 API 路由注册失败: {e}")
 
-    # 2. 朋友圈 API
-    try:
-        from friend_circle_api import register_friend_circle_routes
-        bot_instance = get_bot_instance()
-        register_friend_circle_routes(app, check_auth, lambda: bot_instance)
-        logger.info("✓ 朋友圈 API 路由注册成功")
-    except Exception as e:
-        logger.warning(f"朋友圈 API 路由注册失败: {e}")
-
-    # 3. 切换账号 API
-    try:
-        from switch_account_api import register_switch_account_routes
-        # 需要 update_bot_status 函数
-        try:
-            import server as original_server
-            update_bot_status = getattr(original_server, 'update_bot_status', None)
-            if update_bot_status:
-                register_switch_account_routes(app, check_auth, update_bot_status)
-                logger.info("✓ 切换账号 API 路由注册成功")
-        except:
-            logger.warning("切换账号 API 需要 update_bot_status 函数")
-    except Exception as e:
-        logger.warning(f"切换账号 API 路由注册失败: {e}")
-
     # 4. 系统配置 API
     try:
         from system_config_api import register_system_config_routes
@@ -276,23 +252,6 @@ def register_external_apis():
         logger.info("✓ Web 聊天 API 路由注册成功")
     except Exception as e:
         logger.warning(f"Web 聊天 API 路由注册失败: {e}")
-
-    # 9. 账号管理 API
-    try:
-        from account_manager import register_account_manager_routes
-        # 需要额外的函数
-        try:
-            import server as original_server
-            update_bot_status = getattr(original_server, 'update_bot_status', None)
-            restart_system = getattr(original_server, 'restart_system', None)
-            if update_bot_status and restart_system:
-                register_account_manager_routes(app, check_auth, update_bot_status, restart_system)
-                logger.info("✓ 账号管理 API 路由注册成功")
-        except:
-            logger.warning("账号管理 API 需要额外函数")
-    except Exception as e:
-        logger.warning(f"账号管理 API 路由注册失败: {e}")
-
 
 # 导出接口
 __all__ = ['start_server', 'app', 'get_bot_instance', 'set_bot_instance']

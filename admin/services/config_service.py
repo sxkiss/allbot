@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import ast
+import contextvars
 import fcntl
 import re
 import shutil
@@ -103,66 +104,10 @@ def _option(value: str, label: str) -> Dict[str, str]:
 
 MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
     _section(
-        "Protocol",
-        "协议设置",
-        "选择微信协议版本。普通部署保持默认即可。",
-        [
-            _field(
-                "version",
-                "协议版本",
-                "select",
-                description="不同协议兼容不同客户端环境。",
-                options=[
-                    _option("869", "869（推荐）"),
-                    _option("ipad", "iPad"),
-                    _option("pad", "Pad"),
-                    _option("mac", "Mac"),
-                    _option("ipad2", "iPad2"),
-                    _option("car", "Car"),
-                    _option("win", "Windows"),
-                ],
-            )
-        ],
-        icon="bi-cpu",
-    ),
-    _section(
-        "Framework",
-        "框架设置",
-        "机器人运行框架类型。",
-        [
-            _field(
-                "type",
-                "框架类型",
-                "select",
-                description="当前仅支持 wechat。",
-                options=[_option("wechat", "微信 (wechat)")],
-            )
-        ],
-        icon="bi-box",
-    ),
-    _section(
         "WechatAPIServer",
-        "微信接口服务",
-        "连接 WechatAPI / 消息队列相关设置。",
+        "消息总线",
+        "Redis / 消息消费者相关设置（协议连接已由适配器管理）。",
         [
-            _field("host", "服务地址", "text", description="WechatAPI 服务主机地址。", placeholder="127.0.0.1"),
-            _field("port", "服务端口", "number", description="WechatAPI 服务端口。", min_value=1, max_value=65535),
-            _field(
-                "mode",
-                "运行模式",
-                "select",
-                description="生产环境建议使用 release。",
-                options=[_option("debug", "调试 (debug)"), _option("release", "生产 (release)")],
-            ),
-            _field("admin-key", "管理密钥", "password", description="869 管理密钥，部署时填写。", secret=True),
-            _field(
-                "login-qrcode-proxy",
-                "登录二维码代理",
-                "text",
-                description="可选，例如 socks5://user:pass@ip:port。",
-                placeholder="socks5://127.0.0.1:1080",
-                advanced=True,
-            ),
             _field("redis-host", "Redis 地址", "text", placeholder="127.0.0.1"),
             _field("redis-port", "Redis 端口", "number", min_value=1, max_value=65535),
             _field("redis-password", "Redis 密码", "password", secret=True, description="没有密码可留空。"),
@@ -175,15 +120,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
                 min_value=1,
                 max_value=64,
             ),
-            _field("enable-websocket", "启用 WebSocket 收消息", "boolean"),
-            _field(
-                "ws-url",
-                "WebSocket 地址",
-                "text",
-                description="869 建议使用 /ws/GetSyncMsg，程序会自动追加 key。",
-                placeholder="ws://127.0.0.1:9000/ws/GetSyncMsg",
-            ),
-            _field("enable-rabbitmq", "启用 RabbitMQ 收消息", "boolean"),
+            _field("enable-rabbitmq", "启用 RabbitMQ 收消息", "boolean", advanced=True),
             _field("rabbitmq-host", "RabbitMQ 地址", "text", placeholder="127.0.0.1", advanced=True),
             _field("rabbitmq-port", "RabbitMQ 端口", "number", min_value=1, max_value=65535, advanced=True),
             _field("rabbitmq-user", "RabbitMQ 用户名", "text", advanced=True),
@@ -280,7 +217,6 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
         "机器人身份、管理员、数据库与常用运行开关。",
         [
             _field("version", "版本号", "text", readonly=True, description="框架版本，请勿修改。"),
-            _field("enable-wechat-login", "启用微信登录", "boolean", description="仅适配器输入时可关闭。"),
             _field("ignore-protection", "忽略风控保护", "boolean", description="建议保持关闭。"),
             _field("enable-group-wakeup", "启用群聊唤醒词", "boolean"),
             _field("group-wakeup-words", "群聊唤醒词", "list", item_label="唤醒词"),
@@ -796,7 +732,7 @@ _MULTI_ACCOUNT_TEMPLATES: Dict[str, Dict[str, Any]] = {
 
 def _is_secret_key(key: str) -> bool:
     lower = str(key).lower()
-    return any(token in lower for token in ("password", "token", "secret", "api-key", "apikey", "admin-key"))
+    return any(token in lower for token in ("password", "token", "secret", "api-key", "apikey"))
 
 
 def _field_from_sample(key: str, sample: Any = None, *, description: str = "") -> Dict[str, Any]:
@@ -806,7 +742,7 @@ def _field_from_sample(key: str, sample: Any = None, *, description: str = "") -
     secret = _is_secret_key(str(key))
     return _field(
         str(key),
-        _humanize_key(str(key)),
+        _zh_label(str(key)),
         "password" if secret and field_type == "text" else field_type,
         description=description,
         secret=secret,
@@ -848,7 +784,7 @@ def _normalize_item_fields(item_fields: Sequence[Dict[str, Any]]) -> List[Dict[s
             continue
         field = _field(
             str(item["key"]),
-            str(item.get("label") or _humanize_key(str(item["key"]))),
+            str(item.get("label") or _zh_label(str(item["key"]))),
             str(item.get("type") or "text"),
             description=str(item.get("description") or ""),
             placeholder=str(item.get("placeholder") or ""),
@@ -899,7 +835,7 @@ def _build_multi_account_field(
             return None
         return _field(
             field_key,
-            str((template or {}).get("label") or _humanize_key(field_key)),
+            str((template or {}).get("label") or _zh_label(field_key)),
             "object_list",
             description=str((template or {}).get("description") or description or ""),
             item_label=str((template or {}).get("item_label") or "项"),
@@ -929,7 +865,7 @@ def _build_multi_account_field(
             return None
         return _field(
             field_key,
-            str((template or {}).get("label") or _humanize_key(field_key)),
+            str((template or {}).get("label") or _zh_label(field_key)),
             "object_map",
             description=str((template or {}).get("description") or description or ""),
             item_label=str((template or {}).get("item_label") or "项"),
@@ -1038,6 +974,164 @@ def _infer_field_type(value: Any) -> str:
     return "text"
 
 
+# 可视化中文字段释义仅对「适配器配置」生效：插件配置同样走
+# load_generic_config_view，但其字段语义不同（如 enable 是插件自身开关，
+# 与 [adapter].enabled 无关），全局套用会产出指错门的说明。
+# 用请求级 ContextVar 限定作用域，避免改动一串函数签名。
+_ZH_SCOPE: contextvars.ContextVar[str] = contextvars.ContextVar("config_zh_scope", default="adapter")
+
+
+def _is_adapter_config_path(path: Path) -> bool:
+    """按配置文件路径判断是否为适配器配置（plugins/ 一律视为插件）。"""
+    parts = set(Path(path).parts)
+    return "adapter" in parts and "plugins" not in parts
+
+
+# ---------------------------------------------------------------------------
+# 可视化表单中文字段释义（集中维护，覆盖适配器配置常见键）
+# label = 中文名；desc = 该字段的用途说明（在表单里作为 form-text 显示）。
+# 优先级：config.toml 行内注释 > 本字典 > 英文键名。
+# ---------------------------------------------------------------------------
+_FIELD_ZH: Dict[str, Dict[str, str]] = {
+    # [adapter] 通用段
+    "name": {"label": "名称", "desc": "配置项名称标识。"},
+    "enabled": {"label": "启用", "desc": "是否启用该模块。"},
+    "module": {"label": "模块路径", "desc": "适配器 Python 模块导入路径，框架据此加载类。"},
+    "class": {"label": "适配器类", "desc": "适配器实现类名，由 module 导入。"},
+    "replyQueue": {"label": "回复队列", "desc": "出站回复的 Redis 队列名，ReplyDispatcher 按 platform 分发到这里。"},
+    "replyMaxRetry": {"label": "回复最大重试", "desc": "发送失败时的最多重试次数。"},
+    "replyRetryInterval": {"label": "回复重试间隔(秒)", "desc": "两次重试之间的等待秒数。"},
+    "logEnabled": {"label": "启用日志", "desc": "是否输出该适配器运行日志。"},
+    "logLevel": {"label": "日志级别", "desc": "DEBUG / INFO / WARNING / ERROR，排查问题时可临时调为 DEBUG。"},
+    "enable": {"label": "启用", "desc": "是否启用该功能；适配器需 [adapter].enabled 与平台段同时开启（双开关）。"},
+    "platform": {"label": "平台标识", "desc": "消息路由使用的平台名，一般不要修改。"},
+    "aliases": {"label": "平台别名", "desc": "兼容旧配置的等价平台名列表。"},
+    # 网络 / 网关
+    "host": {"label": "地址", "desc": "服务或 Redis 主机地址。"},
+    "port": {"label": "端口", "desc": "服务或 Redis 端口。"},
+    "baseUrl": {"label": "协议服务地址", "desc": "协议网关 HTTP 根地址。"},
+    "wsUrl": {"label": "WebSocket 地址", "desc": "协议推送的 WS 地址（收消息链路）。"},
+    "sendUrl": {"label": "发送接口地址", "desc": "出站消息发送端点。"},
+    "staticBaseUrl": {"label": "静态资源地址", "desc": "媒体/静态文件访问根地址。"},
+    "apiPrefix": {"label": "API 前缀", "desc": "协议服务接口统一前缀。"},
+    "url": {"label": "地址", "desc": "Webhook 或服务的 URL。"},
+    "listenHost": {"label": "监听地址", "desc": "Webhook 监听的主机地址。"},
+    "listenPort": {"label": "监听端口", "desc": "Webhook 监听端口。"},
+    "httpProxy": {"label": "HTTP 代理", "desc": "留空直连；形如 http://127.0.0.1:7890。"},
+    "proxyHost": {"label": "反代地址", "desc": "Telegram 等平台的反向代理地址，留空直连。"},
+    "protocolVersion": {"label": "协议版本", "desc": "协议网关版本标识，如 869 / 875，勿随意修改。"},
+    # 凭据 / 鉴权
+    "token": {"label": "访问令牌", "desc": "平台 Bot Token / 访问凭据，请保密。"},
+    "apiKey": {"label": "API 密钥", "desc": "调用协议服务的密钥，请保密。"},
+    "adminKey": {"label": "管理密钥", "desc": "协议服务 adminKey；留空时由会话接管提供。"},
+    "authcode": {"label": "卡密", "desc": "一卡密对应一个微信账号。请保密。"},
+    "botId": {"label": "机器人 ID", "desc": "平台分配的机器人标识。"},
+    "secret": {"label": "密钥", "desc": "平台分配的 Secret，请保密。"},
+    "secretToken": {"label": "Webhook 密钥", "desc": "校验 Webhook 回调的签名密钥。"},
+    "sessionId": {"label": "会话 ID", "desc": "协议侧会话标识。"},
+    "sessionFile": {"label": "会话文件", "desc": "登录态落盘路径（该账户独立文件）。"},
+    "stateFile": {"label": "状态文件", "desc": "适配器运行状态落盘路径。"},
+    "statePath": {"label": "状态路径", "desc": "同步游标/状态文件所在路径。"},
+    # Redis
+    "db": {"label": "Redis 库号", "desc": "Redis 数据库编号，默认 0。"},
+    "password": {"label": "密码", "desc": "Redis 或平台密码；无密码留空。"},
+    "queue": {"label": "入站队列", "desc": "适配器把消息写入的 Redis 主队列，默认 allbot。"},
+    # 行为 / 开关
+    "polling": {"label": "启用轮询", "desc": "是否以长轮询方式拉取消息。"},
+    "pollingTimeout": {"label": "轮询超时(秒)", "desc": "单次长轮询等待上限。"},
+    "pollingInterval": {"label": "轮询间隔(秒)", "desc": "两次轮询之间的间隔。"},
+    "pollingLimit": {"label": "单轮拉取条数", "desc": "一次轮询最多取回的消息数。"},
+    "enableWebSocket": {"label": "启用 WebSocket", "desc": "是否使用 WS 推送接收消息。"},
+    "webSocketReplay": {"label": "WS 历史回放", "desc": "WS 连接后是否回放历史消息。"},
+    "skipHistoryOnStart": {"label": "启动跳过历史", "desc": "启动时不补拉历史消息，避免重复处理。"},
+    "startupSyncLimit": {"label": "启动同步上限", "desc": "启动时最多同步的历史消息条数。"},
+    "startupSyncMaxPages": {"label": "启动同步最大页数", "desc": "启动时历史同步最多翻页数。"},
+    "includeSent": {"label": "包含自发消息", "desc": "同步时是否纳入自己发出的消息（谨慎开启，易与出站回环混淆）。"},
+    "dropPendingUpdates": {"label": "丢弃待处理更新", "desc": "启动时忽略积压的旧更新。"},
+    "allowPrivate": {"label": "允许私聊", "desc": "是否处理私聊消息。"},
+    "allowGroups": {"label": "允许群聊", "desc": "是否处理群聊消息。"},
+    "allowedGroups": {"label": "群白名单", "desc": "仅处理这些群 ID，留空表示不限制。"},
+    "groupWhitelist": {"label": "群白名单", "desc": "仅处理这些群 ID，留空表示不限制。"},
+    "groupMessagesAsAt": {"label": "群消息转为 @", "desc": "群消息回复时自动 @ 发送者。"},
+    "autoWelcome": {"label": "自动欢迎", "desc": "新成员/新会话时自动发送欢迎语。"},
+    "welcomeText": {"label": "欢迎语", "desc": "自动欢迎使用的文本内容。"},
+    "replyWithStream": {"label": "流式回复", "desc": "以流式消息方式回复。"},
+    "defaultMarkdownMode": {"label": "默认 Markdown 模式", "desc": "回复默认使用的 Markdown 渲染方式。"},
+    "fallbackUnsupportedToText": {"label": "不支持类型转文本", "desc": "平台不支持的消息类型降级为纯文本。"},
+    "logRawMessage": {"label": "记录原始消息", "desc": "在日志里打印未归一化的原始报文，排障用。"},
+    "sessionTakeover": {"label": "会话接管", "desc": "启动时接管已有登录会话，避免重复扫码。"},
+    "loginAutoPoll": {"label": "登录自动轮询", "desc": "扫码后自动轮询登录状态。"},
+    "loginCheckInterval": {"label": "登录检查间隔(秒)", "desc": "登录状态轮询间隔。"},
+    "qrRefreshInterval": {"label": "二维码刷新间隔(秒)", "desc": "二维码自动刷新周期。"},
+    "qrSavePath": {"label": "二维码保存路径", "desc": "二维码图片落盘位置。"},
+    "botWxid": {"label": "机器人 wxid", "desc": "机器人自身 wxid，用于识别自发消息。"},
+    "selfId": {"label": "自身 ID", "desc": "当前账号标识，用于过滤自发消息。"},
+    "ignoreGhId": {"label": "忽略公众号", "desc": "忽略公众号(gh_)消息。"},
+    "mediaCacheDir": {"label": "媒体缓存目录", "desc": "下载/上传媒体的本地缓存路径。"},
+    "dedupCacheSize": {"label": "去重缓存容量", "desc": "消息去重 LRU 缓存条数。"},
+    "maxClients": {"label": "最大客户端数", "desc": "同时接受的连接数上限。"},
+    "debug": {"label": "调试模式", "desc": "输出更详细日志，生产建议关闭。"},
+    "disableSend": {"label": "禁用发送", "desc": "只接收不发送，用于观察/演练。"},
+    # 重试 / 超时 / 限流
+    "requestTimeout": {"label": "请求超时(秒)", "desc": "HTTP 请求超时秒数。"},
+    "reconnectInterval": {"label": "重连间隔(秒)", "desc": "连接断开后重连等待秒数。"},
+    "reconnectDelay": {"label": "重连延迟(秒)", "desc": "重连前的延迟秒数。"},
+    "pingInterval": {"label": "心跳间隔(秒)", "desc": "WS 心跳发送间隔。"},
+    "cmdTimeout": {"label": "指令超时(秒)", "desc": "等待指令响应的超时秒数。"},
+    "downloadRetry": {"label": "下载重试", "desc": "媒体下载失败时的重试次数。"},
+    "initRetry": {"label": "初始化重试", "desc": "启动初始化失败时的重试次数。"},
+    "initRetryInterval": {"label": "初始化重试间隔(秒)", "desc": "初始化重试之间的等待秒数。"},
+    "rateLimitPerMinute": {"label": "每分钟限流", "desc": "每分钟最多发送消息数，0 不限。"},
+    "rateLimitPerHour": {"label": "每小时限流", "desc": "每小时最多发送消息数，0 不限。"},
+    "outboxPollTimeout": {"label": "发件箱超时(秒)", "desc": "发件箱轮询超时。"},
+    "outboxPollInterval": {"label": "发件箱间隔(秒)", "desc": "发件箱轮询间隔。"},
+    # 设备 / 多账户
+    "deviceName": {"label": "登录设备类型", "desc": "如 ipad / mac / win；875 按设备区分拉码接口。"},
+    "deviceId": {"label": "设备 ID", "desc": "设备唯一标识，留空自动生成。"},
+    "default_device": {"label": "默认设备", "desc": "登录弹窗默认选中的设备类型。"},
+    "defaultBot": {"label": "默认机器人", "desc": "未指定时使用的机器人配置键。"},
+    "slot": {"label": "槽位名", "desc": "多账户配置键名，如 main / work。"},
+    "displayName": {"label": "显示名", "desc": "后台账号下拉里显示的名称。"},
+    # section 段名
+    # 补充：平台段名与剩余字段
+    "ocwx": {"label": "ocwx 渠道", "desc": "微信 clawbot 渠道（OpenClaw 微信）配置。"},
+    "qq": {"label": "QQ 平台", "desc": "QQ 适配器专属配置。"},
+    "telegram": {"label": "Telegram 平台", "desc": "Telegram Bot 专属配置。"},
+    "web": {"label": "Web 对话", "desc": "管理后台 Web 对话适配器配置。"},
+    "wechat869": {"label": "869 协议", "desc": "869 协议网关连接与会话配置。"},
+    "wechat875": {"label": "875 协议", "desc": "875 协议网关连接与设备配置。"},
+    "wechat_observatory": {"label": "微信观测台", "desc": "WeChat Observatory 公共 API 桥接配置。"},
+    "wecom_bot": {"label": "企微智能机器人", "desc": "企业微信 aibot 长连接配置。"},
+    "win": {"label": "Win 协议", "desc": "Windows 协议桥接配置。"},
+    "wxfilehelper": {"label": "文件助手", "desc": "wx-filehelper-api 协议桥接配置。"},
+    "adapter": {"label": "适配器基础配置", "desc": "所有适配器共用的启停、模块与队列设置。"},
+    "redis": {"label": "Redis 连接", "desc": "消息队列使用的 Redis 连接信息。"},
+    "accounts": {"label": "多账户", "desc": "一个卡密/账号对应一个实例，多设备可并行在线。"},
+    "bots": {"label": "多机器人", "desc": "多个 Bot 实例并行运行。"},
+}
+
+
+def _zh_label(key: str) -> str:
+    """字段中文标签：仅适配器作用域生效；插件/其他配置回退英文键名。"""
+    if _ZH_SCOPE.get() != "adapter":
+        return _humanize_key(key)
+    item = _FIELD_ZH.get(key)
+    return (item or {}).get("label") or _humanize_key(key)
+
+
+def _zh_desc(key: str, inline_comment: str) -> str:
+    """字段说明：行内注释永远优先；适配器作用域下才补字典释义；否则返回空串。
+
+    空串前端不渲染 form-text（见 config_form.js 的 truthy 判断），无副作用。
+    """
+    if inline_comment:
+        return inline_comment
+    if _ZH_SCOPE.get() != "adapter":
+        return ""
+    item = _FIELD_ZH.get(key)
+    return (item or {}).get("desc") or ""
+
+
 def _humanize_key(key: str) -> str:
     text = key.replace("-", " ").replace("_", " ").strip()
     return text if text else key
@@ -1083,13 +1177,16 @@ def _build_fields_from_value(
     for key, item in value.items():
         path = f"{prefix}.{key}" if prefix else str(key)
         relative_key = path if not section_prefix else path[len(section_prefix) + 1 :]
+        # 行内注释优先，否则用集中式中文释义
+        inline = comments.get(path, "")
+        zh_desc = _zh_desc(str(key), inline)
         multi_field = None
         if depth == 0 and "." not in relative_key:
             multi_field = _build_multi_account_field(
                 section_key,
                 relative_key,
                 item,
-                description=comments.get(path, ""),
+                description=zh_desc,
             )
         if multi_field is not None:
             fields.append(multi_field)
@@ -1112,7 +1209,7 @@ def _build_fields_from_value(
                 section_key,
                 relative_key,
                 item,
-                description=comments.get(path, ""),
+                description=zh_desc,
             )
             if multi_field is not None:
                 fields.append(multi_field)
@@ -1121,9 +1218,9 @@ def _build_fields_from_value(
         fields.append(
             _field(
                 relative_key,
-                _humanize_key(str(key)),
+                _zh_label(str(key)),
                 "password" if secret and field_type == "text" else field_type,
-                description=comments.get(path, ""),
+                description=zh_desc,
                 secret=secret,
             )
         )
@@ -1147,7 +1244,7 @@ def _inject_multi_account_templates(
             section_key,
             field_key,
             section_value.get(field_key),
-            description=comments.get(f"{section_key}.{field_key}", ""),
+            description=_zh_desc(field_key, comments.get(f"{section_key}.{field_key}", "")),
         )
         if multi_field is not None:
             fields.append(multi_field)
@@ -1156,6 +1253,14 @@ def _inject_multi_account_templates(
 
 
 def infer_schema_from_toml(path: Path, title: str = "配置") -> List[Dict[str, Any]]:
+    scope_token = _ZH_SCOPE.set("adapter" if _is_adapter_config_path(path) else "other")
+    try:
+        return _infer_schema_from_toml_inner(path, title)
+    finally:
+        _ZH_SCOPE.reset(scope_token)
+
+
+def _infer_schema_from_toml_inner(path: Path, title: str) -> List[Dict[str, Any]]:
     document = _read_toml_document(path)
     plain = _to_plain(document)
     comments = _collect_inline_comments(path)
@@ -1179,8 +1284,8 @@ def infer_schema_from_toml(path: Path, title: str = "配置") -> List[Dict[str, 
         sections.append(
             _section(
                 str(section_key),
-                _humanize_key(str(section_key)),
-                f"{title} / {section_key}",
+                _zh_label(str(section_key)),
+                _zh_desc(str(section_key), "") or f"{title} / {section_key}",
                 fields,
                 icon="bi-sliders",
             )

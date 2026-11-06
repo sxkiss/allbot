@@ -97,7 +97,7 @@ def set_bot_instance(bot):
     admin_set_bot_instance(bot)
 
     # 更新状态：不要覆盖登录成功后写入的 online / 等待登录时的 waiting_login 等真实登录态。
-    # 启动时 set_bot_instance 与后台 869 登录任务并发执行，若登录已先完成并写入 online，
+    # 启动时 set_bot_instance 与适配器状态写入可能并发，若已先写入 online，
     # 此处若再写 initialized 会把在线态覆盖成“未登录”，导致后台误报离线。
     current_status = ""
     try:

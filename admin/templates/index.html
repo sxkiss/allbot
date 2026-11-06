@@ -166,36 +166,6 @@
         margin-bottom: 16px;
     }
 
-    /* 快速操作按钮 */
-    .btn-qrcode {
-        position: relative;
-        overflow: hidden;
-        transition: all var(--transition-speed) ease;
-        border: none;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        border-radius: 12px;
-        height: 140px;
-        background: linear-gradient(135deg, #3498DB, #2874A6);
-    }
-
-    .btn-qrcode::after {
-        content: '';
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        top: 0;
-        left: -100%;
-        background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0) 100%);
-        transition: left 0.5s ease;
-    }
-
-    .btn-qrcode:hover::after {
-        left: 100%;
-    }
-
     /* 主内容区域的二级按钮 */
     .container-fluid .btn-outline-secondary {
         border: none;
@@ -675,13 +645,6 @@
 
                                     <!-- 第二排按钮 -->
                                     <div class="row g-2">
-                                        <!-- 切换账号按钮 -->
-                                        <div class="col-6">
-                                            <button id="switch-account" class="btn btn-sm btn-outline-primary w-100" title="切换微信账号" onclick="handleSwitchAccount()">
-                                                <i class="bi bi-arrow-repeat me-1"></i>切换账号
-                                            </button>
-                                        </div>
-
                                         <!-- 系统配置按钮 -->
                                         <div class="col-6">
                                             <button id="edit-config" class="btn btn-sm btn-outline-primary w-100" title="编辑系统配置" onclick="handleEditConfig()">
@@ -885,70 +848,6 @@
                 .catch(error => {
                     console.error('获取系统状态失败:', error);
                 });
-        }
-
-        // 切换账号
-        function handleSwitchAccount() {
-            if (confirm('确定要切换微信账号吗？\n\n这将删除当前账号的登录信息，并需要重新扫码登录。')) {
-                const switchBtn = document.getElementById('switch-account');
-                switchBtn.disabled = true;
-                switchBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>切换中...';
-
-                fetch('/api/switch_account', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include'
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('API响应状态码: ' + response.status);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.success) {
-                        showToast('成功', '已切换账号，系统正在重启...', 'success');
-
-                        // 显示重启进度
-                        const loadingDiv = document.createElement('div');
-                        loadingDiv.className = 'restart-overlay';
-                        loadingDiv.innerHTML = `
-                            <div class="restart-dialog">
-                                <h4>系统重启中</h4>
-                                <p class="mb-3">正在重启系统，请稍候...</p>
-                                <div class="progress mb-3">
-                                    <div id="restart-progress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                                </div>
-                                <p class="small text-muted">完成后将自动跳转到登录页面</p>
-                            </div>
-                        `;
-                        document.body.appendChild(loadingDiv);
-
-                        // 进度条动画
-                        const progressBar = document.getElementById('restart-progress');
-                        let progress = 0;
-                        const progressInterval = setInterval(() => {
-                            progress += 2;
-                            if (progress > 100) {
-                                clearInterval(progressInterval);
-                                window.location.href = '/qrcode';
-                            } else {
-                                progressBar.style.width = `${progress}%`;
-                            }
-                        }, 200);
-                    } else {
-                        switchBtn.disabled = false;
-                        switchBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>切换账号';
-                        showToast('错误', data.error || '切换账号失败', 'danger');
-                    }
-                })
-                .catch(error => {
-                    console.error('切换账号失败:', error);
-                    switchBtn.disabled = false;
-                    switchBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>切换账号';
-                    showToast('错误', '切换账号请求失败: ' + error.message, 'danger');
-                });
-            }
         }
 
         // 系统配置
@@ -1836,7 +1735,6 @@
         // 刷新状态按钮事件处理已在下方定义
 
         // 定义全局函数
-        window.handleSwitchAccount = handleSwitchAccount;
         window.handleEditConfig = handleEditConfig;
         window.handleSaveConfig = handleSaveConfig;
 

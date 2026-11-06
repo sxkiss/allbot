@@ -336,6 +336,19 @@ def register_reminder_routes(app: FastAPI, check_auth=None):
             logger.exception(f"获取所有提醒失败: {str(e)}")
             return JSONResponse(content={"success": False, "error": f"获取所有提醒失败: {str(e)}"})
     
+    @app.get("/api/reminders/contacts", response_class=JSONResponse)
+    async def api_reminder_contacts(request: Request):
+        """定时任务页使用的只读联系人列表（联系人页面已下线）。"""
+        username = await check_auth(request)
+        if not username:
+            return JSONResponse(status_code=401, content={"success": False, "error": "未认证"})
+        try:
+            from database.contacts_db import get_contacts_from_db
+            return JSONResponse(content={"success": True, "data": get_contacts_from_db() or []})
+        except Exception as e:
+            logger.exception(f"获取提醒联系人失败: {e}")
+            return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
+
     @app.get("/api/reminders/{wxid}", response_class=JSONResponse)
     async def api_get_reminders(wxid: str, request: Request):
         """获取用户的所有提醒"""

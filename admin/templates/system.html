@@ -371,11 +371,8 @@
 
                         <div class="text-center mt-3">
                             <div class="d-flex flex-wrap justify-content-center gap-2">
-                                <button class="btn btn-sm btn-primary" id="btn-switch-account">
-                                    <i class="bi bi-person-switch me-1"></i>切换账号
-                                </button>
                                 <button class="btn btn-sm btn-outline-secondary" id="btn-show-qrcode">
-                                    <i class="bi bi-qr-code me-1"></i>显示二维码
+                                    <i class="bi bi-qr-code me-1"></i>适配器登录
                                 </button>
                                 <button class="btn btn-sm btn-danger" id="btn-restart-docker">
                                     <i class="bi bi-arrow-repeat me-1"></i>重启容器
@@ -588,7 +585,7 @@
                         } else if (botInfo.status === 'waiting_login') {
                             statusDot.className = 'status-dot waiting';
                             statusText.textContent = '等待登录';
-                            statusDetail.textContent = '等待扫码';
+                            statusDetail.textContent = '等待适配器登录';
                             statusDetail.className = 'badge bg-warning';
                         } else {
                             statusDot.className = 'status-dot offline';
@@ -726,28 +723,9 @@
                 getSystemStatus();
             });
             
-            safeAddEventListener('btn-switch-account', 'click', function() {
-                console.log('切换账号');
-                if (confirm('确定要切换微信账号吗？这将登出当前账号。')) {
-                    fetch('/api/switch_account', { method: 'POST' })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.success) {
-                                alert('已开始切换账号流程，请留意二维码');
-                                setTimeout(getBotInfo, 3000);
-                            } else {
-                                alert(`切换失败: ${data.error || '未知错误'}`);
-                            }
-                        })
-                        .catch(error => {
-                            console.error('切换账号出错:', error);
-                            alert(`切换账号出错: ${error.message}`);
-                        });
-                }
-            });
             
             safeAddEventListener('btn-show-qrcode', 'click', function() {
-                window.location.href = '/qrcode';
+                window.location.href = '/adapters';
             });
             
             safeAddEventListener('btn-restart-docker', 'click', function() {

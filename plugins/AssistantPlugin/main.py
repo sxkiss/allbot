@@ -32,6 +32,7 @@ from utils.plugin_base import PluginBase
 CHUNK_NORMAL = 200
 DEFAULT_TRIGGER_WORDS = ["小助手"]
 DEFAULT_RESET_CMDS = ["新对话", "新开对话", "/new", "/reset"]
+DEFAULT_ADMIN_RESET_CMDS = ["重置全部会话", "清空全部绑定", "/reset-all", "/clear-all"]
 
 SESSION_POOL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wx_session_pool.json")
 
@@ -63,6 +64,14 @@ class SSEGiveUp(Exception):
     与真正收到 message_end 的正常结束必须区分开，否则调用方会误判为
     "任务完成"并向用户发送错误的完成提示。
     """
+
+
+class GatewayAuthError(Exception):
+    """网关鉴权失败（401/403），可触发 token 强制续租后重试。"""
+
+    def __init__(self, status: int, body: str):
+        super().__init__(f"HTTP {status}: {body[:200]}")
+        self.status = status
 
 
 class SSEClient:
@@ -113,9 +122,11 @@ class SSEClient:
                     start_payload["system_prompt"] = system_prompt
                 job_key = ""
                 async with session.post(start_url, json=start_payload,
-                                       headers=self._auth_headers()) as resp:
+                                        headers=self._auth_headers()) as resp:
                     if resp.status != 200:
                         body = await resp.text()
+                        if resp.status in (401, 403):
+                            raise GatewayAuthError(resp.status, body)
                         raise RuntimeError(
                             f"HTTP {resp.status}: {body[:300]}"
                         )
@@ -165,6 +176,8 @@ class SSEClient:
                                                headers=self._auth_headers()) as resp:
                             if resp.status != 200:
                                 body = await resp.text()
+                                if resp.status in (401, 403):
+                                    raise GatewayAuthError(resp.status, body)
                                 raise RuntimeError(f"HTTP {resp.status}: {body[:300]}")
                             current_event = None
                             buf: list[str] = []
@@ -313,6 +326,12 @@ class AssistantPlugin(PluginBase):
         self.image_public_base_url = _safe_text(cfg.get("image-public-base-url", "http://l.sxkiss.top:9090")).strip()
         self.image_public_route_prefix = _safe_text(cfg.get("image-public-route-prefix", "/media/files")).strip() or "/media/files"
         self.admin_only = bool(cfg.get("admin-only", True))
+        # 管理员全局重置命令：解除所有会话绑定并清空会话池（仅管理员可执行）
+        self.admin_reset_commands = [
+            c.strip().lower()
+            for c in cfg.get("admin-reset-commands", DEFAULT_ADMIN_RESET_CMDS)
+            if str(c).strip()
+        ]
         # 去重已移至框架层 MessageRouter.process()，插件不再维护 _processed_msg_ids
 
         if self.enable and not self.api_base_url:
@@ -360,11 +379,13 @@ class AssistantPlugin(PluginBase):
             return True
         return (exp - int(time.time())) < self.token_refresh_margin
 
-    async def _refresh_gateway_token(self) -> bool:
+    async def _refresh_gateway_token(self, force: bool = False) -> bool:
         """重新登录网关换取新 token，并同步到 SSEClient 与 config.toml。
 
         全程静默：失败仅记 warning，不影响本次对话（旧 token 可能仍有效）。
         成功则写回配置，使容器重启后也无需人工干预。
+
+        force=True 时跳过临近过期检查，强制续租（用于 401/403 后的重试）。
         """
         if not self.gateway_password or not self.api_base_url:
             return False
@@ -373,7 +394,7 @@ class AssistantPlugin(PluginBase):
             return False
         async with self._token_lock:
             # 持锁后再次判断：排队期间可能已被别的请求刷新成功
-            if not self._token_needs_refresh():
+            if not force and not self._token_needs_refresh():
                 return True
             url = f"{self.api_base_url.rstrip('/')}/api/auth/login"
             payload = json.dumps({"password": self.gateway_password}).encode("utf-8")
@@ -437,6 +458,29 @@ class AssistantPlugin(PluginBase):
                 await self._refresh_gateway_token()
         except Exception as e:
             logger.warning("[Assistant] token 续期检查异常: {}", e)
+
+    async def _stream_with_auth_retry(self, message: str, session_id: str, *args, **kwargs):
+        """调用 _client.stream()，遇到 401/403 时强制续租 token 并重试一次。
+
+        主动续期（_ensure_gateway_token）只覆盖"临近过期"的情况；若 token 已被
+        网关侧撤销、或容器启动时 config.toml 里就是过期 token，则只会在请求时
+        才暴露 403。这里做兜底：鉴权失败 → 强制重新登录换 token → 重放一次请求。
+        """
+        try:
+            async for evt in self._client.stream(message, session_id, *args, **kwargs):
+                yield evt
+        except GatewayAuthError as gae:
+            logger.warning(
+                "[Assistant] 网关鉴权失败 HTTP {}，强制续租 token 后重试 session={}",
+                gae.status, session_id,
+            )
+            if not await self._refresh_gateway_token(force=True):
+                raise RuntimeError(
+                    f"网关鉴权失败(HTTP {gae.status})，且 token 强制续租失败"
+                ) from gae
+            logger.info("[Assistant] token 已强制续租，重试对话 session={}", session_id)
+            async for evt in self._client.stream(message, session_id, *args, **kwargs):
+                yield evt
 
     def _load_global_admins(self) -> set:
         candidates = [
@@ -505,6 +549,16 @@ class AssistantPlugin(PluginBase):
             if ":\n" in raw:
                 sender_wxid = raw.split(":\n", 1)[0].strip()
         sender_name = self._extract_sender_name(message, sender_wxid=sender_wxid, is_group=is_group)
+        # WeChat869 不主动下发 SenderName/NickName，需走 bot API 查联系人昵称
+        if not sender_name and sender_wxid and hasattr(self, "bot") and self.bot:
+            try:
+                cached = self.bot.get_local_nickname(sender_wxid, to_wxid if is_group else None)
+                if cached:
+                    candidate = _safe_text(cached).strip()
+                    if candidate and not self._looks_like_wxid_text(candidate, wxid=sender_wxid):
+                        sender_name = candidate
+            except Exception as e:
+                logger.warning("[Assistant] 查询昵称失败 wxid={}: {}", sender_wxid, e)
         return WatchRoute(
             route_id=to_wxid, to_wxid=to_wxid,
             sender_wxid=sender_wxid, sender_name=sender_name, is_group=is_group,
@@ -1174,6 +1228,50 @@ class AssistantPlugin(PluginBase):
     def _is_reset_cmd(self, text: str) -> bool:
         return text.strip().lower() in self.new_session_commands
 
+    def _is_admin_reset_cmd(self, text: str) -> bool:
+        return text.strip().lower() in self.admin_reset_commands
+
+    async def _admin_reset_all_sessions(self, route: WatchRoute) -> None:
+        """管理员命令：解除全部会话绑定、取消所有活跃任务、清空会话池。
+
+        用于全局重置：网关侧会话堆积、或管理员想一次性清除所有用户的会话绑定，
+        下次任何用户发消息都会以全新 session_id 开始。
+        """
+        # 1. 取消所有活跃任务
+        cancelled = 0
+        for session_id, task in list(self._active_tasks.items()):
+            if task and not task.done():
+                task.cancel()
+                cancelled += 1
+        self._active_tasks.clear()
+
+        # 2. 清除会话路由映射与活跃 sid 跟踪
+        routes_cleared = len(self._session_routes)
+        self._session_routes.clear()
+        self._active_sids.clear()
+
+        # 3. 清空会话池持久化文件（含绑定与重置序号）
+        cleared_keys = 0
+        try:
+            pool = self._load_session_pool()
+            cleared_keys = len(pool)
+            self._save_session_pool({})
+        except Exception as e:
+            logger.warning("[Assistant] 清空会话池失败: {}", e)
+
+        msg = (
+            "✅ 已重置全部会话\n"
+            f"取消活跃任务: {cancelled}\n"
+            f"清除路由映射: {routes_cleared}\n"
+            f"清空会话池: {cleared_keys} 项"
+        )
+        await self._send(route, msg)
+        logger.info(
+            "[Assistant] 管理员 {} 执行全局重置: 取消{} 路由{} 池{}",
+            route.sender_name or route.sender_wxid,
+            cancelled, routes_cleared, cleared_keys,
+        )
+
     # ---------- 主入口 ----------
     @on_text_message(priority=45)
     async def handle_text(self, bot: WechatAPIClient, message: dict):
@@ -1194,6 +1292,13 @@ class AssistantPlugin(PluginBase):
             self._session_routes.pop(self._session_key(route), None)
             self._clear_session_pool_key(route)
             await self._send(route, "✅ 已开启新对话")
+            return bool(self.propagate_to_other_plugins)
+
+        # 重置全部会话命令：仅管理员可执行
+        if self._is_admin_reset_cmd(user_text):
+            if not self._is_admin(message):
+                return bool(self.propagate_to_other_plugins)
+            await self._admin_reset_all_sessions(route)
             return bool(self.propagate_to_other_plugins)
         
         # 普通对话无需 admin，需要触发词
@@ -1233,6 +1338,13 @@ class AssistantPlugin(PluginBase):
             await self._send(route, "✅ 已开启新对话")
             return bool(self.propagate_to_other_plugins)
 
+        # 重置全部会话命令：仅管理员可执行
+        if self._is_admin_reset_cmd(user_text):
+            if not self._is_admin(message):
+                return bool(self.propagate_to_other_plugins)
+            await self._admin_reset_all_sessions(route)
+            return bool(self.propagate_to_other_plugins)
+
         # 普通对话无需 admin
         # @消息处理：被 @ 即视为呼叫机器人，无需额外触发词
         # （保留触发词剥离逻辑：若消息以触发词开头则strip掉，若带触发词则按触发词处理）
@@ -1270,6 +1382,13 @@ class AssistantPlugin(PluginBase):
             self._session_routes.pop(self._session_key(route), None)
             self._clear_session_pool_key(route)
             await self._send(route, "✅ 已开启新对话")
+            return bool(self.propagate_to_other_plugins)
+        
+        # 重置全部会话命令：仅管理员可执行
+        if self._is_admin_reset_cmd(user_text):
+            if not self._is_admin(message):
+                return bool(self.propagate_to_other_plugins)
+            await self._admin_reset_all_sessions(route)
             return bool(self.propagate_to_other_plugins)
         
         # 引用消息需触发词（普通对话无需 admin）
@@ -1466,7 +1585,7 @@ class AssistantPlugin(PluginBase):
             progress_task = asyncio.create_task(_progress_worker())
 
         try:
-            async for evt in self._client.stream(
+            async for evt in self._stream_with_auth_retry(
                 message, session_id, self.default_base_url, self.default_model,
                 workspace=self.workspace, template=self.template, system_prompt=self.system_prompt,
                 mode=self.api_mode
