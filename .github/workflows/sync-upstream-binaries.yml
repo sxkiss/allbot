@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       image:
-        description: "官方镜像（含 tag）。留空 = 自动取 Docker Hub 最新 tag"
+        description: "官方镜像（含 tag）。默认 main = 最新版"
         required: false
-        default: ""
+        default: "wechatpadpro/wechatpadprobusiness:main"
       mode:
         description: "release=上传 Release；commit=提交回当前分支"
         required: true
