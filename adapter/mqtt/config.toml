@@ -23,6 +23,11 @@ subscribe_topic = "allbot/in"
 publish_topic = "allbot/out"
 username = ""
 password = ""
+# MQTTConfig 真实字段（默认 tls_enabled=True / qos=2，本地明文 broker 需显式调整）
+transport = "tcp"
+clean_session = true
+qos = 0
+tls_enabled = false
 botWxid = "mqtt-bot"
 
 [mqtt.redis]
