@@ -8,6 +8,7 @@
 """
 
 import importlib
+import itertools
 import threading
 import tomllib
 from pathlib import Path
@@ -20,6 +21,7 @@ from loguru import logger
 _ADAPTERS_LOCK = threading.Lock()
 _RUNNING_ADAPTERS: Dict[str, object] = {}
 _ADAPTER_INFOS: Dict[str, "AdapterInfo"] = {}
+_INSTANCE_SEQ = itertools.count(1)
 
 
 class AdapterInfo:
@@ -43,6 +45,10 @@ class AdapterInfo:
         self.instance: Optional[object] = None
         self.running: bool = False
         self.error: str = ""
+        # 每次启动的唯一标识：区分新旧实例，避免旧线程退出时污染新实例状态
+        self.instance_id: int = next(_INSTANCE_SEQ)
+        # 显式停止标记：旧线程登记前自检，防止已停止实例"复活"
+        self.stopped: bool = False
 
 
 def get_running_adapter(name: str) -> Optional[object]:
@@ -98,6 +104,13 @@ def start_adapters(base_dir: Optional[Path] = None) -> List[AdapterInfo]:
         if _is_preinitialized(entry.name):
             logger.info(f"适配器 {entry.name} 已存在运行实例，跳过重复启动")
             continue
+        with _ADAPTERS_LOCK:
+            existing = _ADAPTER_INFOS.get(entry.name)
+            if existing is not None and existing.running and not existing.stopped:
+                logger.info(
+                    f"适配器 {entry.name} 已有运行实例(instance_id={existing.instance_id})，跳过重复启动"
+                )
+                continue
 
         adapter_cfg = raw_config.get("adapter", {})
         module_name = adapter_cfg.get("module") or f"adapter.{entry.name}"
@@ -108,7 +121,7 @@ def start_adapters(base_dir: Optional[Path] = None) -> List[AdapterInfo]:
             _ADAPTER_INFOS[info.name] = info
         thread = threading.Thread(
             target=_run_adapter,
-            name=f"Adapter-{entry.name}",
+            name=f"Adapter-{entry.name}#{info.instance_id}",
             args=(info,),
             daemon=True,
         )
@@ -174,11 +187,17 @@ def start_adapter(adapter_name: str, base_dir: Optional[Path] = None) -> bool:
     if not _is_enabled(raw_config):
         logger.warning(f"适配器 {adapter_name} 未启用，拒绝启动")
         return False
+    # 幂等保护：无条件先停止旧实例，防止 toggle/重复启动叠加出多个消费者
+    # （旧实例持有队列消费者，若不停掉会导致重复消费/出站回环，869 曾因此刷屏）
+    # stop_adapter 幂等：无运行实例时直接返回 False，不会报错。
     with _ADAPTERS_LOCK:
         existing = _ADAPTER_INFOS.get(adapter_name)
-        if existing is not None and existing.running:
-            logger.info(f"适配器 {adapter_name} 已在运行，跳过")
-            return True
+    if existing is not None:
+        logger.info(
+            f"适配器 {adapter_name} 启动前先停止旧实例(instance_id={existing.instance_id})"
+        )
+        stop_adapter(adapter_name)
+
     adapter_cfg = raw_config.get("adapter", {})
     module_name = adapter_cfg.get("module") or f"adapter.{adapter_name}"
     class_name = adapter_cfg.get("class") or "Adapter"
@@ -187,7 +206,7 @@ def start_adapter(adapter_name: str, base_dir: Optional[Path] = None) -> bool:
         _ADAPTER_INFOS[adapter_name] = info
     thread = threading.Thread(
         target=_run_adapter,
-        name=f"Adapter-{adapter_name}",
+        name=f"Adapter-{adapter_name}#{info.instance_id}",
         args=(info,),
         daemon=True,
     )
@@ -201,9 +220,15 @@ def stop_adapter(adapter_name: str, timeout: float = 8.0) -> bool:
     """运行时停止单个适配器（热插拔，无需重启主服务）。"""
     with _ADAPTERS_LOCK:
         info = _ADAPTER_INFOS.get(adapter_name)
-        instance = _RUNNING_ADAPTERS.get(adapter_name)
-    if info is None and instance is None:
-        logger.warning(f"适配器 {adapter_name} 不存在或未运行")
+        # 立即摘除注册表并标记停止，防止旧线程在 stop 期间重新登记"复活"
+        instance = _RUNNING_ADAPTERS.pop(adapter_name, None)
+        already_stopped = instance is None and (info is None or (info.stopped and not info.running))
+        if info is not None:
+            info.stopped = True
+            info.running = False
+            info.error = ""
+    if already_stopped:
+        logger.debug(f"适配器 {adapter_name} 已停止或无运行实例，无需重复停止")
         return False
     stop_method = getattr(instance, "stop", None)
     if callable(stop_method):
@@ -214,12 +239,11 @@ def stop_adapter(adapter_name: str, timeout: float = 8.0) -> bool:
     if info is not None and info.thread is not None and info.thread.is_alive():
         info.thread.join(timeout=timeout)
         if info.thread.is_alive():
-            logger.warning(f"适配器 {adapter_name} 线程未在 {timeout}s 内退出（daemon 线程）")
-    with _ADAPTERS_LOCK:
-        _RUNNING_ADAPTERS.pop(adapter_name, None)
-    if info is not None:
-        _set_adapter_state(info, False, "")
-    logger.success(f"适配器 {adapter_name} 已热停止")
+            logger.warning(
+                f"适配器 {adapter_name} 旧线程(instance_id={info.instance_id})未在 {timeout}s 内退出"
+                f"（daemon 线程，已标记 orphan，不再参与消费）"
+            )
+    logger.success(f"适配器 {adapter_name} 已热停止 (instance_id={info.instance_id if info else '?'})")
     return True
 
 
@@ -250,6 +274,9 @@ def _send_adapter_error_notification(adapter_name: str, error_msg: str) -> None:
 def _set_adapter_state(info: AdapterInfo, running: bool, error: Optional[str] = None) -> None:
     """在注册表锁内更新运行状态，保证后台读到的状态一致。"""
     with _ADAPTERS_LOCK:
+        # 旧实例已被新实例取代时，禁止污染新实例状态
+        if _ADAPTER_INFOS.get(info.name) is not info:
+            return
         info.running = running
         if error is not None:
             info.error = error
@@ -281,7 +308,18 @@ def _run_adapter(info: AdapterInfo) -> None:
         _send_adapter_error_notification(info.name, f"初始化失败: {exc}")
         return
 
-    # 实例化成功即登记，后台可随时取到实例查询状态（即使 run() 结束后也保留）
+    # 实例化成功即登记；若期间已被停止/被新实例取代，则放弃登记并停止该实例
+    with _ADAPTERS_LOCK:
+        superseded = info.stopped or _ADAPTER_INFOS.get(info.name) is not info
+    if superseded:
+        logger.warning(f"适配器 {info.name} 实例#{info.instance_id} 已被停止/取代，放弃登记")
+        try:
+            stop_method = getattr(adapter_instance, "stop", None)
+            if callable(stop_method):
+                stop_method()
+        except Exception:
+            pass
+        return
     with _ADAPTERS_LOCK:
         info.instance = adapter_instance
         info.running = True
