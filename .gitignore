@@ -45,7 +45,8 @@ Thumbs.db
 *.temp
 .cache/
 .*
-tests/
+tests/*
+!tests/test_*.py
 
 
 # Spec workflow 临时文件
