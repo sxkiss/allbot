@@ -115,8 +115,8 @@ class WechatLoginHandler:
           - 登录成功后需额外换取 WebSocket ticket 才能收消息（由 message_listener 处理）。
         """
         robot_stat = self._load_robot_stat()
+        accounts = self._load_accounts()
         device_name = str(robot_stat.get("device_name") or "").strip() or "iPad"
-        device_id = str(robot_stat.get("device_id") or self.bot.create_device_id()).strip() or self.bot.create_device_id()
 
         # 875 的 authcode 即卡密（user_token_key），从 bot 或运行时取
         authcode = self._first_non_empty(
@@ -130,9 +130,33 @@ class WechatLoginHandler:
             self._update_875_error_status("875 缺少卡密 authcode", needs_authcode=True)
             return False
 
-        self.bot.token_key = authcode
-        self.bot.device_id = device_id
+        # 设备码按账户生成：只有「该账户已存在」时才复用其 device_id，
+        # 新账户用 authcode 做 seed 生成独立设备码，避免多账户共用一个设备。
+        active_wxid = str(robot_stat.get("wxid") or "").strip()
+        device_id = ""
+        if active_wxid:
+            device_id = str(
+                (accounts.get(active_wxid) or {}).get("device_id")
+                or robot_stat.get("device_id")
+                or ""
+            ).strip()
+        if not device_id:
+            device_id = str(self.bot.create_device_id(seed=authcode) or "").strip()
         self.bot.device_type = "ipad"
+
+        # 卡密/设备码按账户绑定，不再全局覆盖 bot.token_key/device_id
+        pending_id = f"pending:{authcode}"
+        if hasattr(self.bot, "bind_account_session"):
+            self.bot.bind_account_session(
+                pending_id,
+                authcode,
+                device_id=device_id,
+                device_name=device_name,
+                device_type="ipad",
+            )
+        else:  # 旧客户端兜底
+            self.bot.token_key = authcode
+            self.bot.device_id = device_id
 
         # --- 1. 拉二维码 ---
         # 875 是纯卡密模式（身份为 token_key/authcode，无 admin_key），
@@ -217,6 +241,28 @@ class WechatLoginHandler:
             return False
 
         # --- 3. 登录成功，初始化 + 补齐资料与状态 ---
+        # 把 pending 会话迁移到真实 wxid（卡密/设备码/凭据按账户落库）
+        real_wxid = str(getattr(self.bot, "wxid", "") or "").strip()
+        if real_wxid and hasattr(self.bot, "bind_account_session"):
+            try:
+                self.bot.bind_account_session(
+                    real_wxid,
+                    authcode,
+                    device_id=device_id,
+                    device_name=device_name,
+                    device_type="ipad",
+                )
+                sessions = getattr(self.bot, "account_sessions", None)
+                if isinstance(sessions, dict):
+                    sessions.pop(pending_id, None)
+                wxid_keys = getattr(self.bot, "wxid_keys", None)
+                if isinstance(wxid_keys, dict):
+                    wxid_keys.pop(pending_id, None)
+                if getattr(self.bot, "current_wxid", "") == pending_id:
+                    self.bot.current_wxid = real_wxid
+            except Exception as error:
+                logger.warning("875 账户会话迁移失败（忽略）: {}", error)
+
         # 875 登录后先 Newinit 拉取同步游标（官方登录链路常见步骤）
         try:
             await self.bot.newinit_875()
@@ -228,7 +274,12 @@ class WechatLoginHandler:
         except Exception as error:
             logger.warning("875 拉取用户资料失败: {}", error)
 
-        self._save_robot_stat(self.bot.wxid, device_name, device_id)
+        self._save_robot_stat(
+            self.bot.wxid,
+            device_name,
+            device_id,
+            {"authcode": authcode, "device_type": "ipad", "protocol_version": "875"},
+        )
 
         logger.success("875 登录成功：{}", self.bot.nickname or self.bot.wxid)
         self.update_status(
@@ -338,6 +389,36 @@ class WechatLoginHandler:
         with open(robot_stat_path, "r", encoding="utf-8") as file:
             return json.load(file)
 
+    def _accounts_path(self) -> Path:
+        return self.script_dir / "resource" / "accounts.json"
+
+    def _load_accounts(self) -> Dict[str, Any]:
+        """读取多账户映射 {wxid: {...}}（不存在/损坏时返回空 dict）。"""
+        path = self._accounts_path()
+        if not path.exists():
+            return {}
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+            return loaded if isinstance(loaded, dict) else {}
+        except Exception:
+            return {}
+
+    def _merge_account(self, wxid: str, data: Dict[str, Any]) -> None:
+        """按 wxid 合并写入 accounts.json，不覆盖其它账户。"""
+        target = str(wxid or "").strip()
+        if not target:
+            return
+        accounts = self._load_accounts()
+        merged = dict(accounts.get(target) or {})
+        merged.update({k: v for k, v in (data or {}).items() if v not in (None, "")})
+        accounts[target] = merged
+        path = self._accounts_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(accounts, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as error:
+            logger.warning("写入 accounts.json 失败: {}", error)
+
     def _save_robot_stat(self, wxid: str, device_name: str, device_id: str, extra: Optional[Dict[str, Any]] = None):
         robot_stat = {
             "wxid": wxid,
@@ -348,8 +429,14 @@ class WechatLoginHandler:
             robot_stat.update(extra)
 
         robot_stat_path = self.script_dir / "resource" / "robot_stat.json"
+        robot_stat_path.parent.mkdir(parents=True, exist_ok=True)
         with open(robot_stat_path, "w", encoding="utf-8") as file:
             json.dump(robot_stat, file, ensure_ascii=False)
+
+        # 多账户：额外按 wxid 落一份（合并写入，保留其它账户）
+        account_payload = dict(extra or {})
+        account_payload.update({"device_name": device_name, "device_id": device_id})
+        self._merge_account(wxid, account_payload)
 
     def _apply_profile(self, profile: Dict[str, Any]):
         user_info = profile.get("userInfo") if isinstance(profile.get("userInfo"), dict) else profile

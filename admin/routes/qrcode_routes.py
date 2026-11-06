@@ -92,6 +92,43 @@ def register_qrcode_routes(app, templates):
     def _robot_stat_path() -> Path:
         return Path(__file__).resolve().parent.parent.parent / "resource" / "robot_stat.json"
 
+    def _accounts_path() -> Path:
+        return Path(__file__).resolve().parent.parent.parent / "resource" / "accounts.json"
+
+    def _load_accounts() -> dict:
+        path = _accounts_path()
+        if not path.exists():
+            return {}
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+            return loaded if isinstance(loaded, dict) else {}
+        except Exception:
+            return {}
+
+    def _merge_account(wxid: str, data: dict) -> None:
+        """按 wxid 合并写入 accounts.json，绝不全量覆盖其它账户。"""
+        target = str(wxid or "").strip()
+        if not target:
+            return
+        accounts = _load_accounts()
+        merged = dict(accounts.get(target) or {})
+        merged.update({k: v for k, v in (data or {}).items() if v not in (None, "")})
+        accounts[target] = merged
+        try:
+            path = _accounts_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(accounts, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"写入 accounts.json 失败: {e}")
+
+    def _is_active_authcode(code: str) -> bool:
+        """该卡密是否属于当前活跃账户（决定是否可安全写 robot_stat 全局字段）。"""
+        current = str(_load_robot_stat().get("authcode") or _load_robot_stat().get("token_key") or "").strip()
+        return (not current) or current == str(code or "").strip()
+
+    # 875 拉码阶段的会话暂存（uuid -> {authcode, device_id, ...}），登录成功后再绑定账户
+    _pending_875_sessions: dict = {}
+
     def _load_robot_stat() -> dict:
         stat_path = _robot_stat_path()
         if not stat_path.exists():
@@ -128,6 +165,22 @@ def register_qrcode_routes(app, templates):
             stat_path = _robot_stat_path()
             stat_path.parent.mkdir(parents=True, exist_ok=True)
             stat_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            # 多账户：按 wxid 合并写入 accounts.json，保留其它账户数据
+            account_wxid = payload.get("wxid") or ""
+            if account_wxid:
+                _merge_account(
+                    account_wxid,
+                    {
+                        "device_name": payload.get("device_name", ""),
+                        "device_id": payload.get("device_id", ""),
+                        "auth_key": payload.get("auth_key", ""),
+                        "token_key": payload.get("token_key", ""),
+                        "poll_key": payload.get("poll_key", ""),
+                        "ticket": payload.get("ticket", ""),
+                        "device_type": payload.get("device_type", ""),
+                    },
+                )
         except Exception as e:
             logger.warning(f"写入 robot_stat.json 失败: {e}")
 
@@ -229,11 +282,19 @@ def register_qrcode_routes(app, templates):
         if not code:
             return {"success": False, "error": "缺少卡密（authcode），请先填写卡密", "needs_authcode": True}
 
-        # 落卡密，供后续登录流程与状态展示使用
-        wxapi.token_key = code
-        setattr(wxapi, "authcode", code)
-        robot_stat["authcode"] = code
-        robot_stat["token_key"] = code
+        # 卡密按账户暂存：不再全局覆盖 wxapi.token_key / robot_stat 凭据，
+        # 避免第二张卡密把已在线账户的 key 顶掉（登录成功后由 pending 迁移到 wxid）
+        is_active_code = _is_active_authcode(code)
+        if hasattr(wxapi, "bind_account_session"):
+            wxapi.bind_account_session(
+                f"pending:{code}",
+                code,
+                device_name=str(device_name or ""),
+                device_type="ipad",
+            )
+        elif is_active_code:
+            wxapi.token_key = code
+            setattr(wxapi, "authcode", code)
 
         # 设备端：优先本次传入的 device_type，其次运行时记录，最后默认 iPad
         _dev_type = str(device_type or "").strip().lower()
@@ -245,14 +306,31 @@ def register_qrcode_routes(app, templates):
             _dev_type = str(robot_stat.get("device_type") or "ipad").strip().lower() or "ipad"
 
         dev_name = str(device_name or robot_stat.get("device_name") or _dev_type or "iPad").strip() or "iPad"
-        dev_id = str(getattr(wxapi, "device_id", "") or robot_stat.get("device_id", "") or "").strip()
+        # 设备码按账户解析：已存在的账户复用其 device_id；新账户用卡密做 seed 生成独立设备码，
+        # 不再无条件复用全局 wxapi.device_id（否则多账户共用一个设备）
+        accounts = _load_accounts()
+        dev_id = ""
+        active_wxid = str(robot_stat.get("wxid") or "").strip()
+        if active_wxid and is_active_code:
+            dev_id = str(
+                (accounts.get(active_wxid) or {}).get("device_id")
+                or robot_stat.get("device_id", "")
+                or ""
+            ).strip()
+        if not dev_id:
+            for account in accounts.values():
+                if isinstance(account, dict) and str(account.get("auth_code") or account.get("auth_key") or "").strip() == code:
+                    dev_id = str(account.get("device_id") or "").strip()
+                    break
         if not dev_id and hasattr(wxapi, "create_device_id"):
-            dev_id = str(wxapi.create_device_id()).strip()
+            dev_id = str(wxapi.create_device_id(seed=code)).strip()
 
-        wxapi.device_id = dev_id
+        if is_active_code:
+            wxapi.device_id = dev_id
         wxapi.device_type = "ipad"
-        robot_stat["device_name"] = dev_name
-        robot_stat["device_id"] = dev_id
+        if is_active_code:
+            robot_stat["device_name"] = dev_name
+            robot_stat["device_id"] = dev_id
 
         # 875 拉码：绕开 admin_key，直接用卡密
         try:
@@ -277,11 +355,30 @@ def register_qrcode_routes(app, templates):
         if not uuid and not qrcode_url:
             return {"success": False, "error": "拉码返回为空", "needs_authcode": True}
 
-        # 保存 robot_stat（卡密/设备信息）
+        # 暂存本次拉码会话（uuid -> 账户凭据/设备），登录成功后按 wxid 绑定
+        if uuid:
+            _pending_875_sessions[uuid] = {
+                "authcode": code,
+                "device_id": dev_id,
+                "device_name": dev_name,
+                "device_type": "ipad",
+                "qrcode_url": qrcode_url,
+            }
+        if hasattr(wxapi, "bind_account_session"):
+            wxapi.bind_account_session(
+                f"pending:{code}",
+                code,
+                device_id=dev_id,
+                device_name=dev_name,
+                device_type="ipad",
+            )
+
+        # 保存 robot_stat（仅当本卡密属于当前活跃账户时，避免覆盖其它账户）
         try:
-            stat_path = _robot_stat_path()
-            stat_path.parent.mkdir(parents=True, exist_ok=True)
-            stat_path.write_text(json.dumps(robot_stat, ensure_ascii=False), encoding="utf-8")
+            if is_active_code:
+                stat_path = _robot_stat_path()
+                stat_path.parent.mkdir(parents=True, exist_ok=True)
+                stat_path.write_text(json.dumps(robot_stat, ensure_ascii=False), encoding="utf-8")
         except Exception as e:
             logger.warning(f"写入 robot_stat.json 失败: {e}")
 
