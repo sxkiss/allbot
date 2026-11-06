@@ -1,7 +1,7 @@
 """
 @input: aiohttp/http 接口, pysilk 语音解码; bot_core 与插件层的调用契约
 @output: WechatAPIClient 全接口动态调用能力、显式 auth 探测/唤醒/拉码 helper、30000 类型 AuthKey 生成与 bot_core 兼容方法；媒体下载器统一缓存（引用/重复下载先命中本地磁盘+内存缓存，避免重复走网关）
-@position: 微信协议客户端，提供统一动态调用能力与共享登录判定
+@position: adapter/wechat_869 自有 869 协议客户端（主线不含协议实现）
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
 
@@ -25,7 +25,7 @@ from loguru import logger
 from pydub import AudioSegment
 
 from WechatAPI.errors import UserLoggedOut
-from .base import WechatAPIClientBase
+from WechatAPI.Client.base import WechatAPIClientBase
 
 
 TEXT_VALUE_KEYS = ("string", "String", "str", "Str", "value", "Value", "text", "Text")
@@ -297,8 +297,9 @@ class WechatAPIClient(WechatAPIClientBase):
     def base_url(self) -> str:
         return f"http://{self.ip}:{self.port}"
 
-    def set_reply_router(self, router: Any):
+    def set_reply_router(self, router: Any, force: bool = False):
         self.reply_router = router
+        self._force_reply_router = bool(force)
 
     def _should_route_via_reply_router(self, wxid: str) -> bool:
         """判断当前消息是否应走 ReplyRouter（多平台适配器队列）。
@@ -311,6 +312,9 @@ class WechatAPIClient(WechatAPIClientBase):
             return False
         if not wxid:
             return False
+        # 统一适配器模式：启用 ReplyRouter 后，所有发送都走队列，由适配器按账户出站
+        if getattr(self, "_force_reply_router", False):
+            return True
         base_id = wxid[:-9] if str(wxid).endswith("@chatroom") else str(wxid)
         if "-" not in base_id:
             return False
@@ -2214,6 +2218,20 @@ class WechatAPIClient(WechatAPIClientBase):
         video_bytes = base64.b64decode(self._coerce_binary_to_base64(video))
         thumb_bytes = self._build_video_thumb_bytes(image)
 
+        # 对齐 MuseBridge：未传真实封面/落到默认占位图时，从视频首帧抽 JPEG
+        try:
+            _default_thumb = base64.b64decode(DEFAULT_VIDEO_THUMB_BASE64)
+        except Exception:
+            _default_thumb = b""
+        if not thumb_bytes or thumb_bytes == _default_thumb:
+            try:
+                from utils.video_cover import extract_video_cover
+                _cover = await extract_video_cover(video_bytes)
+                if _cover:
+                    thumb_bytes = _cover
+            except Exception:
+                pass
+
         payload = {
             "ToUserName": wxid,
             "VideoData": list(video_bytes),
@@ -2290,6 +2308,12 @@ class WechatAPIClient(WechatAPIClientBase):
                 0,
             )
 
+        # 上传响应常不回缩略图/视频长度，传 0 会导致微信侧无封面，用本地字节数兜底
+        if not length:
+            length = len(video_bytes)
+        if not thumb_len:
+            thumb_len = len(thumb_bytes)
+
         if aes_key and cdn_url:
             forward_payload = {
                 "ForwardVideoList": [
@@ -2315,13 +2339,7 @@ class WechatAPIClient(WechatAPIClientBase):
         file_name: str = "",
     ) -> Dict[str, Any]:
         if self._should_route_via_reply_router(wxid):
-            # ReplyRouter 目前没有 file 类型，避免误发为图片：退化为文本提示交由上层处理
-            client_msg_id, create_time, new_msg_id = await self.reply_router.send_text(
-                wxid,
-                f"[file] {file_name or 'file'}",
-                None,
-            )
-            return {"client_msg_id": client_msg_id, "create_time": create_time, "new_msg_id": new_msg_id}
+            return await self.reply_router.send_file(wxid, file_data, file_name)
 
         file_info = await self.upload_file(file_data)
         media_id = (
@@ -2389,7 +2407,7 @@ class WechatAPIClient(WechatAPIClientBase):
     async def send_app_message(self, wxid: str, xml: str, type: int) -> Tuple[int, int, int]:
         """兼容旧插件：发送 appmsg(xml)。"""
         if self._should_route_via_reply_router(wxid):
-            return await self.reply_router.send_text(wxid, xml, None)
+            return await self.reply_router.send_app(wxid, xml, type)
 
         payload = {
             "AppList": [
@@ -2413,7 +2431,7 @@ class WechatAPIClient(WechatAPIClientBase):
     ) -> Tuple[int, int, int]:
         """兼容旧插件：分享名片消息。"""
         if self._should_route_via_reply_router(wxid):
-            return await self.reply_router.send_text(wxid, f"[card] {card_nickname}({card_wxid})", None)
+            return await self.reply_router.send_card(wxid, card_wxid, card_nickname, card_alias, card_flag)
 
         payload = {
             "ToUserName": wxid,
@@ -2428,12 +2446,7 @@ class WechatAPIClient(WechatAPIClientBase):
     async def send_emoji_message(self, wxid: str, md5: str, total_length: int) -> Dict[str, Any]:
         """兼容旧插件：发送表情（md5 + size）。"""
         if self._should_route_via_reply_router(wxid):
-            client_msg_id, create_time, new_msg_id = await self.reply_router.send_text(
-                wxid,
-                f"[emoji] md5={md5} size={total_length}",
-                None,
-            )
-            return {"client_msg_id": client_msg_id, "create_time": create_time, "new_msg_id": new_msg_id}
+            return await self.reply_router.send_emoji(wxid, md5, total_length)
 
         payload = {"EmojiList": [{"ToUserName": wxid, "EmojiMd5": md5, "EmojiSize": int(total_length)}]}
         data = await self.call_path("/message/SendEmojiMessage", body=payload)
@@ -2447,7 +2460,7 @@ class WechatAPIClient(WechatAPIClientBase):
     async def send_cdn_file_msg(self, wxid: str, xml: str) -> Dict[str, Any]:
         """兼容旧客户端：转发文件消息。"""
         if self._should_route_via_reply_router(wxid):
-            client_msg_id, create_time, new_msg_id = await self.reply_router.send_text(wxid, xml, None)
+            client_msg_id, create_time, new_msg_id = await self.reply_router.send_cdn_file(wxid, xml)
             return {"success": True, "client_msg_id": client_msg_id, "create_time": create_time, "new_msg_id": new_msg_id}
         return await self._send_cdn_file_msg(wxid, xml)
 
@@ -2460,6 +2473,9 @@ class WechatAPIClient(WechatAPIClientBase):
 
     async def send_cdn_img_msg(self, wxid: str, xml: str) -> Tuple[int, int, int]:
         """兼容旧客户端：转发图片消息。"""
+        if self._should_route_via_reply_router(wxid):
+            return await self.reply_router.send_cdn_img(wxid, xml)
+
         aes_key = self._extract_attr_from_xml(xml, "aeskey")
         cdn_mid = self._extract_attr_from_xml(xml, "cdnbigimgurl") or self._extract_attr_from_xml(xml, "cdnmidimgurl")
         length = _safe_int(self._extract_attr_from_xml(xml, "length"), 0)
@@ -2482,6 +2498,9 @@ class WechatAPIClient(WechatAPIClientBase):
 
     async def send_cdn_video_msg(self, wxid: str, xml: str) -> Tuple[int, int, int]:
         """兼容旧客户端：转发视频消息。"""
+        if self._should_route_via_reply_router(wxid):
+            return await self.reply_router.send_cdn_video(wxid, xml)
+
         aes_key = self._extract_attr_from_xml(xml, "aeskey") or self._extract_attr_from_xml(xml, "cdnthumbaeskey")
         cdn_url = self._extract_attr_from_xml(xml, "cdnvideourl") or self._extract_attr_from_xml(xml, "cdnVideoUrl")
         length = _safe_int(self._extract_attr_from_xml(xml, "length"), 0)
@@ -2512,6 +2531,9 @@ class WechatAPIClient(WechatAPIClientBase):
         create_time: int,
         new_msg_id: int,
     ) -> bool:
+        if self._should_route_via_reply_router(wxid):
+            return await self.reply_router.send_revoke(wxid, client_msg_id, create_time, new_msg_id)
+
         client_msg_id_raw = str(client_msg_id or "").strip()
         client_msg_id_int = _safe_int(client_msg_id_raw, 0)
         create_time_int = _safe_int(create_time, 0)
@@ -2596,6 +2618,9 @@ class WechatAPIClient(WechatAPIClientBase):
 
     async def send_pat(self, chatroom_wxid: str, to_wxid: str, scene: int = 0) -> Dict[str, Any]:
         """发送群拍一拍（仅群聊）。"""
+        if self._should_route_via_reply_router(chatroom_wxid):
+            return await self.reply_router.send_pat(chatroom_wxid, to_wxid, scene)
+
         payload = {
             "ChatRoomName": chatroom_wxid,
             "ToUserName": to_wxid,

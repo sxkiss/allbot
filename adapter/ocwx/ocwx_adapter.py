@@ -927,6 +927,239 @@ class OpenClawWeixinAdapter:
         with open(path, "w", encoding="utf-8") as file:
             json.dump(payload, file, ensure_ascii=False, indent=2)
 
+    # ------------------------------------------------------------------
+    # 统一登录契约（LoginCapable）：供管理后台可视化登录使用
+    # ------------------------------------------------------------------
+    def _slots(self) -> Dict[str, SlotRuntime]:
+        """始终返回 dict，避免未启用时 self.slots 不存在导致异常。"""
+        slots = getattr(self, "slots", None)
+        return slots if isinstance(slots, dict) else {}
+
+    def _account_names(self) -> list[str]:
+        return [str(runtime.config.slot) for runtime in self._slots().values()]
+
+    def _resolve_slot(self, account: str = "") -> Tuple[Optional[SlotRuntime], Optional[Dict[str, Any]]]:
+        """解析账号槽位；失败时返回 (None, 失败响应)。"""
+        slots = self._slots()
+        if not slots:
+            return None, {"success": False, "message": "未找到可用账号"}
+        name = str(account or "").strip()
+        if not name:
+            if len(slots) == 1:
+                return next(iter(slots.values())), None
+            return None, {
+                "success": False,
+                "message": "请指定账号",
+                "accounts": self._account_names(),
+            }
+        runtime = slots.get(name)
+        if runtime is None:
+            return None, {
+                "success": False,
+                "message": f"账号 {name} 不存在",
+                "accounts": self._account_names(),
+            }
+        return runtime, None
+
+    def _slot_status_payload(self, runtime: SlotRuntime) -> Dict[str, Any]:
+        data = runtime.account_data
+        return {
+            "account": runtime.config.slot,
+            "display_name": runtime.config.display_name,
+            "enabled": bool(runtime.config.enabled),
+            "connected": bool(data.get("connected", False)),
+            "wxid": str(data.get("remote_user_id") or data.get("remote_account_id") or ""),
+            "last_login_at": data.get("last_login_at") or 0,
+            "last_error": str(data.get("last_error") or ""),
+            "qr_status": str(runtime.qr_status or data.get("qr_status") or ""),
+            "qr_path": str(runtime.qr_path),
+            "qr_access_path": str(data.get("qr_access_path") or _to_qr_access_path(runtime.qr_path)),
+            "login_link": str(data.get("qr_login_link") or ""),
+            "session_paused_until": data.get("session_paused_until") or 0,
+        }
+
+    def capabilities(self) -> Dict[str, Any]:
+        """返回登录能力（未启用时仍声明能力，由各操作方法返回失败原因）。"""
+        return {
+            "login": True,
+            "qr": True,
+            "multi_account": True,
+            "verify_code": False,
+            "enabled": bool(getattr(self, "enabled", False)),
+        }
+
+    def list_accounts(self) -> list[Dict[str, Any]]:
+        """列出账号槽位及登录状态。"""
+        if not getattr(self, "enabled", False):
+            return []
+        accounts: list[Dict[str, Any]] = []
+        for runtime in self._slots().values():
+            with runtime.lock:
+                payload = self._slot_status_payload(runtime)
+            accounts.append(
+                {
+                    "account": payload["account"],
+                    "display_name": payload["display_name"],
+                    "enabled": payload["enabled"],
+                    "connected": payload["connected"],
+                    "wxid": payload["wxid"],
+                    "last_login_at": payload["last_login_at"],
+                    "last_error": payload["last_error"],
+                    "qr_status": payload["qr_status"],
+                    "session_paused_until": payload["session_paused_until"],
+                }
+            )
+        return accounts
+
+    def login_start(self, account: str = "") -> Dict[str, Any]:
+        """开始（或重新开始）指定账号的扫码登录，生成新二维码。"""
+        if not getattr(self, "enabled", False):
+            return {"success": False, "message": "ocwx 未启用"}
+        runtime, error = self._resolve_slot(account)
+        if error is not None:
+            return error
+        assert runtime is not None
+        if not runtime.config.enabled:
+            return {
+                "success": False,
+                "message": f"账号 {runtime.config.slot} 已禁用",
+                "accounts": self._account_names(),
+            }
+        try:
+            with runtime.lock:
+                runtime.account_data["session_paused_until"] = 0
+                # 清掉旧二维码状态（含旧图片）
+                self._clear_qr(runtime)
+                if runtime.account_data.get("connected"):
+                    self._expire_slot(runtime, "manual relogin")
+                # 生成新二维码；_fetch_qr 内部会写状态文件
+                self._fetch_qr(runtime)
+                payload = self._slot_status_payload(runtime)
+                return {
+                    "success": True,
+                    "account": payload["account"],
+                    "qr_status": payload["qr_status"],
+                    "qr_path": payload["qr_path"],
+                    "qr_access_path": payload["qr_access_path"],
+                    "login_link": payload["login_link"],
+                }
+        except Exception as exc:
+            self._logger.error(f"账号槽位 {runtime.config.slot} 手动登录失败: {exc}")
+            with runtime.lock:
+                self._update_state(runtime, last_error=str(exc))
+            return {"success": False, "message": str(exc), "account": runtime.config.slot}
+
+    def login_status(self, account: str = "") -> Dict[str, Any]:
+        """查询登录状态；多账号且未指定时返回全部账号状态。"""
+        if not getattr(self, "enabled", False):
+            return {"success": False, "message": "ocwx 未启用"}
+        slots = self._slots()
+        if not slots:
+            return {"success": False, "message": "未找到可用账号"}
+        if not str(account or "").strip() and len(slots) > 1:
+            accounts = []
+            for runtime in slots.values():
+                with runtime.lock:
+                    accounts.append(self._slot_status_payload(runtime))
+            return {"success": True, "accounts": accounts}
+        runtime, error = self._resolve_slot(account)
+        if error is not None:
+            return error
+        assert runtime is not None
+        with runtime.lock:
+            payload = self._slot_status_payload(runtime)
+        return {
+            "success": True,
+            "account": payload["account"],
+            "connected": payload["connected"],
+            "qr_status": payload["qr_status"],
+            "qr_path": payload["qr_path"],
+            "qr_access_path": payload["qr_access_path"],
+            "login_link": payload["login_link"],
+            "last_error": payload["last_error"],
+            "last_login_at": payload["last_login_at"],
+            "wxid": payload["wxid"],
+            "session_paused_until": payload["session_paused_until"],
+        }
+
+    def login_qrcode(self, account: str = "") -> Dict[str, Any]:
+        """读取当前二维码文件并以 base64 返回。"""
+        if not getattr(self, "enabled", False):
+            return {"success": False, "message": "ocwx 未启用"}
+        runtime, error = self._resolve_slot(account)
+        if error is not None:
+            return error
+        assert runtime is not None
+        try:
+            with runtime.lock:
+                qr_path = runtime.qr_path
+                exists = qr_path.exists()
+                payload = self._slot_status_payload(runtime)
+            if not exists:
+                return {
+                    "success": False,
+                    "message": "二维码尚未生成，请先开始登录",
+                    "account": runtime.config.slot,
+                }
+            raw = qr_path.read_bytes()
+            return {
+                "success": True,
+                "account": payload["account"],
+                "content_type": "image/png",
+                "base64": base64.b64encode(raw).decode("ascii"),
+                "qr_access_path": payload["qr_access_path"],
+                "login_link": payload["login_link"],
+            }
+        except Exception as exc:
+            self._logger.error(f"账号槽位 {runtime.config.slot} 读取二维码失败: {exc}")
+            return {"success": False, "message": str(exc), "account": runtime.config.slot}
+
+    def login_logout(self, account: str = "") -> Dict[str, Any]:
+        """退出指定账号登录，清除 token 与轮询线程。"""
+        if not getattr(self, "enabled", False):
+            return {"success": False, "message": "ocwx 未启用"}
+        runtime, error = self._resolve_slot(account)
+        if error is not None:
+            return error
+        assert runtime is not None
+        try:
+            with runtime.lock:
+                runtime.poll_stop_event.set()
+                runtime.context_tokens.clear()
+                runtime.account_data.update(
+                    {
+                        "connected": False,
+                        "token": "",
+                        "context_tokens": {},
+                    }
+                )
+                self._expire_slot(runtime, "manual logout")
+            return {
+                "success": True,
+                "account": runtime.config.slot,
+                "message": "已退出登录",
+            }
+        except Exception as exc:
+            self._logger.error(f"账号槽位 {runtime.config.slot} 退出登录失败: {exc}")
+            return {"success": False, "message": str(exc), "account": runtime.config.slot}
+
+    def health(self) -> Dict[str, Any]:
+        """适配器健康状态摘要。"""
+        slots = self._slots()
+        connected = [
+            str(runtime.config.slot)
+            for runtime in slots.values()
+            if runtime.account_data.get("connected")
+        ]
+        return {
+            "success": True,
+            "adapter": "ocwx",
+            "enabled": bool(getattr(self, "enabled", False)),
+            "slots": len(slots),
+            "connected": len(connected),
+            "connected_accounts": connected,
+        }
+
     def _slot_log(self, runtime: SlotRuntime) -> AdapterLogger:
         return self._logger
 

@@ -50,8 +50,10 @@ class ReplyRouter:
         redis_db: int = 0,
         redis_password: Optional[str] = None,
         queue_name: str = "allbot_reply",
+        default_platform: str = "",
     ):
         self.queue_name = queue_name
+        self.default_platform = str(default_platform or "").strip()
         redis_url = f"redis://{redis_host}:{redis_port}/{redis_db}"
         self.redis = aioredis.from_url(
             redis_url,
@@ -109,6 +111,93 @@ class ReplyRouter:
         }
         return await self._push(payload)
 
+    async def send_app(self, wxid: str, xml: str, app_type: int = 0):
+        """发送 appmsg XML（链接/文件/小程序等），不能降级成纯文本。"""
+        payload = self._build_base_payload(wxid, "app")
+        payload["content"] = {"xml": xml or "", "app_type": int(app_type or 0)}
+        return await self._push(payload)
+
+    async def send_cdn_img(self, wxid: str, xml: str):
+        payload = self._build_base_payload(wxid, "cdn_img")
+        payload["content"] = {"xml": xml or ""}
+        return await self._push(payload)
+
+    async def send_cdn_video(self, wxid: str, xml: str):
+        payload = self._build_base_payload(wxid, "cdn_video")
+        payload["content"] = {"xml": xml or ""}
+        return await self._push(payload)
+
+    async def send_cdn_file(self, wxid: str, xml: str):
+        """转发 CDN 文件消息（appmsg XML, type=6）。"""
+        payload = self._build_base_payload(wxid, "cdn_file")
+        payload["content"] = {"xml": xml or ""}
+        return await self._push(payload)
+
+    async def send_file(
+        self,
+        wxid: str,
+        file: Union[str, bytes, os.PathLike],
+        file_name: str = "",
+    ):
+        payload = self._build_base_payload(wxid, "file")
+        payload["content"] = {
+            "media": self._serialize_media(file),
+            "file_name": file_name,
+        }
+        return await self._push(payload)
+
+    async def send_card(
+        self,
+        wxid: str,
+        card_wxid: str,
+        card_nickname: str = "",
+        card_alias: str = "",
+        card_flag: int = 0,
+    ):
+        payload = self._build_base_payload(wxid, "card")
+        payload["content"] = {
+            "card_wxid": card_wxid,
+            "card_nickname": card_nickname,
+            "card_alias": card_alias,
+            "card_flag": card_flag,
+        }
+        return await self._push(payload)
+
+    async def send_emoji(
+        self,
+        wxid: str,
+        md5: str,
+        total_length: int = 0,
+    ):
+        payload = self._build_base_payload(wxid, "emoji")
+        payload["content"] = {"md5": md5, "total_length": total_length}
+        return await self._push(payload)
+
+    async def send_revoke(
+        self,
+        wxid: str,
+        client_msg_id: int,
+        create_time: int,
+        new_msg_id: int,
+    ):
+        payload = self._build_base_payload(wxid, "revoke")
+        payload["content"] = {
+            "client_msg_id": client_msg_id,
+            "create_time": create_time,
+            "new_msg_id": new_msg_id,
+        }
+        return await self._push(payload)
+
+    async def send_pat(
+        self,
+        chatroom_wxid: str,
+        to_wxid: str,
+        scene: int = 0,
+    ):
+        payload = self._build_base_payload(chatroom_wxid, "pat")
+        payload["content"] = {"to_wxid": to_wxid, "scene": scene}
+        return await self._push(payload)
+
     async def send_link(
         self,
         wxid: str,
@@ -157,13 +246,27 @@ class ReplyRouter:
 
     def _build_base_payload(self, wxid: str, msg_type: str) -> Dict[str, Any]:
         platform, channel_id, is_group = self._parse_wxid(wxid)
-        return {
+        payload = {
             "platform": platform,
             "wxid": wxid,
             "channel_id": channel_id,
             "target_type": "group" if is_group else "private",
             "msg_type": msg_type,
         }
+        # 隐式透传当前消息上下文：让回复回到来源平台/账户（插件零改动）
+        try:
+            from utils.reply_context import get_context
+            ctx = get_context()
+            if ctx.get("platform"):
+                payload["platform"] = ctx["platform"]
+            if ctx.get("account_wxid"):
+                payload["account_wxid"] = ctx["account_wxid"]
+        except Exception:
+            pass
+        # 无消息上下文（主动推送/定时任务）时回退默认平台，避免被 Dispatcher 丢弃
+        if self.default_platform and payload.get("platform") == "wechat":
+            payload["platform"] = self.default_platform
+        return payload
 
     @staticmethod
     def _parse_wxid(wxid: str) -> Tuple[str, str, bool]:

@@ -38,6 +38,8 @@ class Reminder(PluginBase):
         self.admin_ignore = plugin_config["admin_ignore"]
         self.whitelist_ignore = plugin_config["whitelist_ignore"]
         self.http_proxy = plugin_config["http-proxy"]
+        # 定时任务统一走适配器出站（默认 869 适配器名）
+        self.adapter_platform = str(plugin_config.get("adapter-platform") or "wechat_869").strip()
 
         # 加载简单提醒模板，如果未指定则使用默认值
         self.simple_reminder_template = plugin_config.get("simple_reminder_template",
@@ -645,8 +647,15 @@ class Reminder(PluginBase):
             logger.error(f"发送普通提醒失败: {e}")
 
     async def _send_message(self, bot, chat_id: str, content: str, at_list: list = None):
-        """通用的消息发送函数，处理不同类型的 bot 对象"""
+        """通用的消息发送函数：优先走适配器出站，失败回退客户端直连。"""
         is_group_chat = chat_id.endswith("@chatroom")
+        if getattr(self, "adapter_platform", ""):
+            try:
+                from utils.adapter_outbound import send_text as adapter_send
+                if await adapter_send(self.adapter_platform, chat_id, content, at_list, source="reminder"):
+                    return True
+            except Exception as exc:
+                logger.warning(f"适配器发送失败，回退客户端: {exc}")
         try:
             if is_group_chat and at_list:
                 # 如果 bot 是 WechatAPIClient 类型

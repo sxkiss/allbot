@@ -1,0 +1,37 @@
+[adapter]
+name = "wechat_875"
+enabled = false
+module = "adapter.wechat_875"
+class = "Wechat875Adapter"
+replyQueue = "allbot_reply:wechat875"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[wechat875]
+enable = false
+platform = "wechat875"
+baseUrl = "http://127.0.0.1:18062"
+wsUrl = "ws://127.0.0.1:18089/ws/sync"
+apiPrefix = "/api"
+requestTimeout = 20
+reconnectInterval = 5
+deviceName = "iPad"
+# 可选：平台别名，用于回复队列 platform 过滤（默认仅 wechat875）
+# aliases = ["wechat875", "wx875"]
+
+# 多账户：每个账户一张卡密 + 独立设备名/设备码（可选）
+# 注意：enable=true 且至少配置一个账户才会启动。
+# [[wechat875.accounts]]
+# wxid = "wxid_xxx"
+# authcode = "卡密"
+# deviceName = "iPad"
+# deviceId = ""
+
+[wechat875.redis]
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""
+queue = "allbot"
