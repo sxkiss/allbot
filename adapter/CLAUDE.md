@@ -269,6 +269,20 @@ enable_tray = true
 
 ---
 
+### 5. 869 适配器（adapter/wechat_869/）
+
+- 多账户：`[[wechat869.accounts]]`，一卡密一账号，独立客户端/WS/会话。
+- 登录面板：`capabilities / list_accounts / login_start / login_status / login_qrcode / login_logout`。
+- 出站 14 类 msg_type（含 XML 类 app/cdn_file/cdn_img/cdn_video，不降级为文本）。
+- 详见 [wechat_869/README.md](./wechat_869/README.md)。
+
+### 6. 875 适配器（adapter/wechat_875/）
+
+- 多账户：`[[wechat875.accounts]]`，一卡密一账号，独立设备码/WS。
+- 登录面板：17 种设备（iPad/iPadX/iPad 8.0.62/Mac/Pad/Windows/手表/鸿蒙 + 海外版）。
+- 出站 14 类 msg_type；登录轮询 2s；二维码为真实微信链接。
+- 详见 [wechat_875/README.md](./wechat_875/README.md)。
+
 ## 🔗 关键依赖与配置
 
 ### 通用依赖

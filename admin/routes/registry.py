@@ -18,13 +18,11 @@ REGISTERED_ROUTE_FILES = [
     "admin/routes/pages.py",
     "admin/routes/system.py",
     "admin/routes/version_routes.py",
-    "admin/routes/contacts.py",
     "admin/routes/files.py",
     "admin/routes/plugins.py",
     "admin/routes/misc.py",
     "admin/routes/auth_routes.py",
     "admin/routes/websocket_routes.py",
-    "admin/routes/qrcode_routes.py",
     "admin/routes/notification_routes.py",
     "admin/routes/terminal_routes.py",
     "admin/routes/register_routes.py",
@@ -34,12 +32,9 @@ REGISTERED_ROUTE_FILES = [
     "admin/routes/message_routes.py",
     "admin/routes/feedback_routes.py",
     "admin/reminder_api.py",
-    "admin/friend_circle_api.py",
-    "admin/switch_account_api.py",
     "admin/github_proxy_api.py",
     "admin/restart_api.py",
     "admin/web_chat_api.py",
-    "admin/account_manager.py",
 ]
 
 
@@ -129,32 +124,7 @@ def register_all(app) -> None:
     except Exception as e:
         logger.error(f"✗ version 路由注册失败: {e}")
 
-    # 4) 联系人/文件/插件等模块化路由
-    try:
-        from database.contacts_db import (
-            get_contacts_from_db,
-            save_contacts_to_db,
-            update_contact_in_db,
-            get_contact_from_db,
-            get_contacts_count,
-        )
-        from admin.routes.contacts import register_contacts_routes
-
-        register_contacts_routes(
-            app,
-            bot_instance,
-            get_bot_instance,
-            getattr(app.state, "get_bot_status", lambda: {}),
-            get_contacts_from_db,
-            save_contacts_to_db,
-            update_contact_in_db,
-            get_contact_from_db,
-            get_contacts_count,
-        )
-        logger.info("✓ contacts 路由已注册")
-    except Exception as e:
-        logger.error(f"✗ contacts 路由注册失败: {e}")
-
+    # 4) 文件/插件等模块化路由
     try:
         from admin.routes.files import register_files_routes
         register_files_routes(app, admin_dir)
@@ -233,23 +203,6 @@ def _register_external_apis(app) -> None:
     except Exception as e:
         logger.error(f"reminder_api 注册失败: {e}")
 
-    # friend_circle_api
-    try:
-        from admin.friend_circle_api import register_friend_circle_routes
-        register_friend_circle_routes(app, check_auth, get_bot_instance)
-        logger.info("✓ friend_circle_api 已注册")
-    except Exception as e:
-        logger.error(f"friend_circle_api 注册失败: {e}")
-
-    # switch_account_api
-    try:
-        from admin.core.helpers import update_bot_status
-        from admin.switch_account_api import register_switch_account_routes
-        register_switch_account_routes(app, check_auth, update_bot_status)
-        logger.info("✓ switch_account_api 已注册")
-    except Exception as e:
-        logger.error(f"switch_account_api 注册失败: {e}")
-
     # github_proxy_api
     try:
         from admin.github_proxy_api import register_github_proxy_routes
@@ -274,12 +227,3 @@ def _register_external_apis(app) -> None:
     except Exception as e:
         logger.warning(f"web_chat_api 注册失败（不影响后台其它功能）: {e}")
 
-    # account_manager
-    try:
-        from admin.core.helpers import update_bot_status
-        from admin.restart_api import restart_system as restart_system_func
-        from admin.account_manager import register_account_manager_routes
-        register_account_manager_routes(app, check_auth, update_bot_status, restart_system_func)
-        logger.info("✓ account_manager 已注册")
-    except Exception as e:
-        logger.error(f"account_manager 注册失败: {e}")

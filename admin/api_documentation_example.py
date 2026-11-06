@@ -449,7 +449,6 @@ return {
 5. /api/plugins/config - 插件配置
 6. /api/accounts/list - 账号列表
 7. /api/files/list - 文件列表
-8. /api/contacts/list - 联系人列表
 9. /api/pyq/list - 朋友圈列表
 10. /api/reminders/list - 提醒列表
 

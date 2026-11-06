@@ -18,4 +18,6 @@
 | win/win_adapter.py | Platform | Win 协议桥接 |
 | wx/wx_adapter.py | Platform | wx-filehelper-api 协议桥接（含在线检测+扫码登录） |
 | wechat_observatory/wechat_observatory_adapter.py | Platform | WeChat Observatory Public API v1 桥接（WebSocket/HTTP 入站、媒体缓存与 outbox ACK 出站） |
+| wechat_869/adapter.py | Platform | 869 协议多账户桥接（一卡密一账号、独立 WS、登录面板、全类型出站） |
+| wechat_875/adapter.py | Platform | 875 协议多账户桥接（17 种设备扫码、登录面板、全类型出站） |
 | wecom_bot/wecom_bot_adapter.py | Platform | 企业微信智能机器人 aibot 长连接双向桥接（默认关闭；订阅/心跳/入站标准化、分片上传、respond/send；voice→AMR-NB；link→template_card） |

@@ -1,4 +1,4 @@
-// 适配器管理页面 JavaScript
+/* 适配器管理页面 JavaScript
  *
  * 功能:
  * - 加载适配器列表
@@ -319,11 +319,7 @@ async function toggleAdapter(adapterName, enabled) {
         // 显示成功消息
         showToast('success', result.message);
 
-        // 如果需要重启,显示重启按钮
-        if (result.need_restart) {
-            needRestart = true;
-            showRestartButton();
-        }
+        // 热插拔：启停已即时生效，无需重启主服务
 
     } catch (error) {
         console.error('切换适配器状态失败:', error);

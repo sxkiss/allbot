@@ -49,6 +49,9 @@
                     <span class="badge adapter-status-badge ms-2">状态</span>
                 </div>
                 <div class="btn-group btn-group-sm adapter-actions" role="group" aria-label="适配器操作">
+                    <button type="button" class="btn btn-outline-success btn-login-adapter" title="登录适配器" style="display: none;">
+                        <i class="bi bi-box-arrow-in-right"></i>
+                    </button>
                     <button type="button" class="btn btn-outline-primary btn-config-adapter" title="配置适配器">
                         <i class="bi bi-gear-fill"></i>
                     </button>
@@ -209,10 +212,416 @@
         </div>
     </div>
 </div>
+<div class="modal fade" id="adapter-login-modal" tabindex="-1" aria-labelledby="adapter-login-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" id="adapter-login-modal-title">登录适配器</h5>
+                    <div class="small text-muted" id="adapter-login-adapter-name"></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger py-2 d-none" id="adapter-login-alert"></div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="adapter-login-account">账号</label>
+                    <select class="form-select" id="adapter-login-account">
+                        <option value="">加载中...</option>
+                    </select>
+                </div>
+
+                <div class="mb-3" id="adapter-login-device-group" style="display: none;">
+                    <label class="form-label" for="adapter-login-device">登录设备类型</label>
+                    <select class="form-select" id="adapter-login-device">
+                        <option value="ipad">iPad</option>
+                        <option value="mac">Mac</option>
+                    </select>
+                    <div class="form-text">切换设备类型后需重新点「开始登录」拉取新二维码。</div>
+                </div>
+
+                <div class="d-flex gap-2 mb-3">
+                    <button type="button" class="btn btn-primary btn-sm" id="adapter-login-start-btn">
+                        <i class="bi bi-qr-code me-1"></i>开始 / 重新登录
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" id="adapter-login-logout-btn">
+                        <i class="bi bi-box-arrow-right me-1"></i>退出登录
+                    </button>
+                </div>
+
+                <div class="text-center mb-2">
+                    <img id="adapter-login-qrcode" alt="登录二维码" style="max-width: 240px; width: 100%; display: none; border: 1px solid #dee2e6; border-radius: 8px;">
+                </div>
+
+                <div class="small text-muted" id="adapter-login-status">正在加载登录状态...</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script src="/static/js/lib/marked.min.js"></script>
 <script src="/static/js/config_form.js"></script>
-<script src="/static/js/adapters.js"></script>
+<script src="/static/js/adapters.js?v=20261106b"></script>
+<script>
+(function () {
+    'use strict';
+
+    const state = {
+        adapter: '',
+        account: '',
+        timer: null,
+        qrFor: '',
+    };
+
+    function apiUrl(path) {
+        return '/api/adapters/' + encodeURIComponent(state.adapter) + path;
+    }
+
+    async function requestJson(url, options) {
+        const response = await fetch(url, options);
+        let data = {};
+        try {
+            data = await response.json();
+        } catch (e) {
+            data = { success: false, message: '响应解析失败' };
+        }
+        if (!response.ok && data && !data.message) {
+            data.message = '请求失败 (HTTP ' + response.status + ')';
+        }
+        return data;
+    }
+
+    function showAlert(message) {
+        const alertEl = document.getElementById('adapter-login-alert');
+        if (!alertEl) return;
+        if (message) {
+            alertEl.textContent = message;
+            alertEl.classList.remove('d-none');
+        } else {
+            alertEl.textContent = '';
+            alertEl.classList.add('d-none');
+        }
+    }
+
+    function setStatus(text) {
+        const el = document.getElementById('adapter-login-status');
+        if (el) el.textContent = text;
+    }
+
+    function stopPolling() {
+        if (state.timer) {
+            clearInterval(state.timer);
+            state.timer = null;
+        }
+    }
+
+    function clearQrcode() {
+        const img = document.getElementById('adapter-login-qrcode');
+        if (img) {
+            img.style.display = 'none';
+            img.removeAttribute('src');
+        }
+        state.qrFor = '';
+    }
+
+    /**
+     * 为每个适配器卡片按 capabilities 决定是否显示登录按钮。
+     * capabilities 失败（未运行/不支持）时隐藏按钮。
+     */
+    async function refreshLoginButtons() {
+        const container = document.getElementById('adapters-container');
+        if (!container) return;
+        const cards = container.querySelectorAll('.adapter-card[data-adapter-name]');
+        for (const card of cards) {
+            const name = card.dataset.adapterName;
+            const button = card.querySelector('.btn-login-adapter');
+            if (!button) continue;
+            if (card.dataset.loginChecked === '1') {
+                button.style.display = card.dataset.loginSupported === '1' ? '' : 'none';
+                continue;
+            }
+            card.dataset.loginChecked = '1';
+            try {
+                const result = await requestJson('/api/adapters/' + encodeURIComponent(name) + '/capabilities');
+                const supported = !!(result.success && result.data && result.data.login);
+                card.dataset.loginSupported = supported ? '1' : '0';
+                button.style.display = supported ? '' : 'none';
+                if (supported) {
+                    button.dataset.adapterName = name;
+                }
+            } catch (e) {
+                card.dataset.loginSupported = '0';
+                button.style.display = 'none';
+            }
+        }
+    }
+
+    function populateAccounts(accounts, preferred) {
+        const select = document.getElementById('adapter-login-account');
+        if (!select) return;
+        select.innerHTML = '';
+        if (!accounts || accounts.length === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = '暂无可用账号';
+            select.appendChild(option);
+            select.disabled = true;
+            state.account = '';
+            return;
+        }
+        select.disabled = accounts.length <= 1;
+        accounts.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.account;
+            option.textContent = item.display_name || item.account;
+            select.appendChild(option);
+        });
+        const target = preferred || state.account;
+        if (target && accounts.some(item => item.account === target)) {
+            select.value = target;
+        }
+        state.account = select.value;
+    }
+
+    async function loadAccounts() {
+        const result = await requestJson(apiUrl('/accounts'));
+        if (!result.success) {
+            showAlert(result.message || '获取账号列表失败');
+            populateAccounts([], '');
+            return false;
+        }
+        showAlert('');
+        populateAccounts(result.data || [], state.account);
+        return true;
+    }
+
+    async function loadQrcode() {
+        if (!state.account) return;
+        const result = await requestJson(apiUrl('/login/qrcode?account=' + encodeURIComponent(state.account)));
+        const img = document.getElementById('adapter-login-qrcode');
+        if (!img) return;
+        if (result.success && result.base64) {
+            const expected = state.account + '|' + (result.qr_content || result.qr_access_path || '');
+            if (state.qrFor !== expected) {
+                img.src = 'data:' + (result.content_type || 'image/png') + ';base64,' + result.base64;
+                img.style.display = 'block';
+                state.qrFor = expected;
+            }
+        }
+    }
+
+    function applyStatusPayload(payload) {
+        if (!payload || !payload.success) {
+            setStatus((payload && payload.message) || '查询登录状态失败');
+            return;
+        }
+        const data = payload;
+        const qrStage = { wait: '等待扫码', scaned: '已扫码，等待确认', confirmed: '已确认', expired: '已过期' };
+        let text = '账号: ' + (data.account || state.account || '-')
+            + ' | 状态: ' + (data.connected ? '已连接' : '未连接')
+            + ' | 二维码: ' + (qrStage[data.qr_status] || data.qr_status || '-');
+        if (data.device) text += ' | 设备: ' + (data.device === 'mac' ? 'Mac' : 'iPad');
+        if (data.wxid) text += ' | wxid: ' + data.wxid;
+        if (data.last_error) text += ' | 最近错误: ' + data.last_error;
+        setStatus(text);
+        if (data.connected) {
+            stopPolling();
+        }
+        if (data.qr_status === 'expired') {
+            setStatus('二维码已过期，请重新点「开始登录」');
+            clearQrcode();
+        }
+        return data;
+    }
+
+    async function refreshStatus() {
+        if (!state.adapter) return null;
+        const result = await requestJson(apiUrl('/login/status?account=' + encodeURIComponent(state.account || '')));
+        let payload = result;
+        if (result.success && Array.isArray(result.accounts)) {
+            payload = result.accounts.find(item => item.account === state.account) || result.accounts[0];
+        }
+        const data = applyStatusPayload(payload);
+        if (data && !data.connected) {
+            if (data.account && data.account !== state.account) {
+                state.account = data.account;
+                const select = document.getElementById('adapter-login-account');
+                if (select) select.value = data.account;
+            }
+            if (data.qr_status && data.qr_status !== 'expired') {
+                await loadQrcode();
+            }
+        }
+        return data;
+    }
+
+    function startPolling() {
+        stopPolling();
+        state.timer = setInterval(function () {
+            refreshStatus().catch(function (e) {
+                console.error('轮询登录状态失败:', e);
+            });
+        }, 2000);
+    }
+
+    async function startLogin() {
+        if (!state.adapter) return;
+        showAlert('');
+        const btn = document.getElementById('adapter-login-start-btn');
+        if (btn) btn.disabled = true;
+        try {
+            const deviceSelect = document.getElementById('adapter-login-device');
+            const device = deviceSelect ? deviceSelect.value : '';
+            const result = await requestJson(apiUrl('/login/start'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account: state.account || '', device: device }),
+            });
+            if (!result.success) {
+                showAlert(result.message || '开始登录失败');
+                return;
+            }
+            clearQrcode();
+            setStatus('二维码已生成，请使用微信扫码...');
+            await loadQrcode();
+            await refreshStatus();
+            startPolling();
+        } catch (e) {
+            showAlert(e.message || '开始登录失败');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    async function logout() {
+        if (!state.adapter) return;
+        if (!window.confirm('确定退出当前账号登录吗？')) return;
+        showAlert('');
+        try {
+            const result = await requestJson(apiUrl('/login/logout'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ account: state.account || '' }),
+            });
+            if (!result.success) {
+                showAlert(result.message || '退出登录失败');
+                return;
+            }
+            stopPolling();
+            clearQrcode();
+            await loadAccounts();
+            await refreshStatus();
+        } catch (e) {
+            showAlert(e.message || '退出登录失败');
+        }
+    }
+
+    async function openLoginModal(adapterName) {
+        state.adapter = adapterName;
+        state.account = '';
+        clearQrcode();
+        stopPolling();
+        showAlert('');
+        setStatus('正在加载登录状态...');
+
+        const titleEl = document.getElementById('adapter-login-adapter-name');
+        if (titleEl) titleEl.textContent = adapterName;
+        const modalEl = document.getElementById('adapter-login-modal');
+        if (modalEl && window.bootstrap) {
+            window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+
+        const ok = await loadAccounts();
+        if (!ok) return;
+        try {
+            const cap = await requestJson('/api/adapters/' + encodeURIComponent(adapterName) + '/capabilities');
+            const devices = (cap.success && cap.data && Array.isArray(cap.data.devices)) ? cap.data.devices : [];
+            const group = document.getElementById('adapter-login-device-group');
+            const deviceSelect = document.getElementById('adapter-login-device');
+            if (group && deviceSelect) {
+                if (devices.length > 0) {
+                    deviceSelect.innerHTML = '';
+                    const DEVICE_LABELS = {
+                        ipad: 'iPad', ipad_oversea: 'iPad（海外）', ipadx: 'iPadX',
+                        ipadx_oversea: 'iPadX（海外）', ipad862: 'iPad 8.0.62',
+                        mac: 'Mac', mac_oversea: 'Mac（海外）', pad: '安卓 Pad',
+                        androidpad: '安卓 Pad', padx: 'PadX', padcloud: 'Pad 云',
+                        padppmt: 'Pad PPMT', win: 'Windows', winuwp: 'Windows UWP',
+                        winunified: 'Windows 统一版', watch: '手表', harmony: '鸿蒙'
+                    };
+                    devices.forEach(function (d) {
+                        const option = document.createElement('option');
+                        option.value = d;
+                        option.textContent = DEVICE_LABELS[d] || d;
+                        deviceSelect.appendChild(option);
+                    });
+                    if (cap.data.default_device) deviceSelect.value = cap.data.default_device;
+                    group.style.display = '';
+                } else {
+                    group.style.display = 'none';
+                }
+            }
+        } catch (e) { /* 设备选择非关键路径 */ }
+        await refreshStatus();
+        startPolling();
+    }
+
+    function init() {
+        const container = document.getElementById('adapters-container');
+        if (container) {
+            container.addEventListener('click', function (event) {
+                const btn = event.target.closest('.btn-login-adapter');
+                if (!btn) return;
+                const card = btn.closest('.adapter-card');
+                const name = btn.dataset.adapterName || (card && card.dataset.adapterName);
+                if (name) openLoginModal(name);
+            });
+
+            // adapters.js 异步渲染卡片，监听容器变化以补齐登录按钮状态
+            const observer = new MutationObserver(function () {
+                refreshLoginButtons().catch(function () {});
+            });
+            observer.observe(container, { childList: true });
+            refreshLoginButtons().catch(function () {});
+        }
+
+        const select = document.getElementById('adapter-login-account');
+        if (select) {
+            select.addEventListener('change', function () {
+                state.account = select.value;
+                clearQrcode();
+                refreshStatus().catch(function () {});
+            });
+        }
+
+        const startBtn = document.getElementById('adapter-login-start-btn');
+        if (startBtn) startBtn.addEventListener('click', startLogin);
+        const logoutBtn = document.getElementById('adapter-login-logout-btn');
+        if (logoutBtn) logoutBtn.addEventListener('click', logout);
+
+        const modalEl = document.getElementById('adapter-login-modal');
+        if (modalEl) {
+            modalEl.addEventListener('hidden.bs.modal', function () {
+                stopPolling();
+                clearQrcode();
+                showAlert('');
+                state.adapter = '';
+                state.account = '';
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>
 {% endblock %}

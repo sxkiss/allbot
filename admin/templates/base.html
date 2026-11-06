@@ -568,12 +568,7 @@
                             <span>文件管理</span>
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a href="/accounts" class="nav-link {% if request.path == '/accounts' %}active{% endif %}">
-                            <i class="bi bi-person-badge"></i>
-                            <span>账号管理</span>
-                        </a>
-                   </li>
+                    
                     <li class="nav-item">
                         <a href="/adapters" class="nav-link {% if request.path == '/adapters' %}active{% endif %}">
                             <i class="bi bi-hdd-network"></i>
@@ -592,25 +587,14 @@
             <div class="sidebar-menu-section">
                 <div class="sidebar-menu-title">高级功能</div>
                 <ul class="nav flex-column">
-                    <li class="nav-item">
-                        <a href="/contacts" class="nav-link {% if request.path == '/contacts' %}active{% endif %}">
-                            <i class="bi bi-people"></i>
-                            <span>联系人</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/friend_circle" class="nav-link {% if request.path == '/friend_circle' %}active{% endif %}">
-                            <i class="bi bi-image"></i>
-                            <span>朋友圈</span>
-                        </a>
-                    </li>
+                    
+                    
                     <li class="nav-item">
                         <a href="/reminders" class="nav-link {% if request.path == '/reminders' %}active{% endif %}">
                             <i class="bi bi-alarm"></i>
                             <span>定时提醒</span>
                         </a>
                     </li>
-                    <li class="nav-item">
                 </ul>
             </div>
 
@@ -641,9 +625,9 @@
             <div class="sidebar-menu-section">
                 <ul class="nav flex-column">
                     <li class="nav-item">
-                        <a href="/qrcode" class="nav-link special-link">
+                        <a href="/adapters" class="nav-link special-link">
                             <i class="bi bi-qr-code"></i>
-                            <span>登录二维码</span>
+                            <span>适配器登录</span>
                         </a>
                     </li>
                 </ul>
@@ -1203,7 +1187,7 @@
                         if (progress > 100) {
                             clearInterval(progressInterval);
                             // 重启完成，跳转到登录页面
-                            window.location.href = '/qrcode';
+                            window.location.href = '/adapters';
                         } else {
                             progressBar.style.width = `${progress}%`;
                         }

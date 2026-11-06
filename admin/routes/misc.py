@@ -1,6 +1,6 @@
 """
 @input: FastAPI app、templates、bot_instance、config、app.state 依赖
-@output: 注册杂项路由（auth/ws/qrcode/notification/terminal）与 /api/dependency_manager/install
+@output: 注册杂项路由（auth/ws/notification/terminal）与 /api/dependency_manager/install
 @position: 管理后台杂项路由聚合层
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -28,14 +28,12 @@ def register_misc_routes(app, templates, bot_instance, config,
     # 导入拆分后的路由注册函数
     from .auth_routes import register_auth_routes
     from .websocket_routes import register_websocket_routes
-    from .qrcode_routes import register_qrcode_routes
     from .notification_routes import register_notification_routes
     from .terminal_routes import register_terminal_routes
 
     # 注册各个功能域的路由
     register_auth_routes(app, config)
     register_websocket_routes(app)  # 已更新：从 app.state 获取依赖
-    register_qrcode_routes(app, templates)
     register_notification_routes(app, templates)
     register_terminal_routes(app)
 

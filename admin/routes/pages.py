@@ -158,30 +158,6 @@ def register_page_routes(app, templates, bot_instance, get_version_info, get_sys
             return HTMLResponse(f"<h1>加载定时提醒页面失败</h1><p>错误: {str(e)}</p>")
 
 
-    # 朋友圈页面
-    @app.get("/friend_circle", response_class=HTMLResponse, tags=["页面"])
-    async def friend_circle_page(request: Request, username: Optional[str] = Depends(require_auth_page)):
-        """朋友圈页面"""
-        try:
-            if not username:
-                return RedirectResponse(url="/login?next=/friend_circle", status_code=303)
-
-            logger.debug(f"用户 {username} 访问朋友圈页面")
-
-            # 获取 bot 实例的 wxid
-            bot_wxid = ""
-            if bot_instance and hasattr(bot_instance, "wxid"):
-                bot_wxid = bot_instance.wxid
-                logger.debug(f"当前机器人 wxid: {bot_wxid}")
-
-            version_info = get_version_info()
-            context = build_page_context(request, "friend_circle", version_info, bot_wxid=bot_wxid)
-            return templates.TemplateResponse("friend_circle.html", context)
-        except Exception as e:
-            logger.error(f"朋友圈页面访问失败: {str(e)}")
-            return RedirectResponse(url="/login?next=/friend_circle", status_code=303)
-
-
     # 插件管理页面
     @app.get("/plugins", response_class=HTMLResponse, tags=["页面"])
     async def plugins_page(request: Request, username: Optional[str] = Depends(require_auth_page)):
@@ -204,18 +180,6 @@ def register_page_routes(app, templates, bot_instance, get_version_info, get_sys
         version_info = get_version_info()
         context = build_page_context(request, "plugin_market", version_info)
         return templates.TemplateResponse("plugin_market.html", context)
-
-
-    # 联系人页面
-    @app.get("/contacts", response_class=HTMLResponse, tags=["页面"])
-    async def contacts_page(request: Request, username: Optional[str] = Depends(require_auth_page)):
-        """联系人管理页面"""
-        if not username:
-            return RedirectResponse(url="/login")
-
-        version_info = get_version_info()
-        context = build_page_context(request, "contacts", version_info)
-        return templates.TemplateResponse("contacts.html", context)
 
 
     # 系统监控页面

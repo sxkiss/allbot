@@ -103,66 +103,10 @@ def _option(value: str, label: str) -> Dict[str, str]:
 
 MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
     _section(
-        "Protocol",
-        "协议设置",
-        "选择微信协议版本。普通部署保持默认即可。",
-        [
-            _field(
-                "version",
-                "协议版本",
-                "select",
-                description="不同协议兼容不同客户端环境。",
-                options=[
-                    _option("869", "869（推荐）"),
-                    _option("ipad", "iPad"),
-                    _option("pad", "Pad"),
-                    _option("mac", "Mac"),
-                    _option("ipad2", "iPad2"),
-                    _option("car", "Car"),
-                    _option("win", "Windows"),
-                ],
-            )
-        ],
-        icon="bi-cpu",
-    ),
-    _section(
-        "Framework",
-        "框架设置",
-        "机器人运行框架类型。",
-        [
-            _field(
-                "type",
-                "框架类型",
-                "select",
-                description="当前仅支持 wechat。",
-                options=[_option("wechat", "微信 (wechat)")],
-            )
-        ],
-        icon="bi-box",
-    ),
-    _section(
         "WechatAPIServer",
-        "微信接口服务",
-        "连接 WechatAPI / 消息队列相关设置。",
+        "消息总线",
+        "Redis / 消息消费者相关设置（协议连接已由适配器管理）。",
         [
-            _field("host", "服务地址", "text", description="WechatAPI 服务主机地址。", placeholder="127.0.0.1"),
-            _field("port", "服务端口", "number", description="WechatAPI 服务端口。", min_value=1, max_value=65535),
-            _field(
-                "mode",
-                "运行模式",
-                "select",
-                description="生产环境建议使用 release。",
-                options=[_option("debug", "调试 (debug)"), _option("release", "生产 (release)")],
-            ),
-            _field("admin-key", "管理密钥", "password", description="869 管理密钥，部署时填写。", secret=True),
-            _field(
-                "login-qrcode-proxy",
-                "登录二维码代理",
-                "text",
-                description="可选，例如 socks5://user:pass@ip:port。",
-                placeholder="socks5://127.0.0.1:1080",
-                advanced=True,
-            ),
             _field("redis-host", "Redis 地址", "text", placeholder="127.0.0.1"),
             _field("redis-port", "Redis 端口", "number", min_value=1, max_value=65535),
             _field("redis-password", "Redis 密码", "password", secret=True, description="没有密码可留空。"),
@@ -175,15 +119,7 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
                 min_value=1,
                 max_value=64,
             ),
-            _field("enable-websocket", "启用 WebSocket 收消息", "boolean"),
-            _field(
-                "ws-url",
-                "WebSocket 地址",
-                "text",
-                description="869 建议使用 /ws/GetSyncMsg，程序会自动追加 key。",
-                placeholder="ws://127.0.0.1:9000/ws/GetSyncMsg",
-            ),
-            _field("enable-rabbitmq", "启用 RabbitMQ 收消息", "boolean"),
+            _field("enable-rabbitmq", "启用 RabbitMQ 收消息", "boolean", advanced=True),
             _field("rabbitmq-host", "RabbitMQ 地址", "text", placeholder="127.0.0.1", advanced=True),
             _field("rabbitmq-port", "RabbitMQ 端口", "number", min_value=1, max_value=65535, advanced=True),
             _field("rabbitmq-user", "RabbitMQ 用户名", "text", advanced=True),
@@ -280,7 +216,6 @@ MAIN_CONFIG_SCHEMA: List[Dict[str, Any]] = [
         "机器人身份、管理员、数据库与常用运行开关。",
         [
             _field("version", "版本号", "text", readonly=True, description="框架版本，请勿修改。"),
-            _field("enable-wechat-login", "启用微信登录", "boolean", description="仅适配器输入时可关闭。"),
             _field("ignore-protection", "忽略风控保护", "boolean", description="建议保持关闭。"),
             _field("enable-group-wakeup", "启用群聊唤醒词", "boolean"),
             _field("group-wakeup-words", "群聊唤醒词", "list", item_label="唤醒词"),
@@ -796,7 +731,7 @@ _MULTI_ACCOUNT_TEMPLATES: Dict[str, Dict[str, Any]] = {
 
 def _is_secret_key(key: str) -> bool:
     lower = str(key).lower()
-    return any(token in lower for token in ("password", "token", "secret", "api-key", "apikey", "admin-key"))
+    return any(token in lower for token in ("password", "token", "secret", "api-key", "apikey"))
 
 
 def _field_from_sample(key: str, sample: Any = None, *, description: str = "") -> Dict[str, Any]:
