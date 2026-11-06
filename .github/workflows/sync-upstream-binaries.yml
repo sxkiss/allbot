@@ -1,0 +1,140 @@
+name: Sync upstream protocol binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "官方镜像（含 tag）。留空 = 自动取 Docker Hub 最新 tag"
+        required: false
+        default: ""
+      mode:
+        description: "release=上传 Release；commit=提交回当前分支"
+        required: true
+        type: choice
+        options: [release, commit]
+        default: release
+      expected_pad_version:
+        description: "校验 pad_client_version 前缀（如 8.0.80），留空不校验"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: 解析镜像 tag
+        id: resolve
+        env:
+          INPUT_IMAGE: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+          IMAGE="$INPUT_IMAGE"
+          if [ -z "$IMAGE" ]; then
+            IMAGE=$(python3 -c 'import json,urllib.request;u="https://hub.docker.com/v2/repositories/wechatpadpro/wechatpadprobusiness/tags?page_size=100&ordering=last_updated";d=json.load(urllib.request.urlopen(u,timeout=30));print(next((t["name"] for t in d.get("results",[]) if "arm" not in t["name"].lower()),""))')
+          fi
+          [ -n "$IMAGE" ] || { echo "无法解析镜像 tag"; exit 1; }
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: 拉取镜像并提取 /app
+        id: extract
+        env:
+          IMAGE: ${{ steps.resolve.outputs.image }}
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          CID=$(docker create "$IMAGE")
+          rm -rf /tmp/upstream && mkdir -p /tmp/upstream/app
+          docker cp "$CID":/app/. /tmp/upstream/app/
+          docker rm "$CID" >/dev/null
+          cd /tmp/upstream/app
+          echo "--- /app 文件 ---"
+          find . -maxdepth 2 -type f -printf '%p %s\n' | sort | head -80
+          python3 -c 'import json,os;m=json.load(open("metadata.json")) if os.path.exists("metadata.json") else {};print("metadata:",json.dumps(m,ensure_ascii=False));f=open(os.environ["GITHUB_OUTPUT"],"a");f.write("version="+m.get("version","")+"\n");f.write("pad_version="+m.get("pad_client_version","")+"\n");f.write("build_date="+m.get("build_date","")+"\n")'
+
+      - name: 版本校验
+        env:
+          EXPECTED: ${{ inputs.expected_pad_version }}
+          PAD_VERSION: ${{ steps.extract.outputs.pad_version }}
+        run: |
+          if [ -n "$EXPECTED" ] && [ "${PAD_VERSION#"$EXPECTED"}" = "$PAD_VERSION" ]; then
+            echo "pad_client_version=$PAD_VERSION 不以 $EXPECTED 开头，终止"
+            exit 1
+          fi
+          echo "版本校验通过: ${PAD_VERSION:-未提供 metadata}"
+
+      - name: 映射到仓库布局
+        env:
+          IMAGE: ${{ steps.resolve.outputs.image }}
+          VERSION: ${{ steps.extract.outputs.version }}
+          PAD_VERSION: ${{ steps.extract.outputs.pad_version }}
+          BUILD_DATE: ${{ steps.extract.outputs.build_date }}
+        run: |
+          set -euo pipefail
+          cd /tmp/upstream/app
+          MAIN=$(ls wechatpadpromax08 2>/dev/null || ls wechatpad* 2>/dev/null | head -1 || true)
+          [ -n "$MAIN" ] || { echo "未找到主程序二进制"; exit 1; }
+          cp "$MAIN" "$GITHUB_WORKSPACE/wechatpad875"
+          FACE=$(ls pad-face-verify* 2>/dev/null | head -1 || true)
+          [ -n "$FACE" ] || { echo "未找到人脸验证二进制"; exit 1; }
+          cp "$FACE" "$GITHUB_WORKSPACE/wxserver_runtime/bin/pad-face-verify-linux-x64"
+          if [ -f metadata.json ]; then
+            cp metadata.json "$GITHUB_WORKSPACE/wxserver_runtime/metadata.json"
+          fi
+          if [ -d swagger ]; then
+            rm -rf "$GITHUB_WORKSPACE/wxserver_runtime/swagger"
+            cp -a swagger "$GITHUB_WORKSPACE/wxserver_runtime/swagger"
+          fi
+          if [ -d runtime/assets ]; then
+            mkdir -p "$GITHUB_WORKSPACE/wxserver_runtime/assets"
+            cp -a runtime/assets/. "$GITHUB_WORKSPACE/wxserver_runtime/assets/"
+          fi
+          if [ -d runtime/static ]; then
+            mkdir -p "$GITHUB_WORKSPACE/wxserver_runtime/static"
+            cp -a runtime/static/. "$GITHUB_WORKSPACE/wxserver_runtime/static/"
+          fi
+          chmod +x "$GITHUB_WORKSPACE/wechatpad875" "$GITHUB_WORKSPACE/wxserver_runtime/bin/pad-face-verify-linux-x64"
+          python3 -c 'import json,os,hashlib;ws=os.environ["GITHUB_WORKSPACE"];md5=lambda p:hashlib.md5(open(p,"rb").read()).hexdigest();r={"image":os.environ["IMAGE"],"version":os.environ.get("VERSION",""),"pad_client_version":os.environ.get("PAD_VERSION",""),"build_date":os.environ.get("BUILD_DATE",""),"wechatpad875_md5":md5(os.path.join(ws,"wechatpad875")),"face_verify_md5":md5(os.path.join(ws,"wxserver_runtime/bin/pad-face-verify-linux-x64"))};json.dump(r,open(os.path.join(ws,"wxserver_runtime/UPSTREAM_VERSION.json"),"w"),ensure_ascii=False,indent=2);print(json.dumps(r,ensure_ascii=False,indent=2))'
+
+      - name: 打包（release 模式）
+        if: inputs.mode == 'release'
+        env:
+          VERSION: ${{ steps.extract.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd /tmp/upstream/app
+          NAME="wppro-${VERSION:-unknown}.tar.gz"
+          tar -czf "/tmp/$NAME" .
+          ls -lh "/tmp/$NAME"
+
+      - name: 上传 Release（release 模式）
+        if: inputs.mode == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: wppro-${{ steps.extract.outputs.version }}
+          files: /tmp/wppro-${{ steps.extract.outputs.version }}.tar.gz
+
+      - name: 提交回仓库（commit 模式）
+        if: inputs.mode == 'commit'
+        env:
+          VERSION: ${{ steps.extract.outputs.version }}
+          PAD_VERSION: ${{ steps.extract.outputs.pad_version }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A -- wechatpad875 wxserver_runtime
+          if git diff --cached --quiet; then
+            echo "无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "chore(875): sync upstream binaries ${VERSION} (pad ${PAD_VERSION}) [skip ci]"
+          git push origin "HEAD:${{ github.ref_name }}"
