@@ -41,6 +41,8 @@ Thumbs.db
 *.temp
 .cache/
 .*
+!.github/
+!.github/**
 tests/
 
 
