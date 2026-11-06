@@ -1,6 +1,6 @@
 [adapter]
 name = "wechat_875"
-enabled = false
+enabled = true
 module = "adapter.wechat_875"
 class = "Wechat875Adapter"
 replyQueue = "allbot_reply:wechat875"
@@ -10,10 +10,10 @@ logEnabled = true
 logLevel = "INFO"
 
 [wechat875]
-enable = false
+enable = true
 platform = "wechat875"
-baseUrl = "http://127.0.0.1:18062"
-wsUrl = "ws://127.0.0.1:18089/ws/sync"
+baseUrl = "http://172.17.0.1:18062"
+wsUrl = "ws://172.17.0.1:18089/ws/sync"
 apiPrefix = "/api"
 requestTimeout = 20
 reconnectInterval = 5

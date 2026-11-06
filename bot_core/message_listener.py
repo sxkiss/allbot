@@ -21,6 +21,9 @@ from bot_core.ws_message_normalizer import normalize_addmsg, normalize_ws_payloa
 
 
 QUEUE_NAME = "allbot"
+_INBOUND_GUARD = {}
+_INBOUND_GUARD_TTL = 10
+_INBOUND_GUARD_MAX = 5
 
 
 
@@ -96,6 +99,12 @@ async def _process_ws_message(data: Dict[str, Any], allbot, redis, message_db):
             # 只打印引用消息的完整结构（用于调试）
             if raw_message.get('Type') == '49' or 'refermsg' in str(raw_message.get('Content', '')):
                 logger.info("RAW_QUOTE_MSG {}", _json.dumps(raw_message, ensure_ascii=False, indent=2))
+        # 过滤自发消息回声（私聊 FromWxid == bot 自身）
+        from_wxid = str(addmsg.get("FromWxid") or addmsg.get("FromUserName", {}).get("string") or "")
+        if bot_wxid and from_wxid == bot_wxid and not str(addmsg.get("FromWxid", "")).endswith("@chatroom"):
+            logger.debug("丢弃自发消息回声: msg_id={} sender={}", addmsg.get("MsgId"), from_wxid)
+            continue
+
         bot = getattr(allbot, "bot", None)
         if bot is not None and hasattr(bot, "register_msg_ids"):
             try:
@@ -128,6 +137,26 @@ async def _save_and_enqueue_message(message: Dict[str, Any], redis, message_db, 
     fields = MessageNormalizer.extract_message_fields(message, is_standard_format)
     sender = fields["sender_wxid"]
     is_group = bool(message.get("IsGroup")) or (isinstance(sender, str) and sender.endswith("@chatroom"))
+
+    # 防自回环：重复熔断（同一发送者+内容在 TTL 内高频出现直接丢弃）
+
+    # 重复熔断：同一发送者 + 同一内容在 TTL 内超过阈值直接丢弃
+    content_text = str(fields.get("content") or "")[:200]
+    guard_key = (str(fields.get("sender_wxid") or ""), content_text)
+    now = time.time()
+    ts, count = _INBOUND_GUARD.get(guard_key, (now, 0))
+    if now - ts > _INBOUND_GUARD_TTL:
+        ts, count = now, 0
+    count += 1
+    _INBOUND_GUARD[guard_key] = (ts, count)
+    if count > _INBOUND_GUARD_MAX:
+        logger.warning("入站重复熔断: sender={} content={}", fields.get("sender_wxid"), content_text[:60])
+        return
+    # 轻量清理
+    if len(_INBOUND_GUARD) > 2000:
+        for k, (t, _) in list(_INBOUND_GUARD.items()):
+            if now - t > _INBOUND_GUARD_TTL:
+                _INBOUND_GUARD.pop(k, None)
 
     await message_db.save_message(
         msg_id=int(fields["msg_id"] or 0),

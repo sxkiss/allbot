@@ -308,6 +308,9 @@ class WechatAPIClient(WechatAPIClientBase):
         - 默认平台为 wechat（无前缀/或普通 wxid/chatroom），应直发本客户端；
         - 带前缀的平台（如 wxfilehelper-xxx、tg-xxx、web-xxx）才走 ReplyRouter。
         """
+        # 终端硬开关：adapter 出站客户端绝不回路由（优先级最高，不依赖外部清空）
+        if getattr(self, "_adapter_terminal", False):
+            return False
         if not self.reply_router:
             return False
         if not wxid:
