@@ -301,6 +301,7 @@ class Wechat875Adapter:
                 tasks.append(asyncio.create_task(self._ws_worker(account)))
         tasks.append(asyncio.create_task(self._reply_worker()))
         tasks.append(asyncio.create_task(self._login_poll_loop()))
+        tasks.append(asyncio.create_task(self._online_poll_loop()))
         self._tasks = tasks
 
         self._logger.success(
@@ -412,6 +413,9 @@ class Wechat875Adapter:
                 raise
             except Exception as exc:
                 account.ws_connected = False
+                # 关键：WS 断开即视为离线，触发下一轮协议侧状态复查；
+                # 否则 online 永远停在登录时的 True（假在线）
+                account.online = False
                 self._logger.warning(
                     f"账户 {account.wxid} WS 断开: {exc}，{self.reconnect_interval}s 后重连"
                 )
@@ -1297,3 +1301,39 @@ class Wechat875Adapter:
             except Exception as exc:
                 self._logger.debug(f"875 登录状态轮询异常: {exc}")
             await asyncio.sleep(self._login_poll_interval)
+
+    async def _online_poll_loop(self) -> None:
+        """运行态在线状态轮询。
+
+        登录确认后 _login_poll_loop 不再跟踪该账户，connected 会变成陈旧快照。
+        本循环定期向协议侧复查 GetLoginStatus，实时更新 account.online：
+        - 在线→离线：记录 warning，WS worker 会在下一轮重连
+        - 离线→在线：恢复并同步真实 wxid
+        """
+        interval = max(10.0, float(self.wx_cfg.get("onlinePollIntervalSec", 30)))
+        while not self._stop_event.is_set():
+            for account in list(self._accounts):
+                try:
+                    status = await account.client.get_login_status_875()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    self._logger.debug(f"账户 {account.wxid} 在线轮询失败: {exc}")
+                    continue
+                was = bool(account.online)
+                now = bool(status.get("online"))
+                if was and not now:
+                    self._logger.warning(
+                        f"账户 {account.wxid} 在线状态丢失: {status.get('message', '')}，等待重连"
+                    )
+                    account.online = False
+                elif not was and now:
+                    real_wxid = str(status.get("wxid") or "") or account.wxid
+                    account.wxid = real_wxid
+                    account.client.wxid = real_wxid
+                    self._clients_by_wxid[real_wxid] = account.client
+                    account.online = True
+                    self._logger.success(f"账户 {account.wxid} 在线状态恢复")
+                else:
+                    account.online = now
+            await asyncio.sleep(interval)
