@@ -1,8 +1,0 @@
-[RandomPhoto]
-enable = false
-command = ["666"]
-api_url = "https://xrw.christin3.com/api/random-photo"
-proxy_url = "http://example.internal:7778"
-timeout = 60
-max_retries = 3
-allowed_platforms = ["telegram"]
