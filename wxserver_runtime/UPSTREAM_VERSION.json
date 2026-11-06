@@ -1,0 +1,8 @@
+{
+  "image": "wechatpadpro/wechatpadprobusiness:latest",
+  "version": "v2026.09.25.1",
+  "pad_client_version": "8.0.75.53",
+  "build_date": "20260925",
+  "wechatpad875_md5": "2e4166b7bc003f91da20ec7990fac78d",
+  "face_verify_md5": "83fdd7b9cbf1839cfff27c2b52df079a"
+}

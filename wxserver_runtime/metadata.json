@@ -1,0 +1,19 @@
+{
+  "project": "wechatpadpromax08",
+  "version": "v2026.09.25.1",
+  "build_id": "20260925_171035",
+  "build_date": "20260925",
+  "build_time": "2026-09-25 17:14:57 +0800",
+  "build_timestamp": "2026-09-25T17:14:57+0800",
+  "build_epoch": 1790327699,
+  "environment": "prod",
+  "os": "linux",
+  "arch": "amd64",
+  "profile": "default",
+  "pad08_mode": "source",
+  "mac_client_version": "4.1.12.29",
+  "pad_client_version": "8.0.75.53",
+  "git_commit": "9934296bc53b032340339abd4ad2ebd79e5da418",
+  "git_dirty": false,
+  "go_version": "go1.26.0"
+}
