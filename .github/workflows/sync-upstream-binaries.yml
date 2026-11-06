@@ -1,6 +1,11 @@
 name: Sync upstream protocol binaries
 
 on:
+  push:
+    branches:
+      - feat/wxserver875-license
+    paths:
+      - ".github/workflows/sync-upstream-binaries.yml"
   workflow_dispatch:
     inputs:
       image:
@@ -24,6 +29,10 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    env:
+      SYNC_MODE: ${{ github.event.inputs.mode || 'commit' }}
+      SYNC_IMAGE: ${{ github.event.inputs.image || 'wechatpadpro/wechatpadprobusiness:main' }}
+      EXPECTED_PAD: ${{ github.event.inputs.expected_pad_version || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,7 +42,7 @@ jobs:
       - name: 解析镜像 tag
         id: resolve
         env:
-          INPUT_IMAGE: ${{ inputs.image }}
+          INPUT_IMAGE: ${{ env.SYNC_IMAGE }}
         run: |
           set -euo pipefail
           IMAGE="$INPUT_IMAGE"
@@ -61,7 +70,7 @@ jobs:
 
       - name: 版本校验
         env:
-          EXPECTED: ${{ inputs.expected_pad_version }}
+          EXPECTED: ${{ env.EXPECTED_PAD }}
           PAD_VERSION: ${{ steps.extract.outputs.pad_version }}
         run: |
           if [ -n "$EXPECTED" ] && [ "${PAD_VERSION#"$EXPECTED"}" = "$PAD_VERSION" ]; then
@@ -104,7 +113,7 @@ jobs:
           python3 -c 'import json,os,hashlib;ws=os.environ["GITHUB_WORKSPACE"];md5=lambda p:hashlib.md5(open(p,"rb").read()).hexdigest();r={"image":os.environ["IMAGE"],"version":os.environ.get("VERSION",""),"pad_client_version":os.environ.get("PAD_VERSION",""),"build_date":os.environ.get("BUILD_DATE",""),"wechatpad875_md5":md5(os.path.join(ws,"wechatpad875")),"face_verify_md5":md5(os.path.join(ws,"wxserver_runtime/bin/pad-face-verify-linux-x64"))};json.dump(r,open(os.path.join(ws,"wxserver_runtime/UPSTREAM_VERSION.json"),"w"),ensure_ascii=False,indent=2);print(json.dumps(r,ensure_ascii=False,indent=2))'
 
       - name: 打包（release 模式）
-        if: inputs.mode == 'release'
+        if: env.SYNC_MODE == 'release'
         env:
           VERSION: ${{ steps.extract.outputs.version }}
         run: |
@@ -115,14 +124,14 @@ jobs:
           ls -lh "/tmp/$NAME"
 
       - name: 上传 Release（release 模式）
-        if: inputs.mode == 'release'
+        if: env.SYNC_MODE == 'release'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: wppro-${{ steps.extract.outputs.version }}
           files: /tmp/wppro-${{ steps.extract.outputs.version }}.tar.gz
 
       - name: 提交回仓库（commit 模式）
-        if: inputs.mode == 'commit'
+        if: env.SYNC_MODE == 'commit'
         env:
           VERSION: ${{ steps.extract.outputs.version }}
           PAD_VERSION: ${{ steps.extract.outputs.pad_version }}
