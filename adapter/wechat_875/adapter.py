@@ -123,6 +123,8 @@ class Wechat875Adapter:
         # 登录面板状态：按账户 key 维护拉码/扫码会话
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._login_sessions: Dict[str, Dict[str, Any]] = {}
+        self._verify_qr_cache: Dict[str, str] = {}  # verification_url -> base64 PNG（只留当前）
+        self._heartbeat_kick_at: Dict[str, float] = {}  # wxid -> 上次补触发 AutoHeartBeat 的时间
         self._login_lock = threading.RLock()
         self._login_poll_interval = max(1.0, float(self.wx_cfg.get("loginPollIntervalSec", 2)))
         self._login_ttl = max(60.0, float(self.wx_cfg.get("loginQrTtlSec", 240)))
@@ -1207,6 +1209,15 @@ class Wechat875Adapter:
             session = dict(self._login_sessions.get(key) or {})
         # 与 list_accounts 一致：真实在线 = 协议登录态 AND 本适配器 WS 链路存活
         connected = bool(target.online and target.ws_connected)
+        vurl = session.get("verification_url") or ""
+        vqr = str(session.get("verification_qrcode_protocol") or "")
+        if vurl and not vqr:
+            # 协议没给二维码才本地生成；同一 url 只编码一次
+            vqr = self._verify_qr_cache.get(vurl) or ""
+            if not vqr:
+                vqr = self._qrcode_png(vurl)
+                if vqr:
+                    self._verify_qr_cache = {vurl: vqr}
         return {
             "success": True,
             "account": key,
@@ -1217,6 +1228,14 @@ class Wechat875Adapter:
             "login_link": session.get("qr_content") or "",
             "wxid": key,
             "last_error": session.get("last_error") or "",
+            # Q2：CheckQR 动态验证地址（含卡密/challenge，仅已鉴权后台会话可见）
+            "requires_face_verification": bool(session.get("requires_face_verification")),
+            "verification_url": vurl,
+            # 验证地址二维码：第二台手机扫码即可在微信内打开，免手输长链接
+            "verification_qrcode": vqr,
+            "verification_qrcode_content_type": "image/png" if vqr else "",
+            "face_status": session.get("face_status") or "",
+            "challenge_id": session.get("challenge_id") or "",
         }
 
     def login_qrcode(self, account: str = "") -> Dict[str, Any]:
@@ -1261,8 +1280,48 @@ class Wechat875Adapter:
             "ws_connected": sum(1 for a in self._accounts if a.ws_connected),
         }
 
+    @staticmethod
+    def _extract_face_verification(data: Dict[str, Any], raw: Any) -> Dict[str, Any]:
+        """从 CheckQR 响应抽取人脸/滑块验证字段（Q2 数据通道）。
+
+        官方教程：requires_face_verification=true 且 ready=true 时取最新
+        verification_url（每次登录 challenge_id 不同、会过期）。字段可能落在
+        Data 或顶层，故两层都查。无验证需求时返回空 dict。
+        """
+        top = raw if isinstance(raw, dict) else {}
+        def pick(*names):
+            for src in (data, top):
+                for n in names:
+                    v = src.get(n)
+                    if v not in (None, "", False):
+                        return v
+            return None
+        url = pick("verification_url", "verify_url", "face_verify_url")
+        needed = bool(data.get("requires_face_verification") or top.get("requires_face_verification")
+                      or data.get("ready") or top.get("ready"))
+        if not url and not needed:
+            return {}
+        out: Dict[str, Any] = {}
+        if url:
+            out["verification_url"] = str(url)
+        # 协议 CheckQR 自带验证二维码（data URI），优先用官方的，免自己编码
+        q = pick("verification_qr_base64", "verification_qrcode")
+        if q:
+            uri = str(q)
+            out["verification_qrcode_protocol"] = uri.split(",", 1)[-1] if "," in uri else uri
+        out["requires_face_verification"] = bool(url or needed)
+        cid = pick("challenge_id", "challengeId")
+        if cid:
+            out["challenge_id"] = str(cid)
+        state = data.get("status") or top.get("status")
+        if state:
+            out["face_status"] = str(state)
+        return out
+
     async def _poll_login_once(self) -> None:
-        """轮询所有待扫码账户的 CheckLoginStatus，成功后更新在线状态。"""
+        """轮询所有待扫码账户的 875 CheckQR（POST），成功后接管会话。"""
+        # 875 CheckQR 状态码（见 wx875client/protocol875.py QR_STATUS_*）
+        WAITING, SCANNED, EXPIRED, CANCELLED = 0, 1, 3, 4
         with self._login_lock:
             pending = [
                 (key, dict(session))
@@ -1275,14 +1334,20 @@ class Wechat875Adapter:
                 continue
             uuid = str(session.get("uuid") or "")
             try:
-                checked, data = await target.client.check_login_uuid(uuid, target.device_id or "")
+                # 875 专用：POST /api/Login/CheckQR + query uuid + X-Access-Token。
+                # 旧的 check_login_uuid 是 869 的 GET，875 下打 404 HTML 被静默吞掉，
+                # 状态机永远停 wait —— 这里必须切到 check_qr_875。
+                result = await target.client.check_qr_875(uuid)
             except Exception as exc:
                 with self._login_lock:
                     self._login_sessions.setdefault(key, {})["last_error"] = str(exc)
                 continue
-            if checked:
+            if not isinstance(result, dict):
+                result = {}
+
+            if result.get("ok"):
                 status = await target.client.get_login_status_875()
-                real_wxid = str(status.get("wxid") or "") or key
+                real_wxid = str(result.get("wxid") or status.get("wxid") or "") or key
                 target.online = True
                 target.wxid = real_wxid
                 target.client.wxid = real_wxid
@@ -1301,24 +1366,46 @@ class Wechat875Adapter:
                 self._logger.success(f"875 账户 {key} 扫码登录成功")
                 continue
 
-            qr_status = "wait"
-            if isinstance(data, dict):
-                raw = data.get("Data") if isinstance(data.get("Data"), dict) else data
-                state = raw.get("loginState") or raw.get("LoginState") or raw.get("state") or raw.get("State") or raw.get("Status") or raw.get("status")
-                text = str(raw.get("Text") or raw.get("text") or raw.get("loginErrMsg") or raw.get("ErrMsg") or "")
-                try:
-                    state_i = int(state)
-                except Exception:
-                    state_i = None
-                if state_i == 1 or any(t in text.lower() for t in ("已扫描", "scan")):
-                    qr_status = "scaned"
-                elif state_i in (2, 200, 201):
-                    qr_status = "confirmed"
-                elif any(t in text.lower() for t in ("过期", "expired", "失效")):
-                    qr_status = "expired"
+            # CheckQR 的 Data.status 是字符串（实测 waiting_scan；官方还有
+            # awaiting_open/awaiting_face/awaiting_slider/resuming_login/completed），
+            # 不是数字常量。字符串优先、数字兼容，避免状态机空转。
+            raw = result.get("raw")
+            data = raw.get("Data") if isinstance(raw, dict) else {}
+            data = data if isinstance(data, dict) else {}
+            raw_status = data.get("status") or result.get("status")
+            st = str(raw_status or "").strip().lower()
+            text = str(result.get("message") or data.get("message") or "")
+
+            if st in ("waiting_scan", "waiting", "0"):
+                qr_status = "wait"
+            elif st in ("scanned", "awaiting_confirm", "1") or any(t in text.lower() for t in ("已扫描", "scan")):
+                qr_status = "scaned"
+            elif st in ("expired", "cancelled", "canceled", "3", "4") or any(t in text.lower() for t in ("过期", "expired", "失效", "cancel")):
+                qr_status = "expired"
+            # 验证各态（awaiting_open/awaiting_face/awaiting_slider/
+            # resuming_login/preparing_pad_session）保持 scaned，不误判过期；
+            # completed 交给上方 ok 分支接管。
+            elif any(k in st for k in ("awaiting", "resuming", "preparing", "face", "slider")):
+                qr_status = "scaned"
+            else:
+                qr_status = "wait"
+
+            # Q2：把 CheckQR 动态返回的验证字段透传到 session，供 login_status 下发。
+            # verification_url 每次登录不同且会过期，绝不能拼 PadFacePage 静态地址。
+            face = self._extract_face_verification(data, raw)
+            last_error = text if not face and text and st not in ("waiting_scan", "waiting", "") else ""
             with self._login_lock:
                 current = self._login_sessions.get(key) or {}
                 current.update({"qr_status": qr_status})
+                if face:
+                    current.update(face)
+                    current["last_error"] = ""  # 清掉旧的「授权码已停用」残留
+                else:
+                    for k in ("verification_url", "requires_face_verification",
+                              "challenge_id", "verification_qrcode_protocol", "face_status"):
+                        current.pop(k, None)
+                if last_error:
+                    current["last_error"] = last_error
                 if qr_status == "expired":
                     current["uuid"] = ""
                     current["qr_content"] = ""
@@ -1369,13 +1456,38 @@ class Wechat875Adapter:
                 # 真活判据：心跳运行态（live）优先；live 缺失时退回 online 字段
                 now = bool(status.get("live", status.get("online")))
                 hb = status.get("heartbeat") or {}
+                # 死锁修复：凭证已确立(GetLoginStatus.ok=True)但心跳从未起跳过时，
+                # 协议【不会】自动拉起心跳（实测 auto_authenticated 态 CheckQR 恒返回
+                # "登录处理中"、running=False 会永久卡住）。此时补触发一次 AutoHeartBeat，
+                # 否则 live 判据恒为 False、CheckQR 的 ok 分支也永不触发 → 双重死锁。
+                # 节流 120s/账户，避免撞 TwiceAutoAuth 频率保护；成功后 hb.running=True
+                # 自然不再触发（幂等）。
+                try:
+                    hb_last_ok = int(hb.get("lastSuccessAt") or 0)
+                    hb_fails = int(hb.get("consecutiveFailures") or 0)
+                except (TypeError, ValueError):
+                    hb_last_ok, hb_fails = 0, 0
+                kick_key = str(account.wxid or id(account))
+                last_kick = self._heartbeat_kick_at.get(kick_key, 0)
+                need_kick = (
+                    bool(status.get("online")) and not hb.get("running")
+                    and hb_last_ok == 0 and hb_fails == 0
+                    and (time.time() - last_kick) >= 120
+                )
+                if need_kick:
+                    self._heartbeat_kick_at[kick_key] = time.time()
+                    try:
+                        await account.client.start_auto_heartbeat_875()
+                        self._logger.info(
+                            f"账户 {account.wxid} 凭证已确立但心跳未起，补触发 AutoHeartBeat"
+                        )
+                    except Exception as kick_exc:
+                        self._logger.debug(f"补触发 AutoHeartBeat 失败: {kick_exc}")
+
                 if was and not now:
-                    # 只做真活判断：协议侧自带自动心跳+自动二次登录（免扫码拉起），
-                    # 适配器不重复唤醒，避免撞 TwiceAutoAuth 频率保护。
                     self._logger.warning(
                         f"账户 {account.wxid} 链路已断（缓存在线，心跳失效 "
-                        f"running={hb.get('running')} 失败={hb.get('consecutiveFailures')}），"
-                        f"等待协议侧自动恢复"
+                        f"running={hb.get('running')} 失败={hb.get('consecutiveFailures')}）"
                     )
                     account.online = False
                 elif not was and now:
