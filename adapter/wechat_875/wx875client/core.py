@@ -332,6 +332,19 @@ class WechatAPIClient(WechatAPIClientBase):
         return bool(prefix) and prefix != "wechat"
 
     def _resolve_active_key(self) -> str:
+        # 875：业务接口的 Access Token 必须是「原始卡密」——服务端按卡密查
+        # 服务端持久化的设备身份(PERM:<卡密>.Deviceid_str)。拉码响应里的 Uuid
+        # 会被填进 poll_key，若让它盖过卡密，协议会为 uuid 建一个无设备绑定的
+        # 临时会话 → 微信判「新设备」→ 每次重新扫码都要重新人脸，形成死循环。
+        # poll_key/uuid 只用于 CheckQR 的 query uuid 参数，绝不作为认证 key。
+        if str(getattr(self, "protocol_version", "") or "") == "875":
+            auth = str(getattr(self, "auth_key", "") or "").strip()
+            if auth:
+                return auth
+            keys = getattr(self, "auth_keys", None)
+            if isinstance(keys, list) and keys and str(keys[0]).strip():
+                return str(keys[0]).strip()
+            return str(getattr(self, "admin_key", "") or "").strip()
         return self.token_key or self.poll_key or self.auth_key
 
     def _resolve_request_key(self, path: str, provided: Optional[str]) -> str:
@@ -1289,11 +1302,18 @@ class WechatAPIClient(WechatAPIClientBase):
             params["check_token"] = check_token
 
         try:
+            # CheckQR 必须用「取码时同一个 Access Token」= 原始卡密。
+            # 拉码后 poll_key 会被设成 uuid，_resolve_active_key() 优先 poll_key
+            # 会把 uuid 当卡密发出去 → 协议回「授权码已停用」并丢弃验证会话。
+            check_key = str(getattr(self, "admin_key", "") or "").strip()
+            if not check_key and isinstance(getattr(self, "auth_keys", None), list) and self.auth_keys:
+                check_key = str(self.auth_keys[0])
             response = await self.request(
                 "/login/CheckLoginStatus",
                 method="POST",
                 params=params,
                 headers=extra_headers or None,
+                key=check_key or None,
                 raise_for_api_error=False,
             )
         except Exception as error:
@@ -1394,18 +1414,18 @@ class WechatAPIClient(WechatAPIClientBase):
         parsed["online"] = bool(parsed.get("ok"))
         parsed["raw"] = response if isinstance(response, dict) else {}
         # 真活判据：online/sessionReady 是缓存登录态（服务端掉线后仍 True，假在线）。
-        # 心跳运行态才是链路是否存活的证据：
-        #   live = 心跳在跑 OR 最近一次心跳成功未超时 OR 从未失败过（刚登录尚未起跳）
+        # live 只认「心跳确凿在跑」或「最近确实心跳成功过且未超时」。
+        # 注意：不能用 fails==0 兜底——协议重启后台账归零
+        # (running=False/lastSuccessAt=0/fails=0) 会被误判成 live=True，
+        # 又变成假在线。宁可短暂判离线，也不误报在线。
         raw_data = parsed["raw"].get("Data") if isinstance(parsed["raw"], dict) else {}
         hb = raw_data.get("heartbeatStatus") if isinstance(raw_data, dict) else None
         hb = hb if isinstance(hb, dict) else {}
         stale_sec = 300
         last_ok = _safe_int(hb.get("lastSuccessAt"), 0)
-        fails = _safe_int(hb.get("consecutiveFailures"), 0)
         parsed["live"] = bool(
             hb.get("running")
             or (last_ok > 0 and (time.time() - last_ok) <= stale_sec)
-            or fails == 0
         )
         parsed["heartbeat"] = hb
 

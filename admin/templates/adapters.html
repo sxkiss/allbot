@@ -255,6 +255,7 @@
                 </div>
 
                 <div class="small text-muted" id="adapter-login-status">正在加载登录状态...</div>
+                <div class="small mt-2 p-2 border rounded d-none" id="adapter-login-verify"></div>
 
                 <!-- 验证教程：常驻短提示 + 可折叠完整教程（按适配器动态填充） -->
                 <div class="alert alert-info py-2 mt-3 mb-2 small d-none" id="adapter-login-hint"></div>
@@ -329,6 +330,41 @@
     function setStatus(text) {
         const el = document.getElementById('adapter-login-status');
         if (el) el.textContent = text;
+    }
+
+    function renderVerificationUrl(url, required, qrBase64) {
+        const host = document.getElementById('adapter-login-verify');
+        if (!host) return;
+        host.innerHTML = '';
+        if (!required || !url) { host.classList.add('d-none'); return; }
+        host.classList.remove('d-none');
+        // 验证地址二维码：人脸验证手机扫码即可在微信内打开
+        if (qrBase64) {
+            const img = document.createElement('img');
+            img.src = 'data:image/png;base64,' + qrBase64;
+            img.alt = '人脸验证二维码';
+            img.style.cssText = 'max-width:200px;width:100%;border:1px solid #dee2e6;border-radius:8px;display:block;margin-bottom:8px';
+            host.appendChild(img);
+            const tip = document.createElement('div');
+            tip.className = 'small text-muted mb-2';
+            tip.textContent = '用「人脸验证手机」扫上方二维码，在微信内打开完成验证：';
+            host.appendChild(tip);
+        }
+        const label = document.createElement('span');
+        label.textContent = '验证地址（每次登录不同，会过期）：';
+        const a = document.createElement('a');
+        a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.textContent = url; a.className = 'small';
+        a.style.wordBreak = 'break-all';
+        const copy = document.createElement('button');
+        copy.type = 'button'; copy.className = 'btn btn-sm btn-outline-secondary ms-2';
+        copy.textContent = '复制';
+        copy.onclick = function () {
+            if (navigator.clipboard) navigator.clipboard.writeText(url);
+            copy.textContent = '已复制';
+            setTimeout(function () { copy.textContent = '复制'; }, 1500);
+        };
+        host.appendChild(label); host.appendChild(a); host.appendChild(copy);
     }
 
     function stopPolling() {
@@ -446,7 +482,11 @@
         if (data.device) text += ' | 设备: ' + (data.device === 'mac' ? 'Mac' : 'iPad');
         if (data.wxid) text += ' | wxid: ' + data.wxid;
         if (data.last_error) text += ' | 最近错误: ' + data.last_error;
+        if (data.face_status) text += ' | 验证阶段: ' + data.face_status;
         setStatus(text);
+        // Q2：CheckQR 动态验证地址渲染成可点链接 + 一键复制（url 内嵌凭证，
+        // 仅出现在已登录的后台会话里；每次登录不同、会过期，不用静态地址）
+        renderVerificationUrl(data.verification_url, data.requires_face_verification, data.verification_qrcode);
         if (data.connected) {
             stopPolling();
         }
