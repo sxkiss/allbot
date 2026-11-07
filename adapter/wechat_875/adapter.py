@@ -331,6 +331,27 @@ class Wechat875Adapter:
                     pass
             self._logger.info("适配器资源已清理")
 
+    async def _sync_device_id_from_protocol(self, account) -> None:
+        """登录成功后从协议状态/缓存 API 取回真实设备码并校准回写。
+
+        替换启动时按 seed 本地推算的值，保证 account/client 与协议会话
+        Deviceid_str 一致（多账户各自独立），避免免扫码唤醒/二次登录掉线。
+        取不到时保留原值，不影响在线。
+        """
+        try:
+            real = await account.client.fetch_login_device_id_875()
+        except Exception as exc:
+            self._logger.debug(f"账户 {account.wxid} 取回设备码失败: {exc}")
+            return
+        if not real or real == account.device_id:
+            return
+        old = account.device_id
+        account.device_id = real
+        account.client.device_id = real
+        self._logger.success(
+            f"账户 {account.wxid} 设备码已按协议登录态校准: {old} -> {real}"
+        )
+
     async def _prepare_accounts(self) -> None:
         """校验每个账户登录态；未登录只记录日志，交由 worker 周期重试。"""
         for account in self._accounts:
@@ -351,6 +372,8 @@ class Wechat875Adapter:
                 self._logger.success(
                     f"账户 {account.wxid} 已登录（昵称={status.get('nickname', '')}）"
                 )
+                # 在线确认后从协议取回真实设备码（替换本地 seed 推算值）
+                await self._sync_device_id_from_protocol(account)
                 try:
                     await account.client.start_auto_heartbeat_875()
                 except Exception as exc:
@@ -1262,6 +1285,8 @@ class Wechat875Adapter:
                 target.wxid = real_wxid
                 target.client.wxid = real_wxid
                 self._clients_by_wxid[real_wxid] = target.client
+                # 扫码成功后从协议取回真实设备码
+                await self._sync_device_id_from_protocol(target)
                 try:
                     await target.client.start_auto_heartbeat_875()
                 except Exception:

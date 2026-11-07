@@ -1311,6 +1311,42 @@ class WechatAPIClient(WechatAPIClientBase):
 
         return parsed
 
+    async def fetch_login_device_id_875(self) -> str:
+        """875：登录成功后从协议状态/缓存接口取回真实设备码（Deviceid_str）。
+
+        协议会话的设备码由服务端 persistent_device_seed 持久化，与客户端
+        本地 seed 推算值不同。/api/Login/Get62Data 返回 NSKeyedArchiver 的
+        bplist(hex)，解出 49 开头的真实设备码，用于校准唤醒/二次登录所用
+        device_id，避免被判「新设备」。取不到返回空串，调用方保留原值。
+        """
+        try:
+            response = await self.request(
+                "/login/Get62Data", method="POST", raise_for_api_error=False
+            )
+        except Exception as exc:
+            logger.debug("875 取回设备码失败: {}", exc)
+            return ""
+        if not isinstance(response, dict):
+            return ""
+        data = response.get("Data")
+        if not isinstance(data, str) or not data:
+            return ""
+        import binascii
+        try:
+            raw = binascii.unhexlify(data)
+        except Exception:
+            return ""
+        try:
+            import plistlib
+            pl = plistlib.loads(raw)
+            for obj in (pl.get("$objects", []) if isinstance(pl, dict) else []):
+                if isinstance(obj, str) and re.fullmatch(r"49[0-9a-f]{30}", obj):
+                    return obj
+        except Exception:
+            pass
+        m = re.search(rb"49[0-9a-f]{30}", raw)
+        return m.group(0).decode() if m else ""
+
     async def get_login_status_875(self, wxid: str = "") -> Dict[str, Any]:
         """875 协议：查询当前卡密的登录状态（/api/Login/GetLoginStatus）。
 
