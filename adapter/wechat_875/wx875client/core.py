@@ -1311,6 +1311,28 @@ class WechatAPIClient(WechatAPIClientBase):
 
         return parsed
 
+    async def awaken_875(self) -> bool:
+        """875 免扫码唤醒（POST /api/Login/Awaken）。
+
+        服务端用会话内持久化的 Deviceid_str 唤醒已登录的扫码会话，
+        客户端只需 X-Access-Token（卡密），不需要传设备码。
+        """
+        try:
+            response = await self.request(
+                "/login/WakeUpLogin", method="POST", raise_for_api_error=False
+            )
+        except Exception as exc:
+            logger.debug("875 免扫码唤醒失败: {}", exc)
+            return False
+        if not isinstance(response, dict):
+            return False
+        ok = response.get("Success") is True or response.get("Code") == 0
+        if ok:
+            logger.info("875 免扫码唤醒成功: {}", str(response.get("Message") or "")[:40])
+        else:
+            logger.debug("875 免扫码唤醒未成功: {}", str(response.get("Message") or "")[:80])
+        return ok
+
     async def fetch_login_device_id_875(self) -> str:
         """875：登录成功后从协议状态/缓存接口取回真实设备码（Deviceid_str）。
 
@@ -1371,6 +1393,21 @@ class WechatAPIClient(WechatAPIClientBase):
         parsed = protocol875.parse_875_login_status(response)
         parsed["online"] = bool(parsed.get("ok"))
         parsed["raw"] = response if isinstance(response, dict) else {}
+        # 真活判据：online/sessionReady 是缓存登录态（服务端掉线后仍 True，假在线）。
+        # 心跳运行态才是链路是否存活的证据：
+        #   live = 心跳在跑 OR 最近一次心跳成功未超时 OR 从未失败过（刚登录尚未起跳）
+        raw_data = parsed["raw"].get("Data") if isinstance(parsed["raw"], dict) else {}
+        hb = raw_data.get("heartbeatStatus") if isinstance(raw_data, dict) else None
+        hb = hb if isinstance(hb, dict) else {}
+        stale_sec = 300
+        last_ok = _safe_int(hb.get("lastSuccessAt"), 0)
+        fails = _safe_int(hb.get("consecutiveFailures"), 0)
+        parsed["live"] = bool(
+            hb.get("running")
+            or (last_ok > 0 and (time.time() - last_ok) <= stale_sec)
+            or fails == 0
+        )
+        parsed["heartbeat"] = hb
 
         if parsed.get("wxid"):
             self.wxid = parsed["wxid"]
