@@ -361,7 +361,8 @@ class Wechat875Adapter:
                 self._logger.warning(f"账户 {account.wxid} 登录状态查询失败: {exc}")
                 continue
 
-            account.online = bool(status.get("online"))
+            # 初值也用真活判据，避免启动瞬间缓存在线
+            account.online = bool(status.get("live", status.get("online")))
             real_wxid = str(status.get("wxid") or "")
             if real_wxid:
                 account.wxid = real_wxid
@@ -392,7 +393,8 @@ class Wechat875Adapter:
             try:
                 if not account.online:
                     status = await account.client.get_login_status_875()
-                    account.online = bool(status.get("online"))
+                    # 与轮询循环一致：用心跳活判据，防止缓存在线把状态翻回 True
+                    account.online = bool(status.get("live", status.get("online")))
                     if status.get("wxid"):
                         account.wxid = str(status["wxid"])
                         account.client.wxid = account.wxid
@@ -1341,7 +1343,7 @@ class Wechat875Adapter:
         - 离线→在线：恢复并同步真实 wxid
         """
         interval = max(10.0, float(self.wx_cfg.get("onlinePollIntervalSec", 30)))
-        fail_times: Dict[Any, int] = {}
+        fail_times: Dict[str, int] = {}  # 用 wxid 做 key（_Account 不可哈希）
         max_fail = max(1, int(self.wx_cfg.get("onlinePollMaxFail", 3)))
         while not self._stop_event.is_set():
             for account in list(self._accounts):
@@ -1353,20 +1355,27 @@ class Wechat875Adapter:
                     raise
                 except Exception as exc:
                     # 轮询超时/失败本身即链路异常的强信号（协议侧假在线时会超时）
-                    n = fail_times.get(account, 0) + 1
-                    fail_times[account] = n
+                    _akey = str(account.wxid or id(account))
+                    n = fail_times.get(_akey, 0) + 1
+                    fail_times[_akey] = n
                     if account.online and n >= max_fail:
                         self._logger.warning(
                             f"账户 {account.wxid} 在线轮询连续 {n} 次失败（{type(exc).__name__}），判离线"
                         )
                         account.online = False
                     continue
-                fail_times[account] = 0
+                fail_times[str(account.wxid or id(account))] = 0
                 was = bool(account.online)
-                now = bool(status.get("online"))
+                # 真活判据：心跳运行态（live）优先；live 缺失时退回 online 字段
+                now = bool(status.get("live", status.get("online")))
+                hb = status.get("heartbeat") or {}
                 if was and not now:
+                    # 只做真活判断：协议侧自带自动心跳+自动二次登录（免扫码拉起），
+                    # 适配器不重复唤醒，避免撞 TwiceAutoAuth 频率保护。
                     self._logger.warning(
-                        f"账户 {account.wxid} 在线状态丢失: {status.get('message', '')}，等待重连"
+                        f"账户 {account.wxid} 链路已断（缓存在线，心跳失效 "
+                        f"running={hb.get('running')} 失败={hb.get('consecutiveFailures')}），"
+                        f"等待协议侧自动恢复"
                     )
                     account.online = False
                 elif not was and now:
