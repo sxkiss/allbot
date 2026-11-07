@@ -301,6 +301,7 @@ class Wechat875Adapter:
                 tasks.append(asyncio.create_task(self._ws_worker(account)))
         tasks.append(asyncio.create_task(self._reply_worker()))
         tasks.append(asyncio.create_task(self._login_poll_loop()))
+        tasks.append(asyncio.create_task(self._online_poll_loop()))
         self._tasks = tasks
 
         self._logger.success(
@@ -330,6 +331,27 @@ class Wechat875Adapter:
                     pass
             self._logger.info("适配器资源已清理")
 
+    async def _sync_device_id_from_protocol(self, account) -> None:
+        """登录成功后从协议状态/缓存 API 取回真实设备码并校准回写。
+
+        替换启动时按 seed 本地推算的值，保证 account/client 与协议会话
+        Deviceid_str 一致（多账户各自独立），避免免扫码唤醒/二次登录掉线。
+        取不到时保留原值，不影响在线。
+        """
+        try:
+            real = await account.client.fetch_login_device_id_875()
+        except Exception as exc:
+            self._logger.debug(f"账户 {account.wxid} 取回设备码失败: {exc}")
+            return
+        if not real or real == account.device_id:
+            return
+        old = account.device_id
+        account.device_id = real
+        account.client.device_id = real
+        self._logger.success(
+            f"账户 {account.wxid} 设备码已按协议登录态校准: {old} -> {real}"
+        )
+
     async def _prepare_accounts(self) -> None:
         """校验每个账户登录态；未登录只记录日志，交由 worker 周期重试。"""
         for account in self._accounts:
@@ -339,7 +361,8 @@ class Wechat875Adapter:
                 self._logger.warning(f"账户 {account.wxid} 登录状态查询失败: {exc}")
                 continue
 
-            account.online = bool(status.get("online"))
+            # 初值也用真活判据，避免启动瞬间缓存在线
+            account.online = bool(status.get("live", status.get("online")))
             real_wxid = str(status.get("wxid") or "")
             if real_wxid:
                 account.wxid = real_wxid
@@ -350,6 +373,8 @@ class Wechat875Adapter:
                 self._logger.success(
                     f"账户 {account.wxid} 已登录（昵称={status.get('nickname', '')}）"
                 )
+                # 在线确认后从协议取回真实设备码（替换本地 seed 推算值）
+                await self._sync_device_id_from_protocol(account)
                 try:
                     await account.client.start_auto_heartbeat_875()
                 except Exception as exc:
@@ -368,7 +393,8 @@ class Wechat875Adapter:
             try:
                 if not account.online:
                     status = await account.client.get_login_status_875()
-                    account.online = bool(status.get("online"))
+                    # 与轮询循环一致：用心跳活判据，防止缓存在线把状态翻回 True
+                    account.online = bool(status.get("live", status.get("online")))
                     if status.get("wxid"):
                         account.wxid = str(status["wxid"])
                         account.client.wxid = account.wxid
@@ -412,6 +438,9 @@ class Wechat875Adapter:
                 raise
             except Exception as exc:
                 account.ws_connected = False
+                # 关键：WS 断开即视为离线，触发下一轮协议侧状态复查；
+                # 否则 online 永远停在登录时的 True（假在线）
+                account.online = False
                 self._logger.warning(
                     f"账户 {account.wxid} WS 断开: {exc}，{self.reconnect_interval}s 后重连"
                 )
@@ -466,9 +495,11 @@ class Wechat875Adapter:
                     self.redis_queue,
                     json.dumps(normalized, ensure_ascii=False),
                 )
-                self._logger.debug(
-                    f"入队 platform={self.platform} account={account.wxid} "
-                    f"from={normalized['FromWxid']} msg_id={normalized['MsgId']}"
+                # INFO 级：确保默认 logLevel=INFO 下能看到真实入站消息（便于判断「有没有消息」）
+                self._logger.info(
+                    f"入站消息 platform={self.platform} account={account.wxid} "
+                    f"from={normalized['FromWxid']} msg_id={normalized['MsgId']} "
+                    f"content={str(normalized.get('Content', {}).get('string', ''))[:40]}"
                 )
             except Exception as exc:
                 self._logger.error(f"消息入队失败: {exc}")
@@ -1086,7 +1117,9 @@ class Wechat875Adapter:
                 "account": key,
                 "display_name": key or "account",
                 "enabled": self.enabled,
-                "connected": bool(account.online),
+                # connected = 协议登录态 AND 本适配器到协议服务的 WS 真实连接。
+                # 不能只用协议侧 online：它是缓存登录态，上游断链（MM_ERR_SYS）时仍返回 true（假在线）。
+                "connected": bool(account.online and account.ws_connected),
                 "wxid": key,
                 "device": str(session.get("device") or account.device_name or "iPad"),
                 "qr_status": session.get("qr_status") or ("confirmed" if account.online else "wait"),
@@ -1172,7 +1205,8 @@ class Wechat875Adapter:
         key = self._account_key(target)
         with self._login_lock:
             session = dict(self._login_sessions.get(key) or {})
-        connected = bool(target.online)
+        # 与 list_accounts 一致：真实在线 = 协议登录态 AND 本适配器 WS 链路存活
+        connected = bool(target.online and target.ws_connected)
         return {
             "success": True,
             "account": key,
@@ -1253,6 +1287,8 @@ class Wechat875Adapter:
                 target.wxid = real_wxid
                 target.client.wxid = real_wxid
                 self._clients_by_wxid[real_wxid] = target.client
+                # 扫码成功后从协议取回真实设备码
+                await self._sync_device_id_from_protocol(target)
                 try:
                     await target.client.start_auto_heartbeat_875()
                 except Exception:
@@ -1297,3 +1333,58 @@ class Wechat875Adapter:
             except Exception as exc:
                 self._logger.debug(f"875 登录状态轮询异常: {exc}")
             await asyncio.sleep(self._login_poll_interval)
+
+    async def _online_poll_loop(self) -> None:
+        """运行态在线状态轮询。
+
+        登录确认后 _login_poll_loop 不再跟踪该账户，connected 会变成陈旧快照。
+        本循环定期向协议侧复查 GetLoginStatus，实时更新 account.online：
+        - 在线→离线：记录 warning，WS worker 会在下一轮重连
+        - 离线→在线：恢复并同步真实 wxid
+        """
+        interval = max(10.0, float(self.wx_cfg.get("onlinePollIntervalSec", 30)))
+        fail_times: Dict[str, int] = {}  # 用 wxid 做 key（_Account 不可哈希）
+        max_fail = max(1, int(self.wx_cfg.get("onlinePollMaxFail", 3)))
+        while not self._stop_event.is_set():
+            for account in list(self._accounts):
+                try:
+                    status = await asyncio.wait_for(
+                        account.client.get_login_status_875(), timeout=10
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    # 轮询超时/失败本身即链路异常的强信号（协议侧假在线时会超时）
+                    _akey = str(account.wxid or id(account))
+                    n = fail_times.get(_akey, 0) + 1
+                    fail_times[_akey] = n
+                    if account.online and n >= max_fail:
+                        self._logger.warning(
+                            f"账户 {account.wxid} 在线轮询连续 {n} 次失败（{type(exc).__name__}），判离线"
+                        )
+                        account.online = False
+                    continue
+                fail_times[str(account.wxid or id(account))] = 0
+                was = bool(account.online)
+                # 真活判据：心跳运行态（live）优先；live 缺失时退回 online 字段
+                now = bool(status.get("live", status.get("online")))
+                hb = status.get("heartbeat") or {}
+                if was and not now:
+                    # 只做真活判断：协议侧自带自动心跳+自动二次登录（免扫码拉起），
+                    # 适配器不重复唤醒，避免撞 TwiceAutoAuth 频率保护。
+                    self._logger.warning(
+                        f"账户 {account.wxid} 链路已断（缓存在线，心跳失效 "
+                        f"running={hb.get('running')} 失败={hb.get('consecutiveFailures')}），"
+                        f"等待协议侧自动恢复"
+                    )
+                    account.online = False
+                elif not was and now:
+                    real_wxid = str(status.get("wxid") or "") or account.wxid
+                    account.wxid = real_wxid
+                    account.client.wxid = real_wxid
+                    self._clients_by_wxid[real_wxid] = account.client
+                    account.online = True
+                    self._logger.success(f"账户 {account.wxid} 在线状态恢复")
+                else:
+                    account.online = now
+            await asyncio.sleep(interval)

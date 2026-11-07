@@ -28,3 +28,12 @@
 | wechat_869/adapter.py | Platform | 869 协议多账户桥接（一卡密一账号、独立 WS、登录面板、全类型出站） |
 | wechat_875/adapter.py | Platform | 875 协议多账户桥接（17 种设备扫码、登录面板、全类型出站） |
 | wecom_bot/wecom_bot_adapter.py | Platform | 企业微信智能机器人 aibot 长连接双向桥接（默认关闭；订阅/心跳/入站标准化、分片上传、respond/send；voice→AMR-NB；link→template_card） |
+
+
+## 2026-11-06 · btag 网关通道移植（新增 6 平台）
+
+- 新增 `feishu` / `dingtalk` / `discord` / `yuanbao` / `xiaoyi` / `mqtt` 六个桥接适配器，
+  共享实现在 `gateway_common/bridge.py`，通道实现随仓库携带于 `vendor/octop_gateway/`。
+- 数据流入站 `allbot`、出站 `allbot_reply:<platform>`，默认全部禁用（需 SDK + 凭据 + 双开关）。
+- 已有 4 平台（ocwx/tg/qq/wecom_bot）经对比后保留原实现，不重复引入；
+  完整调研与对比见 `docs/btag通道移植对比.md`。
