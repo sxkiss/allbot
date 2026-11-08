@@ -56,8 +56,15 @@ class MessageRouter:
         from_wxid = message.get("FromWxid", "")
         if from_wxid and from_wxid != self.allbot.wxid:
             logger.info(f"开始异步更新联系人信息: {from_wxid}")
+            # 联系人查询必须用「该消息所属账号」的客户端：全局 BotFacade 的
+            # resolver 按加载顺序挑到 869 客户端，会把 875 消息的
+            # /friend/GetContactDetailsList 打到 869 网关(返回「该链接不存在」
+            # Success=false)。875 侧有 /api/Friend/GetContractDetail 映射且实测可通，
+            # 这里按 platform 把对应客户端传下去；非 875 消息返回 None 走默认，
+            # 869 行为不变。
+            bot_client = self._resolve_client_for(message)
             update_task = asyncio.create_task(
-                self.allbot.contacts.update_contact_info(from_wxid)
+                self.allbot.contacts.update_contact_info(from_wxid, bot_client=bot_client)
             )
             update_task.add_done_callback(
                 lambda t: logger.info(
@@ -65,6 +72,32 @@ class MessageRouter:
                     f"状态: {'success' if not t.exception() else f'error: {t.exception()}'}"
                 )
             )
+
+    @staticmethod
+    def _resolve_client_for(message: Dict[str, Any]):
+        """按消息来源平台解析应使用的协议客户端；None=用默认全局 bot。"""
+        platform = str(message.get("platform") or message.get("Platform") or "").lower()
+        if "875" not in platform:
+            return None
+        try:
+            from adapter.loader import list_running_adapters, get_running_adapter
+            account = str(message.get("account_wxid") or "")
+            for info in list_running_adapters():
+                name = str(getattr(info, "name", "") or "")
+                if "875" not in name.lower():
+                    continue
+                inst = get_running_adapter(name)
+                if inst is None:
+                    continue
+                getter = getattr(inst, "get_client", None)
+                if callable(getter):
+                    try:
+                        return getter(account)
+                    except TypeError:
+                        return getter()
+        except Exception as exc:
+            logger.debug("按来源解析 875 客户端失败: {}", exc)
+        return None
 
     async def _route_by_type(self, message: Dict[str, Any]):
         """根据消息类型路由到不同处理器"""
