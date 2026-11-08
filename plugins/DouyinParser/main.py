@@ -52,7 +52,7 @@ class DouyinParser(PluginBase):
     # 路径部分排除中日韩文字与全角标点，避免把 URL 后面的中文正文一起吃进来。
     MEDIA_URL_RE = re.compile(
         r"""https?://(?:[^\s<>"'./，。、！？；：（）【】《》\u4e00-\u9fff]+\.)*(?:"""
-        r"""douyin\.com|iesdouyin\.com|"""
+        r"""douyin\.com|iesdouyin\.com|amemv\.com|"""
         r"""kuaishou\.com|gifshow\.com|kwai\.com|"""
         r"""xiaohongshu\.com|xhslink\.com|xhslink\.cn|xhs\.com|"""
         r"""bilibili\.com|b23\.tv|bili2233\.cn|bilibili\.tv|"""
@@ -157,7 +157,7 @@ class DouyinParser(PluginBase):
         # 是否对未匹配已知平台的任意链接也尝试解析。
         # yt-dlp 支持 1700+ 站点，开启可覆盖枚举外站点；但会对普通网页
         # 产生无效请求，默认关闭。
-        self.generic_fallback = bool(config.get("generic-fallback", True))
+        self.generic_fallback = bool(config.get("generic-fallback", False))
 
     @staticmethod
     def _normalize_proxies(value: Any) -> list[str]:

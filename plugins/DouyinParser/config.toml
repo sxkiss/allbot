@@ -17,5 +17,6 @@ proxy = ""
 video-direct-max-mb = 10
 
 # 是否对未匹配已知平台的任意链接也尝试解析（yt-dlp 支持 1700+ 站点）。
-# 用户要求覆盖全部平台，故默认开启。
-generic-fallback = true
+# 关闭 = 只解析 MEDIA_URL_RE 白名单内的已知平台；避免广告/普通网页链接
+# 无触发词也进解析（此前 jingxuan.tb811.top 广告链接乱跑即由此引起）。
+generic-fallback = false
