@@ -19,6 +19,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
 import threading
 import time
 from collections import deque
@@ -85,10 +86,18 @@ class Wechat875Adapter:
         )
 
         self.platform = str(self.wx_cfg.get("platform") or "wechat875").lower()
-        self.platform_aliases: Set[str] = {self.platform}
+        # 入站消息注入的 platform 用的是 adapter_name（如 "wechat_875"，
+        # 见 _normalize_to_standard），而 [wechat875].platform 常配成 "wechat875"。
+        # 两者不一致时 _reply_worker 会因别名不匹配把回复直接丢弃（debug 级日志，
+        # INFO 下看不到）→ 875 从不真正出站。把 adapter_name 一并纳入别名集。
+        self.platform_aliases: Set[str] = {
+            self.platform,
+            str(self.adapter_name or "").lower(),
+        }
         for alias in self.wx_cfg.get("aliases") or []:
             if alias:
                 self.platform_aliases.add(str(alias).lower())
+        self.platform_aliases.discard("")
 
         self.reply_queue = str(adapter_cfg.get("replyQueue") or "allbot_reply:wechat875")
         self.reply_max_retry = max(1, int(adapter_cfg.get("replyMaxRetry", 3)))
@@ -523,9 +532,17 @@ class Wechat875Adapter:
             return
 
         markers = ("msgId", "MsgId", "newMsgId", "NewMsgId", "msgType", "MsgType")
-        if any(key in obj for key in markers) and (
+        v1_hit = any(key in obj for key in markers) and (
             "fromWxid" in obj or "FromUserName" in obj or "content" in obj or "Content" in obj
-        ):
+        )
+        # v2 (wechatpad.message.v2, snake_case)：协议会把本账号发出的 outgoing
+        # 消息也回推。不同协议/适配器各自推、各自入队、各自触发，这里一律接住，
+        # 不在适配器层判断「是不是自己发的」去拦截（reply_context 等无 sender_id
+        # 的嵌套结构不会命中，避免重复收集）。
+        v2_hit = "sender_id" in obj and (
+            "content" in obj or "new_msg_id" in obj or "id" in obj or "direction" in obj
+        )
+        if v1_hit or v2_hit:
             out.append(obj)
             return
 
@@ -560,6 +577,17 @@ class Wechat875Adapter:
         is_group = bool(normalized.get("is_group")) or from_wxid.endswith("@chatroom")
         account_wxid = str(account.wxid or account.client.wxid or "").strip()
 
+        # 875 协议对图片/表情/系统通知只推摘要文本（"收到一张图片"/"会话状态同步"），
+        # 没有可解析媒体 XML。以前降级成 text 灌给全量文本插件，导致「没触发词插件也跑」。
+        # 这里直接过滤不入队：媒体类型且无结构化 XML、或纯系统通知摘要；
+        # 有 XML 的真媒体（引用/文件/卡片）保留原类型走专门解析。
+        _mt = int(normalized.get("msg_type") or 1)
+        _has_xml = bool(re.search(r"<(?:msg|appmsg|img|voicemsg|videomsg|emoji)\b", content, re.I))
+        _sys_notice = ("会话状态同步" in content or "微信系统通知" in content
+                       or content.strip() in ("收到一张图片", "收到一个表情", "收到一段视频"))
+        if (_mt in (3, 34, 43, 47, 49) and not _has_xml) or _sys_notice:
+            return None
+
         # 跳过自己发出的回显消息（手机/协议端同步回来的本人消息）
         if self.skip_self_message and not is_group and account_wxid and from_wxid == account_wxid:
             return None
@@ -590,6 +618,34 @@ class Wechat875Adapter:
 
         msg_type = self._coerce_int(normalized.get("msg_type"), 1)
         bot_identity = account_wxid or to_wxid or ""
+        # v2 引用消息：协议把「被引用原文」放在 reply_context.quote_content
+        # （或 xml_fields 的 refermsg），此前适配器没提取 → 标准消息无 Quote →
+        # 下游插件 message["Quote"] 为空、AI 看不到引用原文只答非所问。
+        # 这里转成框架标准 Quote 结构（框架 text/quote 事件都保留该字段）。
+        quote = {}
+        rc = raw.get("reply_context") if isinstance(raw, dict) else {}
+        if isinstance(rc, dict):
+            qtext = str(rc.get("quote_content") or "").strip()
+            if not qtext:
+                xf = raw.get("xml_fields") if isinstance(raw.get("xml_fields"), dict) else {}
+                qtext = str(xf.get("quote_content") or xf.get("refer_content") or "").strip()
+            if qtext:
+                quote = {
+                    "MsgType": 1,
+                    "Content": qtext,
+                    "Nickname": str(rc.get("displayname") or "").strip(),
+                    "NewMsgId": str(rc.get("new_msg_id") or rc.get("svr_id") or "").strip(),
+                    "FromWxid": str(rc.get("from_user_id") or "").strip(),
+                    "ToWxid": str(rc.get("to_wxid") or "").strip(),
+                    "Createtime": str(normalized.get("timestamp") or ""),
+                }
+        # 私聊回复目标修正（875 是框架全局主账号之外的第二账号）：
+        # 框架 process_text_message 私聊分支有 `if FromWxid == self.wxid: FromWxid = ToWxid`，
+        # 其中 self.wxid 是全局主账号(869号)。当 869号 给 875号 发私聊时，对方恰好 == self.wxid，
+        # 被框架误判成「自己发的消息」，把 FromWxid 改成 ToWxid(原=875自己号) → 回复发回给自己。
+        # 不改框架：只在 875 侧把私聊 ToWxid 指向会话对端(channel_id=对方)，
+        # 于是无论是否触发改写，FromWxid 最终都指向对方，回复目标始终正确。
+        to_wxid_value = channel_id if not is_group else bot_identity
 
         return {
             "Platform": self.platform,
@@ -603,10 +659,11 @@ class Wechat875Adapter:
             "MsgSource": "<msgsource></msgsource>",
             "IsGroup": is_group,
             "FromWxid": channel_id,
-            "ToWxid": bot_identity,
+            "ToWxid": to_wxid_value,
             "FromUserName": {"string": channel_id},
-            "ToUserName": {"string": bot_identity},
+            "ToUserName": {"string": to_wxid_value},
             "SenderWxid": sender_wxid,
+            **({"Quote": quote} if quote else {}),
             "Status": 3,
             "ImgStatus": 1,
             "NewMsgId": msg_id,
@@ -627,6 +684,8 @@ class Wechat875Adapter:
         for key in (
             "senderWxid",
             "SenderWxid",
+            "sender_id",   # v2 (wechatpad.message.v2)
+            "from_user_id",
             "actualSender",
             "ActualSender",
             "memberWxid",
