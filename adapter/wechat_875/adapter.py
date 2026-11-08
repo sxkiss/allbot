@@ -967,13 +967,13 @@ class Wechat875Adapter:
             return
 
         if msg_type == "image":
-            image = self._pick_media(content, "path", "file", "image", "base64")
+            image = self._pick_media(content, "media", "path", "file", "image", "base64")
             result = await client.send_image_message(target, self._coerce_media(image))
             self._logger.info(f"[{account_wxid}] image -> {target}: {self._short(result)}")
             return
 
         if msg_type in ("voice", "audio"):
-            voice = self._pick_media(content, "path", "file", "voice", "audio", "base64")
+            voice = self._pick_media(content, "media", "path", "file", "voice", "audio", "base64")
             voice_format = "amr"
             if isinstance(content, dict):
                 voice_format = str(content.get("format") or content.get("voice_format") or "amr")
@@ -984,18 +984,23 @@ class Wechat875Adapter:
             return
 
         if msg_type == "video":
-            video = self._pick_media(content, "path", "file", "video", "base64")
+            video = self._pick_media(content, "media", "path", "file", "video", "base64")
             thumb = "" if not isinstance(content, dict) else (
-                content.get("thumb") or content.get("image") or content.get("cover") or ""
+                content.get("thumbnail") or content.get("thumb")
+                or content.get("image") or content.get("cover") or ""
             )
+            video_data = self._coerce_media(video)
+            if not video_data:
+                # 取不到视频字节时永久丢弃，避免网关反复「解码失败」+ 无限重入队
+                raise _PermanentReplyError("video 回复缺少有效视频数据(media 未解包或为空)")
             result = await client.send_video_message(
-                target, self._coerce_media(video), self._coerce_media(thumb)
+                target, video_data, self._coerce_media(thumb)
             )
             self._logger.info(f"[{account_wxid}] video -> {target}: {self._short(result)}")
             return
 
         if msg_type == "file":
-            file_data = self._pick_media(content, "path", "file", "base64")
+            file_data = self._pick_media(content, "media", "path", "file", "base64")
             file_name = ""
             if isinstance(content, dict):
                 file_name = str(content.get("file_name") or content.get("name") or "")
@@ -1173,7 +1178,28 @@ class Wechat875Adapter:
 
     @staticmethod
     def _coerce_media(value: Any) -> Any:
-        """把 data URI / base64: 前缀 / 裸 base64 转为 bytes，其余原样返回。"""
+        """把 data URI / base64: 前缀 / 裸 base64 / ReplyRouter 媒体结构转为 bytes。"""
+        # ReplyRouter._serialize_media 产出 {kind: base64|path|url|none, value: ...}。
+        # 875 适配器此前不认这个嵌套结构，_pick_media 又没把 "media" 列入候选键，
+        # 导致视频/图片/语音/文件回复取到空字节 → 网关报「视频解码失败」，
+        # 且失败后无限重入队刷屏（实测 777 条）。对齐 869 的解包逻辑。
+        if isinstance(value, dict):
+            kind = str(value.get("kind") or "").lower()
+            raw = value.get("value")
+            if kind == "none":
+                return ""
+            if kind == "base64" and isinstance(raw, str) and raw:
+                payload = raw.split(",", 1)[-1] if raw.startswith("data:") else raw
+                try:
+                    return base64.b64decode(payload)
+                except Exception:
+                    return payload
+            if kind in ("path", "url"):
+                return str(raw or "")
+            for key in ("base64", "path", "url", "file", "media", "value"):
+                if value.get(key):
+                    return Wechat875Adapter._coerce_media(value[key])
+            return ""
         if not isinstance(value, str) or not value:
             return value
 

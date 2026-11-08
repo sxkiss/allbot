@@ -26,6 +26,41 @@ _INBOUND_GUARD_TTL = 10
 _INBOUND_GUARD_MAX = 5
 
 
+def discover_inbound_queues(script_dir: Path) -> list:
+    """从所有适配器 config.toml 动态发现入站队列名；主队列始终保留作兼容兜底。
+
+    - 适配器可把 [*.redis] queue 指向自己的分片队列，实现「按来源物理隔离」：
+      某适配器慢/积压时只占自己那组 worker，不挤占其他适配器。
+    - 未改配置的适配器仍落 allbot；旧 WS 直连路径的 rpush 也写死 allbot
+      （见本文件 _save_and_enqueue_message），统一由主队列兜住，零丢失。
+    - 只认各顶层 table 下的 redis.queue；[adapter] 段里的 replyQueue 是驼峰键，
+      不会被误收进出站队列集合。
+    - 插件零感知：队列名只影响消费者的 BLPOP 来源，EventManager.emit 链不变。
+    """
+    queues = {QUEUE_NAME}
+    try:
+        import tomllib
+
+        adapter_root = Path(script_dir) / "adapter"
+        for cfg_path in sorted(adapter_root.glob("*/config.toml")):
+            try:
+                with open(cfg_path, "rb") as file:
+                    raw = tomllib.load(file)
+            except Exception:
+                continue
+            for section in raw.values():
+                if not isinstance(section, dict):
+                    continue
+                redis_cfg = section.get("redis")
+                if not isinstance(redis_cfg, dict):
+                    continue
+                name = str(redis_cfg.get("queue") or "").strip()
+                if name:
+                    queues.add(name)
+    except Exception as exc:
+        logger.warning("[Consumer] 入站队列发现失败，回退仅主队列: {}", exc)
+    # 主队列在前，其余按名字稳定排序，方便日志与排障
+    return [QUEUE_NAME] + sorted(q for q in queues if q != QUEUE_NAME)
 
 
 
@@ -42,9 +77,11 @@ _INBOUND_GUARD_MAX = 5
 
 
 
-async def message_consumer(allbot, redis, message_db, worker_id: int = 0):
-    """单个入站消费 worker。多个 worker 并行 BLPOP，避免慢消息串行堵全站。"""
-    logger.info("[Consumer-{}] 消费者任务已启动，开始监听队列: {}", worker_id, QUEUE_NAME)
+
+
+async def message_consumer(allbot, redis, message_db, worker_id=0, queue_name: str = QUEUE_NAME):
+    """单个入站消费 worker。同一队列多个 worker 并行 BLPOP，避免慢消息串行堵全站。"""
+    logger.info("[Consumer-{}] 消费者任务已启动，开始监听队列: {}", worker_id, queue_name)
     try:
         await redis.ping()
         logger.info("[Consumer-{}] Redis 连接健康检查通过", worker_id)
@@ -53,14 +90,14 @@ async def message_consumer(allbot, redis, message_db, worker_id: int = 0):
         raise
     while True:
         try:
-            logger.debug("[Consumer-{}] 等待消息，队列: {} ...", worker_id, QUEUE_NAME)
-            _, msg_json = await redis.blpop(QUEUE_NAME)
+            logger.debug("[Consumer-{}] 等待消息，队列: {} ...", worker_id, queue_name)
+            _, msg_json = await redis.blpop(queue_name)
             message = json.loads(msg_json)
             msg_id = message.get("MsgId") or message.get("msgId")
             logger.info(
                 "[Consumer-{}] 消息已出队并开始处理，队列: {}，消息ID: {}",
                 worker_id,
-                QUEUE_NAME,
+                queue_name,
                 msg_id,
             )
             try:
@@ -187,13 +224,30 @@ class MessageListener:
         self.redis = aioredis.from_url(redis_url, decode_responses=True)
 
         worker_count = max(1, min(32, int(getattr(api_config, "message_consumer_workers", 4) or 4)))
-        self.consumer_tasks = [
-            asyncio.create_task(
-                message_consumer(self.allbot, self.redis, message_db, worker_id=i + 1)
-            )
-            for i in range(worker_count)
-        ]
-        logger.success("[Consumer] 已启动 {} 个并发消费 worker，队列: {}", worker_count, QUEUE_NAME)
+        queues = discover_inbound_queues(self.script_dir)
+        # 每个入站队列一组独立 worker：不能让一个 worker 组 BLPOP 多键，
+        # Redis 会按 key 顺序取，排在后面的队列会被饿死，做不到真隔离。
+        self.consumer_tasks = []
+        for queue_name in queues:
+            for i in range(worker_count):
+                self.consumer_tasks.append(
+                    asyncio.create_task(
+                        message_consumer(
+                            self.allbot,
+                            self.redis,
+                            message_db,
+                            worker_id=f"{queue_name}#{i + 1}",
+                            queue_name=queue_name,
+                        )
+                    )
+                )
+        logger.success(
+            "[Consumer] 已启动 {} 个消费 worker（{} 队列 × {} worker）: {}",
+            len(self.consumer_tasks),
+            len(queues),
+            worker_count,
+            ", ".join(queues),
+        )
         logger.info("统一适配器模式：主框架不建立协议连接，消息消费者保持运行")
 
         try:

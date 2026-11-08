@@ -29,7 +29,7 @@ host = "127.0.0.1"
 port = 6379
 db = 0
 password = ""
-queue = "allbot"
+queue = "allbot:in:wechat_869"
 
 # 多账户：一个卡密/key 对应一个号，多设备并行在线（不配置时用上面的 sessionFile 兼容单账户 main）
 # [[wechat869.accounts]]

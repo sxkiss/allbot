@@ -33,7 +33,7 @@ system-prompt = ""
 # 触发词（群内 @ 或包含这些词即触发）
 trigger-words = ['小助手']
 # 触发匹配模式：contains（包含）/ exact（精确）/ prefix（前缀）
-trigger-match-mode = "contains"
+trigger-match-mode = "prefix"
 # 触发时是否去掉触发词本身再交给 AI
 trigger-strip-word = true
 # 正文分块发送的字符数（超过则拆成多条）
