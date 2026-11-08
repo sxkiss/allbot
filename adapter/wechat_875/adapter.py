@@ -19,6 +19,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import html
 import re
 import threading
 import time
@@ -27,6 +28,81 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlsplit
+
+# ---- 引用媒体资源索引：svr_id -> 被引用原媒体的内层 XML ----
+# 实证：875 把「引用」与「被引用原媒体」拆成两条消息；原媒体（更早到达，
+# 时序 4/4 先到 146~991s）带 xml_fields(aeskey/cdnmidimgurl/...)。引用消息
+# 的 app.reference.svr_id 正好等于原媒体的 new_msg_id/svr_id/id。从已落盘的
+# wechat875_raw.jsonl 建索引，翻译引用时把资源 XML 填进 refermsg.content，
+# 框架 type=3/43 分支 re.search 出 aeskey/cdn，MuseBridge 才能下载落盘。
+_W875_MEDIA_XML_INDEX = None
+
+
+def w875_make_media_inner_xml(raw):
+    xf = raw.get("xml_fields") if isinstance(raw.get("xml_fields"), dict) else {}
+    if not xf:
+        return ""
+    has_cdn = any(xf.get(k) for k in (
+        "cdnmidimgurl", "cdnbigimgurl", "cdnvideourl", "cdnthumburl", "cdnattachurl"))
+    if not (xf.get("aeskey") and has_cdn):
+        return ""
+    tag = "videomsg" if (xf.get("cdnvideourl") or xf.get("playlength")) else "img"
+    attrs = " ".join(
+        '%s="%s"' % (k, v)
+        for k, v in xf.items()
+        if v is not None and isinstance(k, str) and k.isalnum()
+    )
+    return "<msg><%s %s /></msg>" % (tag, attrs)
+
+
+def w875_media_index_path():
+    return Path(__file__).resolve().parent / "records" / "wechat875_raw.jsonl"
+
+
+def w875_load_media_index():
+    global _W875_MEDIA_XML_INDEX
+    idx = {}
+    try:
+        with open(w875_media_index_path(), encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                    raw = rec.get("raw") or {}
+                    inner = w875_make_media_inner_xml(raw)
+                    if not inner:
+                        continue
+                    for k in (str(raw.get("new_msg_id") or ""),
+                              str(raw.get("svr_id") or ""), str(raw.get("id") or "")):
+                        if k:
+                            idx[k] = inner
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    _W875_MEDIA_XML_INDEX = idx
+    return idx
+
+
+def w875_index_media(raw):
+    """落盘新原媒体消息时增量入索引（未回灌过就交给首次 lookup 全量扫）。"""
+    global _W875_MEDIA_XML_INDEX
+    if _W875_MEDIA_XML_INDEX is None:
+        return
+    inner = w875_make_media_inner_xml(raw)
+    if not inner:
+        return
+    for k in (str(raw.get("new_msg_id") or ""),
+              str(raw.get("svr_id") or ""), str(raw.get("id") or "")):
+        if k:
+            _W875_MEDIA_XML_INDEX[k] = inner
+
+
+def w875_lookup_media(svr_id):
+    global _W875_MEDIA_XML_INDEX
+    if _W875_MEDIA_XML_INDEX is None:
+        w875_load_media_index()
+    return (_W875_MEDIA_XML_INDEX or {}).get(str(svr_id), "")
+
 
 try:  # redis 为运行必需依赖；延迟到实际启动时校验，便于 enable=false 安全构造
     import redis
@@ -506,6 +582,10 @@ class Wechat875Adapter:
                     self.redis_queue,
                     json.dumps(normalized, ensure_ascii=False),
                 )
+                # 无条件落原始包：绕开框架事件链（引用消息在 parse 阶段就 return、
+                # 不 emit 事件，事件订阅式监控永远看不到真实引用结构），先把真实
+                # 结构攒到独立 jsonl，攒够样本再谈「翻译成 type=57 + 识别被引用正文」。
+                self._record_raw(account, raw, normalized)
                 # INFO 级：确保默认 logLevel=INFO 下能看到真实入站消息（便于判断「有没有消息」）
                 self._logger.info(
                     f"入站消息 platform={self.platform} account={account.wxid} "
@@ -514,6 +594,31 @@ class Wechat875Adapter:
                 )
             except Exception as exc:
                 self._logger.error(f"消息入队失败: {exc}")
+
+    def _record_raw(self, account, raw: Dict[str, Any], normalized: Dict[str, Any]) -> None:
+        """无条件把 875 入站原始包落盘（不依赖框架事件 emit）。
+
+        引用消息（MsgType=49 + 纯显示文本）在框架 process_xml_message 的
+        ET.fromstring 阶段就 return，不 emit 任何事件，事件订阅式监控永远
+        看不到真实引用结构。这里在入队口直接写独立 jsonl，攒样本用。
+        """
+        try:
+            rec = {
+                "ts": time.time(),
+                "platform": self.platform,
+                "account": str(getattr(account, "wxid", "") or ""),
+                "msg_id": str(normalized.get("MsgId") or ""),
+                "msg_type": normalized.get("MsgType"),
+                "content": str(normalized.get("Content", {}).get("string", ""))[:200],
+                "raw": raw,
+            }
+            path = Path(__file__).resolve().parent / "records" / "wechat875_raw.jsonl"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+            w875_index_media(raw)
+        except Exception as exc:
+            self._logger.warning(f"原始包落盘失败: {exc}")
 
     def _collect_messages(
         self,
@@ -577,17 +682,10 @@ class Wechat875Adapter:
         is_group = bool(normalized.get("is_group")) or from_wxid.endswith("@chatroom")
         account_wxid = str(account.wxid or account.client.wxid or "").strip()
 
-        # 875 协议对图片/表情/系统通知只推摘要文本（"收到一张图片"/"会话状态同步"），
-        # 没有可解析媒体 XML。以前降级成 text 灌给全量文本插件，导致「没触发词插件也跑」。
-        # 这里直接过滤不入队：媒体类型且无结构化 XML、或纯系统通知摘要；
-        # 有 XML 的真媒体（引用/文件/卡片）保留原类型走专门解析。
-        _mt = int(normalized.get("msg_type") or 1)
-        _has_xml = bool(re.search(r"<(?:msg|appmsg|img|voicemsg|videomsg|emoji)\b", content, re.I))
-        _sys_notice = ("会话状态同步" in content or "微信系统通知" in content
-                       or content.strip() in ("收到一张图片", "收到一个表情", "收到一段视频"))
-        if (_mt in (3, 34, 43, 47, 49) and not _has_xml) or _sys_notice:
-            return None
-
+        # 透明转发：适配器不做媒体分类/过滤/结构还原。
+        # 普通资源消息、引用消息一律原样交给框架（MsgType/Content 用协议真实值），
+        # 完整原始包放 Extra.wechat875.raw —— 真实字段结构由监控插件攒样本观察，
+        # 不在适配器层凭猜测拼 XML / 丢消息。
         # 跳过自己发出的回显消息（手机/协议端同步回来的本人消息）
         if self.skip_self_message and not is_group and account_wxid and from_wxid == account_wxid:
             return None
@@ -618,27 +716,14 @@ class Wechat875Adapter:
 
         msg_type = self._coerce_int(normalized.get("msg_type"), 1)
         bot_identity = account_wxid or to_wxid or ""
-        # v2 引用消息：协议把「被引用原文」放在 reply_context.quote_content
-        # （或 xml_fields 的 refermsg），此前适配器没提取 → 标准消息无 Quote →
-        # 下游插件 message["Quote"] 为空、AI 看不到引用原文只答非所问。
-        # 这里转成框架标准 Quote 结构（框架 text/quote 事件都保留该字段）。
+        # 不再基于 reply_context 构造 Quote。
+        # 实证：reply_context 是「本条消息自身元数据」（svr_id 194/194 等于本条 id、
+        # msg_type=本条类型、quote_content=本条正文），不是「被引用原文」。
+        # 用它构造会把每条普通文本都塞一个内容为自身正文的伪 Quote，污染下游
+        # MuseBridge _build_quote_context 拼进 AI query。真·引用被引用原文目前
+        # 875 原始包里尚未证实有暴露（框架对 MsgType=49+纯文本 parse 阶段就 return，
+        # 历史从未记录到真实引用包）。等入队口无条件落 raw 攒到样本后再按真实结构补。
         quote = {}
-        rc = raw.get("reply_context") if isinstance(raw, dict) else {}
-        if isinstance(rc, dict):
-            qtext = str(rc.get("quote_content") or "").strip()
-            if not qtext:
-                xf = raw.get("xml_fields") if isinstance(raw.get("xml_fields"), dict) else {}
-                qtext = str(xf.get("quote_content") or xf.get("refer_content") or "").strip()
-            if qtext:
-                quote = {
-                    "MsgType": 1,
-                    "Content": qtext,
-                    "Nickname": str(rc.get("displayname") or "").strip(),
-                    "NewMsgId": str(rc.get("new_msg_id") or rc.get("svr_id") or "").strip(),
-                    "FromWxid": str(rc.get("from_user_id") or "").strip(),
-                    "ToWxid": str(rc.get("to_wxid") or "").strip(),
-                    "Createtime": str(normalized.get("timestamp") or ""),
-                }
         # 私聊回复目标修正（875 是框架全局主账号之外的第二账号）：
         # 框架 process_text_message 私聊分支有 `if FromWxid == self.wxid: FromWxid = ToWxid`，
         # 其中 self.wxid 是全局主账号(869号)。当 869号 给 875号 发私聊时，对方恰好 == self.wxid，
@@ -647,7 +732,7 @@ class Wechat875Adapter:
         # 于是无论是否触发改写，FromWxid 最终都指向对方，回复目标始终正确。
         to_wxid_value = channel_id if not is_group else bot_identity
 
-        return {
+        std = {
             "Platform": self.platform,
             "ChannelId": channel_id,
             "UserId": user_id,
@@ -678,6 +763,94 @@ class Wechat875Adapter:
                 }
             },
         }
+
+        # ===== 协议翻译：v2 结构化资源 → 框架标准媒体 XML =====
+        # 875 v2 把资源定位符放在 image/video/emoji 子对象 + xml_fields（摊平属性），
+        # content 只是「收到一张图片」这类显示文本。框架 process_image_message /
+        # process_video_message 从标准媒体 XML 的属性里取 aeskey/cdn 去下载。
+        # 这里按真实攒到的字段把 xml_fields 原样翻成 <msg><img .../></msg> 等
+        # （全量属性、不猜、不丢），完整原始包仍留在 Extra.wechat875.raw 供观察。
+        if isinstance(raw, dict):
+            _xf = raw.get("xml_fields") if isinstance(raw.get("xml_fields"), dict) else {}
+            _tag = _mtype = None
+            if isinstance(raw.get("image"), dict) and raw["image"]:
+                _tag, _mtype = "img", 3
+            elif isinstance(raw.get("video"), dict) and raw["video"]:
+                _tag, _mtype = "videomsg", 43
+            elif isinstance(raw.get("emoji"), dict) and raw["emoji"]:
+                _tag, _mtype = "emoji", 47
+            if not _tag and _xf:
+                _k = str(raw.get("kind") or "").lower()
+                _t = raw.get("type")
+                if _k == "image" or _t == 3:
+                    _tag, _mtype = "img", 3
+                elif _k == "video" or _t == 43:
+                    _tag, _mtype = "videomsg", 43
+                elif _k == "emoji" or _t == 47:
+                    _tag, _mtype = "emoji", 47
+            if _tag and _xf:
+                _attrs = " ".join(
+                    f'{_kk}="{html.escape(str(_vv), quote=True)}"'
+                    for _kk, _vv in _xf.items() if _vv is not None
+                )
+                std["Content"] = {"string": f"<msg><{_tag} {_attrs} /></msg>"}
+                std["MsgType"] = _mtype
+                # 下载所需的原始结构化参数一并透出（endpoint/msg_id/section/file_no…）
+                std["Extra"]["wechat875"]["resources"] = {
+                    _k2: raw.get(_k2) for _k2 in ("image", "video", "emoji", "xml_fields")
+                    if isinstance(raw.get(_k2), dict) and raw.get(_k2)
+                }
+
+        # ===== 真·引用翻译：app.reference → 框架标准 type=57 引用 XML =====
+        # 实证（攒到的真实原始包）：875 把「被引用内容」放在 app.reference，
+        # 不在 Content、也不在 XML refermsg。字段 msg_type / svr_id / new_msg_id /
+        # from_user_id / chat_user_id / display_name / content（文本引用才有，
+        # 图片引用 content 为空）。框架 process_xml_message → type_value==57 →
+        # process_quote_message 从 <appmsg><title>本条正文</title><refermsg>… 构建
+        # message["Quote"] 并 emit("quote_message")。故必须给完整合法 XML 让框架
+        # 原生接管；否则 Content=纯文本会在 ET.fromstring 处 return，下游全看不到。
+        if isinstance(raw, dict):
+            _app = raw.get("app") if isinstance(raw.get("app"), dict) else {}
+            _ref = _app.get("reference") if isinstance(_app.get("reference"), dict) else {}
+            if _ref:
+                def _es(v):
+                    # 空值给空格：框架多处直接 refermsg.find(x).text 不判空，
+                    # 节点无文本时 .text 为 None 会连锁报错。
+                    t = "" if v is None else str(v)
+                    return html.escape(t, quote=True) if t else " "
+                _ref_type = str(_ref.get("msg_type") or 1)
+                _svrid = _ref.get("svr_id") or _ref.get("new_msg_id") or ""
+                _inner = _ref.get("content")
+                if not _inner:
+                    # 被引用媒体：app.reference 只给 svr_id，资源定位符在「另一条
+                    # 先到的原媒体消息」的 xml_fields（实证 4/4 可按 svr_id 关联）。
+                    # 查落盘索引拼 <msg><img .../></msg> 填进 refermsg.content，
+                    # 框架/MuseBridge 才拿得到 aeskey/cdn 去下载落盘。
+                    _svr = str(_ref.get("svr_id") or _ref.get("new_msg_id") or "")
+                    _inner = w875_lookup_media(_svr) or "<msg></msg>"
+                _title = content.split(":\n", 1)[-1] if ":\n" in content else content
+                _xml = (
+                    '<?xml version="1.0"?><msg><appmsg appid="" sdkver="0">'
+                    f'<title>{_es(_title)}</title><type>57</type><refermsg>'
+                    f'<type>{_es(_ref_type)}</type>'
+                    f'<svrid>{_es(_svrid)}</svrid>'
+                    f'<fromusr>{_es(_ref.get("from_user_id"))}</fromusr>'
+                    f'<chatusr>{_es(_ref.get("chat_user_id"))}</chatusr>'
+                    f'<displayname>{_es(_ref.get("display_name"))}</displayname>'
+                    '<msgsource> </msgsource>'
+                    f'<content>{_es(_inner)}</content>'
+                    f'<createtime>{_es(normalized.get("timestamp") or raw.get("created_at") or "")}</createtime>'
+                    '</refermsg></appmsg></msg>'
+                )
+                std["Content"] = {"string": _xml}
+                std["MsgType"] = 49
+                std["Extra"]["wechat875"]["reference"] = {
+                    _k: _ref.get(_k) for _k in
+                    ("msg_type", "svr_id", "new_msg_id", "from_user_id",
+                     "chat_user_id", "display_name", "content")
+                }
+
+        return std
 
     @staticmethod
     def _resolve_group_sender_wxid(raw: Dict[str, Any], group_wxid: str) -> str:

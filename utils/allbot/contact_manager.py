@@ -181,11 +181,12 @@ class ContactManager:
 
         return members
 
-    async def update_contact_info(self, wxid: str):
+    async def update_contact_info(self, wxid: str, bot_client=None):
         """更新联系人信息
 
         Args:
             wxid: 联系人的wxid
+            bot_client: 该消息所属账号的协议客户端；None 用默认全局 bot
         """
         try:
             # 先检查数据库中是否已有该联系人的信息
@@ -200,15 +201,16 @@ class ContactManager:
                     logger.debug(f"已在消息处理中更新群聊 {wxid} 的基本信息")
                 else:
                     # 获取联系人详细信息
-                    await self._fetch_and_update_contact(wxid)
+                    await self._fetch_and_update_contact(wxid, bot_client)
         except Exception as e:
             logger.error(f"更新联系人信息时发生异常: {str(e)}")
 
-    async def _fetch_and_update_contact(self, wxid: str):
-        """从API获取并更新联系人信息"""
+    async def _fetch_and_update_contact(self, wxid: str, bot_client=None):
+        """从API获取并更新联系人信息（bot_client 为空时用全局 bot）"""
         try:
+            client = bot_client or self.bot
             logger.debug(f"开始获取联系人 {wxid} 的详细信息")
-            detail = await self.bot.get_contract_detail(wxid)
+            detail = await client.get_contract_detail(wxid)
             logger.debug(f"获取到联系人 {wxid} 的详细信息: {detail}")
 
             if detail:

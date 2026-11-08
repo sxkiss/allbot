@@ -128,6 +128,16 @@ ROUTE_MAP_875: Dict[str, str] = {
     "/tools/SetProxy": "/api/Tools/setproxy",
     # ---------- 运行时（875 特有）----------
     "/runtime/WebSocketTicket": "/api/Runtime/WebSocketTicket",
+    # ---- swagger 对齐补充映射（原 fallback 补 /api 前缀会 404/链接不存在）----
+    # 依据 swagger.json 精确路径；WebSocketTicket / DownloadEmojiGif 在 swagger 未收录，
+    # 保留 fallback（文档缺失，无从对齐），已在 head 注释标注。
+    "/admin/GenAuthKey3": "/api/Admin/GenAuthKey",
+    "/message/CdnDownloadImage": "/api/Tools/CdnDownloadImage",
+    "/group/SetGetChatRoomInfoDetail": "/api/Group/GetChatRoomInfoDetail",
+    "/label/GetContactLabelList": "/api/Label/GetList",
+    "/user/SetProxy": "/api/Tools/setproxy",
+    "/other/UpdateStepNumber": "/api/Tools/SetStep",
+    "/pay/GetRedEnvelopesDetail": "/api/TenPay/Qrydetailwxhb",
 }
 
 # 875 认证：卡密走 query authcode + header X-Access-Token
@@ -229,6 +239,27 @@ def to_875_body(path: str, body: Optional[Dict[str, Any]]) -> Optional[Dict[str,
         return body
 
     lowered = path.lower()
+
+    # ---------- 好友详情 (Friend/GetContractDetail) ----------
+    # 官方 Swagger: /Friend/GetContractDetail 要 {"userName": "wxid1,wxid2"}
+    #   （字符串、逗号分隔、最多20、ChatRoom 留空）。
+    # 869 兼容客户端发的是 {"UserNames": [...], "RoomWxIDList": [...]}；不转换
+    # 协议不认，会返回空壳 ContactList（NickName={}），表现为「拿不到昵称」。
+    if "getcontractdetail" in lowered or "getcontactdetailslist" in lowered:
+        raw_names = body.get("UserNames") or body.get("userNames")
+        if raw_names is None:
+            return body  # 已是 875 扁平结构（userName 字符串），原样放行
+        if not isinstance(raw_names, (list, tuple)):
+            raw_names = [raw_names]
+        return {"userName": ",".join(str(x) for x in raw_names if x)}
+
+    # ---------- 群成员详情 (Group/GetChatRoomMemberDetail) ----------
+    # 官方 Swagger: body {"QID": "xxx@chatroom"}；旧参数 ChatRoomName 不认，
+    # 实测 Success=False 空数据。用 QID 才返回 NewChatroomData.ChatRoomMember。
+    if "getchatroommemberdetail" in lowered:
+        qid = (body.get("QID") or body.get("ChatRoomName")
+               or body.get("ChatRoomWxId") or body.get("ChatRoomUserName") or "")
+        return {"QID": str(qid)}
 
     # ---------- 已是 875 扁平结构（如 send_image_message 直接构造 {ToWxid,Base64}）----------
     if "ToWxid" in body and not any(k in body for k in _LIST_KEYS) and not (
@@ -367,6 +398,62 @@ def to_875_body(path: str, body: Optional[Dict[str, Any]]) -> Optional[Dict[str,
             "Scene": int(body.get("Scene") or 0),
             "Synckey": str(body.get("Synckey") or "initial"),
         }
+
+    # ---------- 通用字段别名对齐（数据驱动 / 幂等 / 保留未知字段）----------
+    # 依据官方 swagger.json 各端点 requestBody schema 的字段名，只做「确定同义」
+    # 的重命名。幂等：目标字段名已存在则跳过（兼容调用方已按 875 格式构造，
+    # 如 download_voice_875 / download_video_875）；宽容：未列别名的字段原样
+    # 保留（不破坏 869 quirk）。精确路径匹配，避免 getchatroominfo 误吃 Detail。
+    # 刻意不做：加好友 v1/v2 ticket、朋友圈 synckey、红包 Xml、GetMsgVoice 的
+    # wxid 方向 —— 869/875 语义不同，凭字段名强转会送错数据，比不通更糟。
+    alias = {
+        "/group/sendpat": [("ChatRoomName", "QID", "first")],
+        "/group/getchatroominfo": [("ChatRoomWxIdList", "QID", "first")],
+        "/group/getchatroominfodetail": [("ChatRoomName", "QID", "first")],
+        "/group/setgetchatroominfodetail": [("ChatRoomName", "QID", "first")],
+        "/group/getchatroomqrcode": [("ChatRoomName", "QID", "first")],
+        "/group/addchatroommembers": [("UserList", "ToWxids", "join")],
+        "/group/invitechatroommembers": [("UserList", "ToWxids", "join")],
+        "/friend/delcontact": [("Wxid", "toWxid", "first")],
+        "/friend/getcontactlist": [
+            ("CurrentWxcontactSeq", "currentWxcontactSeq", "first"),
+            ("CurrentChatRoomContactSeq", "currentChatRoomContactSeq", "first")],
+        "/message/sendcdndownload": [
+            ("AesKey", "file_aes_key", "first"), ("FileURL", "file_no", "first")],
+        "/message/getmsgvoice": [
+            ("Bufid", "bufid", "first"), ("Length", "length", "first"),
+            ("NewMsgId", "msgId", "first"), ("ToUserName", "fromUserName", "first")],
+        "/message/getmsgvideo": [
+            ("MsgId", "msg_id", "first"), ("TotalLen", "data_len", "first"),
+            ("CompressType", "compress_type", "first"), ("Section", "section", "first"),
+            ("ToUserName", "to_wxid", "first")],
+        "/message/getmsgbigimg": [
+            ("MsgId", "msg_id", "first"), ("TotalLen", "data_len", "first"),
+            ("CompressType", "compress_type", "first"), ("Section", "section", "first"),
+            ("ToUserName", "to_wxid", "first")],
+        "/admin/genauthkey3": [("Count", "count", "first")],
+        "/user/getmyqrcode": [("Style", "style", "first")],
+        "/user/setproxy": [("Proxy", "proxy", "first")],
+        "/other/updatestepnumber": [("Number", "step", "first")],
+        "/sns/sendsnscomment": [
+            ("ID", "id", "first"), ("Towxid", "toWxid", "first"),
+            ("Content", "content", "first"), ("Type", "type", "first"),
+            ("ReplyCommnetId", "replyCommnetId", "first")],
+        "/sns/sendsnsuserpage": [
+            ("Maxid", "id", "first"), ("Towxid", "towxid", "first")],
+    }.get(lowered)
+    if alias:
+        out = dict(body)
+        for src, dst, mode in alias:
+            if dst in out or src not in out:
+                continue
+            val = out.pop(src)
+            if mode == "first" and isinstance(val, (list, tuple)):
+                val = val[0] if val else ""
+            elif mode == "join" and isinstance(val, (list, tuple)):
+                val = ",".join(str(x) for x in val if x)
+            out[dst] = val
+        return out
 
     return body
 
