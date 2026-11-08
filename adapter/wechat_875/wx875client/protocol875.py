@@ -442,16 +442,54 @@ def normalize_875_message(raw: Dict[str, Any]) -> Dict[str, Any]:
                 return value
         return default
 
+    # 875 会推送新版 wechatpad.message.v2（snake_case：sender_id / recipient_id /
+    # conversation_id / type / direction），本账号发出的消息也会以 sync_message
+    # 包回推(direction=outgoing)。不同协议各自推、各自入队各自触发，适配器只负责
+    # 接住并归一化，不在此层判断「是不是自己发的」去拦截。
+    # v2 严格判定：只认 v2 特有标志(direction / kind / new_msg_id+sender_id / schema)，
+    # 且排除任何老格式 camelCase 字段。旧写法仅凭 "conversation_id" in raw 就判 v2，
+    # 会把老格式消息(带 conversation_id+type)误判 → 取 type(如48) 当 MsgType →
+    # router 找不到处理器直接丢弃 → 整条消息所有插件都不触发。
+    _legacy_keys = ("msgId", "MsgId", "msgType", "MsgType", "createTime", "CreateTime",
+                    "fromWxid", "FromUserName", "pushContent", "PushContent")
+    _has_legacy = any(k in raw for k in _legacy_keys)
+    is_v2 = (not _has_legacy) and (
+        raw.get("schema") == "wechatpad.message.v2"
+        or "direction" in raw
+        or "kind" in raw
+        or ("sender_id" in raw and ("new_msg_id" in raw or "id" in raw))
+    )
+
     # 875 推送里 Type 常表示设备/通道类型而非微信 MsgType，误取会把纯文本
     # 标成图片(3)/XML(49)，下游按 XML 解析即崩。只认明确的消息类型字段。
-    msg_type = pick("msgType", "MsgType", "msgtype", default=1)
+    msg_type = pick("type", "msg_type", "msgType", "MsgType", "msgtype", default=1) if is_v2 \
+        else pick("msgType", "MsgType", "msgtype", default=1)
     try:
         msg_type = int(msg_type)
     except (TypeError, ValueError):
         msg_type = 1
 
-    from_wxid = str(pick("fromWxid", "FromUserName", "from", default=""))
-    to_wxid = str(pick("toWxid", "ToUserName", "to", default=""))
+    if is_v2:
+        sender_id = str(pick("sender_id", "from_user_id", default=""))
+        recipient_id = str(pick("recipient_id", "to_wxid", default=""))
+        conversation_id = str(pick("conversation_id", "chat_user_id", default=""))
+        direction = str(pick("direction", default="")).lower()
+        is_outgoing = direction in ("outgoing", "out", "send") or bool(raw.get("is_outgoing"))
+        # 会话窗口（群里=群id，私聊=对端）：决定 channel_id 与回复路由
+        window = conversation_id or recipient_id or sender_id
+        if is_outgoing:
+            from_wxid = window               # 会话窗口
+            to_wxid = sender_id              # 本账号（发送方）
+        else:
+            from_wxid = sender_id or window
+            to_wxid = recipient_id or conversation_id
+        v2_is_group = bool(raw.get("is_group")) or window.endswith("@chatroom")
+    else:
+        sender_id = direction = ""
+        is_outgoing = v2_is_group = False
+        from_wxid = str(pick("fromWxid", "FromUserName", "from", default=""))
+        to_wxid = str(pick("toWxid", "ToUserName", "to", default=""))
+
     content = pick("content", "Content", "pushContent", "PushContent", default="")
     # Content 可能是 {"string": "..."} / {"String": "..."} 之类包装，
     # 直接 str() 会得到 Python repr，下游 XML/JSON 解析必崩，先安全取文本。
@@ -467,11 +505,10 @@ def normalize_875_message(raw: Dict[str, Any]) -> Dict[str, Any]:
     # ET.fromstring，非 XML 就抛 ParseError 刷屏。判断是否结构化 XML：
     # 必须含 '<msg' 或 '<appmsg' 或至少一个自洽的 '<...>' 标签对。
     is_xml_payload = bool(re.search(r"<(?:msg|appmsg|img|voicemsg|videomsg|emoji)\b", content_str, re.I))
+    # 不再把媒体降级成文本(1)：降级会让图片/表情/系统通知变成 text_message
+    # 灌进全量文本插件（Assistant/DouyinParser 等无触发词也运行）。
+    # 媒体保留原始 msg_type；无 XML 的摘要类由上层入站过滤，不入队。
     degraded = False
-    if msg_type in (3, 34, 43, 47, 49) and not is_xml_payload:
-        # 非结构化媒体摘要：降级为文本类型，保留摘要文本与原始包/元数据，
-        # 让下游走 process_text_message 正常处理，绝不触发 XML 解析崩溃。
-        degraded = True
 
     # P1-2: 媒体消息 XML 参数提取（供后续 CDN/Tools 下载使用）
     media_meta = {}
@@ -494,19 +531,30 @@ def normalize_875_message(raw: Dict[str, Any]) -> Dict[str, Any]:
         if attachid_match: media_meta["attachid"] = attachid_match.group(1)
 
     result = {
-        "msg_id": str(pick("msgId", "MsgId", "newMsgId", "NewMsgId", media_meta.get("msg_id", ""), default="")),
+        # v2 用 id / new_msg_id / svr_id；老格式用 msgId/MsgId/newMsgId
+        "msg_id": str(pick("id", "new_msg_id", "svr_id", "msgId", "MsgId", "newMsgId", "NewMsgId",
+                           media_meta.get("msg_id", ""), default="")),
         "from_wxid": from_wxid,
         "to_wxid": to_wxid,
         # 非结构化媒体摘要降级为文本(1)，避免下游 XML 解析崩溃刷屏；
         # 原始类型保留在 original_msg_type 供插件按需识别。
-        "msg_type": 1 if degraded else msg_type,
+        "msg_type": msg_type,
         "original_msg_type": msg_type,
         "degraded": degraded,
         "content": content_str,
-        "timestamp": pick("createTime", "CreateTime", "create_time", default=0),
-        "is_group": str(from_wxid).endswith("@chatroom"),
+        # v2 用 created_at（秒）；老格式用 createTime
+        "timestamp": pick("created_at", "createTime", "CreateTime", "create_time", default=0),
+        # v2 以会话窗口判定群（自身 outgoing 私聊窗口=对端，不能靠 from_wxid 判）
+        "is_group": v2_is_group if is_v2 else str(from_wxid).endswith("@chatroom"),
         "raw": raw,
     }
+    # v2 附加元信息（如实标注方向/发送者，不做拦截）
+    if is_v2:
+        result["v2"] = True
+        result["direction"] = direction or ("outgoing" if is_outgoing else "incoming")
+        result["sender_id"] = sender_id
+        result["recipient_id"] = recipient_id
+        result["conversation_id"] = str(pick("conversation_id", default=""))
 
     # 若提取到媒体元数据，附加到结果中供下载管线使用
     if media_meta:

@@ -72,6 +72,7 @@ plugins/*/
 !plugins/VideoSender
 !plugins/RevokeBotMessage
 !plugins/ClawPlugin
+!plugins/MessageParserRecorder
 !plugins/VideoDemand
 !plugins/RandomPhoto
 !plugins/Screenshot
