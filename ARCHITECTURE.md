@@ -24,3 +24,21 @@ Built-in plugins also cover lightweight live information retrieval such as offic
 - `tests/INDEX.md`: Project regression tests (offline reply-chain no-loop harness)
 - `WechatAPI/INDEX.md`: Wechat protocol clients (legacy + 869)
 - `utils/INDEX.md`: Shared utilities (config, protocol mapping, etc.)
+
+## Repository baseline (2026-11-09)
+
+History was truncated at the three branches' common fork point: commits before
+that point were discarded, that point itself became the repository's single root
+commit (no parents), and every later commit was preserved with its original
+topology. All three branches (`main`, `dev`, `feat/wxserver875-license`) still
+share this one root and diverge from it.
+
+Branch roles: `dev` is the sole development line (full adapter set, including
+`wechat_875`), `main` is the stable release branch, and `feat/wxserver875-license`
+holds the reduced 875 runtime image assets. Changes land on `dev`, are pushed,
+then merged into `main` via Pull Request. Since the branches share a common
+ancestor, `dev` -> `main` is a regular merge; existing clones must be re-cloned.
+
+Concrete account/group identifiers, tokens, and internal hostnames were
+redacted across the tracked tree (commit messages, source comments, configs,
+docs, filenames) with no files dropped.
