@@ -1,0 +1,34 @@
+# Discord 适配器（源自 bt 网关 octop-gateway 通道桥接）
+# 说明：通道实现代码随仓库携带在 vendor/octop_gateway；平台 SDK 需按需安装：discord.py (pip install discord.py)
+# 启停为热插拔即时生效；缺少凭据或 SDK 时适配器不会崩溃，仅记录 warning 并等待。
+
+[adapter]
+name = "discord"
+enabled = false
+module = "adapter.discord"
+class = "DiscordGatewayAdapter"
+replyQueue = "allbot_reply:discord"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[discord]
+enable = false
+platform = "discord"
+kind = "discord"
+bot_token = ""
+# 注意：字段名必须是 http_proxy（octop DiscordConfig 的真实字段，from_dict 会静默丢弃未知键）
+http_proxy = ""
+http_proxy_auth = ""
+allow_all_channels = true
+allowed_user_ids = []
+allowed_channel_ids = []
+botWxid = "discord-bot"
+
+[discord.redis]
+queue = "allbot"
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""

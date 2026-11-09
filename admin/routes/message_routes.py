@@ -25,10 +25,9 @@ def register_message_routes(app) -> None:
             return None
         return getattr(bot, "bot", bot)
 
-    def _is_client_869(client: Any) -> bool:
-        if client is None:
-            return False
-        return str(getattr(client, "protocol_version", "") or "").lower() == "869"
+    def _supports_chatroom_announce(client: Any) -> bool:
+        """按能力判断，不依赖协议版本。"""
+        return callable(getattr(client, "get_chatroom_announce", None))
 
     @app.post("/api/send_message", response_class=JSONResponse, tags=["联系人"])
     async def api_send_message(request: Request, username: str = Depends(require_auth)):
@@ -94,8 +93,8 @@ def register_message_routes(app) -> None:
         if target is None:
             return {"success": False, "error": "机器人实例未初始化，请确保机器人已启动"}
 
-        # 仅 869 分支尝试调用真实接口
-        if _is_client_869(target):
+        # 客户端支持群公告能力时调用真实接口
+        if _supports_chatroom_announce(target):
             get_announce = getattr(target, "get_chatroom_announce", None)
             if callable(get_announce):
                 try:
@@ -112,5 +111,5 @@ def register_message_routes(app) -> None:
                     logger.warning(f"获取群公告失败(869): {e}")
                     return {"success": False, "error": f"获取群公告失败: {str(e)}", "protocol": "869"}
 
-        # 非 869 分支维持兼容行为
+        # 不支持该能力时维持兼容行为
         return {"success": True, "announcement": ""}

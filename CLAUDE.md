@@ -1,3 +1,11 @@
+<!-- 仓库基线 2026-11-09：三分支共享唯一根；改动只走 dev 提交推送、经 PR 合并 main；旧历史已截断并全库脱敏 -->
+<!-- 现状校正 2026-11-06 -->
+> **本轮变更（详见 `docs/CHANGELOG.md`）**：
+> - `loader.py` 热插拔幂等化：启动前先停旧实例、`instance_id`/`stopped` 防重复消费者（61d83e7）。
+> - `utils/reply_router.py`：ReplyDispatcher 找不到规则时动态重载（3s 节流）；`_hop` 跳数保护。
+> - `WechatAPI/facade.py::__setattr__` 不再把门面自身方法转发 delegate，阻断插件发送 wrapper 污染终端客户端（5e212db，出站回环真根因）。
+> - 回归测试：`tests/test_reply_chain_no_loop.py`（见 `tests/INDEX.md`）。
+
 # AllBot - 智能微信机器人系统
 
 > **本文档为 AI 辅助开发优化而设计**
@@ -43,7 +51,7 @@ AllBot 采用 auto-doc 三层文档规范：**根 `CLAUDE.md`（架构概览）*
 |------|------|----------|
 | `bot_core/` | 核心调度引擎：启动编排 / 消息路由 / 事件分发 | [INDEX.md](./bot_core/INDEX.md) |
 | `WechatAPI/` | 微信协议客户端封装（好友/群聊/朋友圈/登录） | [INDEX.md](./WechatAPI/INDEX.md) |
-| `adapter/` | 多平台适配器：QQ / TG / Web / Win / wx / observatory / wecom | [INDEX.md](./adapter/INDEX.md) |
+| `adapter/` | 多平台适配器：QQ / TG / Web / Win / wx / observatory / wecom / **wechat_869 / wechat_875（多账户扫码）** | [INDEX.md](./adapter/INDEX.md) |
 | `database/` | 数据持久化：主库 / 键值 / 消息 / 联系人 / 群成员 / 计数 | [INDEX.md](./database/INDEX.md) |
 | `admin/` | Web 管理后台：FastAPI 路由 / 服务 / 模板 / 静态 | [INDEX.md](./admin/INDEX.md) |
 | `utils/` | 工具库：装饰器 / 插件管理 / 配置 / 日志 / 性能监控 | [INDEX.md](./utils/INDEX.md) |

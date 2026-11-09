@@ -1,3 +1,10 @@
+<!-- 现状校正 2026-11-06 -->
+> **本轮变更（详见 `docs/CHANGELOG.md`）**：
+> - `loader.py` 热插拔幂等化：启动前先停旧实例、`instance_id`/`stopped` 防重复消费者（61d83e7）。
+> - `utils/reply_router.py`：ReplyDispatcher 找不到规则时动态重载（3s 节流）；`_hop` 跳数保护。
+> - `WechatAPI/facade.py::__setattr__` 不再把门面自身方法转发 delegate，阻断插件发送 wrapper 污染终端客户端（5e212db，出站回环真根因）。
+> - 回归测试：`tests/test_reply_chain_no_loop.py`（见 `tests/INDEX.md`）。
+
 # WechatAPI/ - 微信协议封装模块
 
 [根目录](../CLAUDE.md) > **WechatAPI**
@@ -15,7 +22,7 @@
 
 ## 🎯 模块职责
 
-`WechatAPI/` 模块是 AllBot 的**微信协议抽象层**，封装了以下核心功能：
+`WechatAPI/` 模块是 AllBot 的**协议无关门面层**。具体协议实现全部在 `adapter/`（如 `adapter/wechat_869/wx869client/`、`adapter/wechat_875/wx875client/`），本目录只保留门面、通用基类与错误定义。门面能力：
 
 - **好友管理**：添加好友、删除好友、获取好友列表
 - **群聊管理**：创建群聊、邀请成员、踢出成员、群公告

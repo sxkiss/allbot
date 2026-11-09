@@ -45,7 +45,9 @@ Thumbs.db
 *.temp
 .cache/
 .*
-tests/
+tests/*
+!tests/test_*.py
+!tests/INDEX.md
 
 
 # Spec workflow 临时文件
@@ -70,6 +72,7 @@ plugins/*/
 !plugins/VideoSender
 !plugins/RevokeBotMessage
 !plugins/ClawPlugin
+!plugins/MessageParserRecorder
 !plugins/VideoDemand
 !plugins/RandomPhoto
 !plugins/Screenshot
@@ -78,3 +81,11 @@ plugins/*/
 # 会话池是运行时状态（wxid→session 映射），含隐私且会频繁变动，不入库
 plugins/AssistantPlugin/wx_session_pool.json
 docs/reports/diagnostic-quote-media-20260816.md
+!plugins/DouyinParser
+
+# 869 适配器运行时会话/状态（含密钥，禁止入库）
+adapter/wechat_869/data/
+
+# 适配器登录态/运行时数据（含卡密、设备指纹），不入库
+adapter/wechat_875/wx875client/login_stat.json
+adapter/wechat_875/data/

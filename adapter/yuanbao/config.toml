@@ -1,0 +1,39 @@
+# 腾讯元宝 适配器（源自 bt 网关 octop-gateway 通道桥接）
+# 说明：通道实现代码随仓库携带在 vendor/octop_gateway；平台 SDK 需按需安装：无需额外 SDK（内置协议实现）
+# 启停为热插拔即时生效；缺少凭据或 SDK 时适配器不会崩溃，仅记录 warning 并等待。
+
+[adapter]
+name = "yuanbao"
+enabled = false
+module = "adapter.yuanbao"
+class = "YuanbaoGatewayAdapter"
+replyQueue = "allbot_reply:yuanbao"
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[yuanbao]
+enable = false
+platform = "yuanbao"
+kind = "yuanbao"
+app_key = ""
+app_secret = ""
+token = ""
+# 可选（留空使用 octop 默认值）
+api_base = ""
+api_domain = ""
+ws_url = ""
+bot_id = ""
+bot_version = ""
+heartbeat_interval = 30
+request_timeout = 20
+connect_timeout = 15
+botWxid = "yuanbao-bot"
+
+[yuanbao.redis]
+queue = "allbot"
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""

@@ -549,7 +549,6 @@ def create_app() -> FastAPI:
 
     # 初始化 app.state 依赖注入
     init_app_state(app)
-    app.state.login_challenges = {}
 
     # 统一注册路由（避免在多个位置重复注册导致冲突）
     try:
@@ -604,7 +603,7 @@ def init_app_state(app: FastAPI):
     def get_bot_status_safe():
         """安全获取 bot 状态（供 /api/bot/status 与前台轮询使用）。
 
-        约定：优先读取 bot_core 写入的 `admin/bot_status.json`（含 status/details/qrcode_url 等），
+        约定：优先读取 bot_core 写入的 `admin/bot_status.json`（含 status/details 等），
         并在缺失字段时合并运行时 bot_instance/bot_client 的 profile 信息（wxid/nickname/alias）。
         """
         status_data: dict[str, Any] = {}

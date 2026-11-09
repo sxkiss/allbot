@@ -1,3 +1,10 @@
+<!-- 现状校正 2026-11-06 -->
+> **本轮变更（详见 `docs/CHANGELOG.md`）**：
+> - `loader.py` 热插拔幂等化：启动前先停旧实例、`instance_id`/`stopped` 防重复消费者（61d83e7）。
+> - `utils/reply_router.py`：ReplyDispatcher 找不到规则时动态重载（3s 节流）；`_hop` 跳数保护。
+> - `WechatAPI/facade.py::__setattr__` 不再把门面自身方法转发 delegate，阻断插件发送 wrapper 污染终端客户端（5e212db，出站回环真根因）。
+> - 回归测试：`tests/test_reply_chain_no_loop.py`（见 `tests/INDEX.md`）。
+
 # adapter/ - 多平台适配器模块
 
 [根目录](../CLAUDE.md) > **adapter**
@@ -268,6 +275,20 @@ enable_tray = true
 - `adapter/win/README.md`：使用说明
 
 ---
+
+### 5. 869 适配器（adapter/wechat_869/）
+
+- 多账户：`[[wechat869.accounts]]`，一卡密一账号，独立客户端/WS/会话。
+- 登录面板：`capabilities / list_accounts / login_start / login_status / login_qrcode / login_logout`。
+- 出站 14 类 msg_type（含 XML 类 app/cdn_file/cdn_img/cdn_video，不降级为文本）。
+- 详见 [wechat_869/README.md](./wechat_869/README.md)。
+
+### 6. 875 适配器（adapter/wechat_875/）
+
+- 多账户：`[[wechat875.accounts]]`，一卡密一账号，独立设备码/WS。
+- 登录面板：17 种设备（iPad/iPadX/iPad 8.0.62/Mac/Pad/Windows/手表/鸿蒙 + 海外版）。
+- 出站 14 类 msg_type；登录轮询 2s；二维码为真实微信链接。
+- 详见 [wechat_875/README.md](./wechat_875/README.md)。
 
 ## 🔗 关键依赖与配置
 

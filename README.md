@@ -9,7 +9,7 @@
 
 **支持微信、QQ、Telegram、企业微信智能机器人等多平台的插件化智能机器人系统**
 
-[快速开始](#-快速开始) • [功能特性](#-核心特性) • [文档](#-文档导航) • [插件开发](#-插件开发) • [交流群](#-联系方式)
+[更新日志](docs/CHANGELOG.md) • [快速开始](#-快速开始) • [功能特性](#-核心特性) • [文档](#-文档导航) • [插件开发](#-插件开发) • [交流群](#-联系方式)
 
 </div>
 
@@ -46,7 +46,7 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 - [用户手册](docs/用户手册.md) - 完整使用指南
 - [配置指南](docs/配置指南.md) - 详细配置说明
 - [插件列表](docs/插件列表.md) - 插件市场与可用插件概览
-- [多平台适配器](docs/multi-platform-adapter.md) - QQ/Telegram/Web/Win/ocwx/wecom_bot
+- [多平台适配器](docs/multi-platform-adapter.md) - QQ/Telegram/Web/Win/ocwx/wecom_bot/**wechat_869/wechat_875（多账户扫码）**
 
 ### 开发文档
 - [系统架构文档](docs/系统架构文档.md) - 架构设计
@@ -74,16 +74,18 @@ Python 3.11+ | FastAPI | SQLite + Redis | RabbitMQ | APScheduler | Loguru | Boot
 
 | 分支 | 说明 |
 |------|------|
-| `main` | 纯 allbot 框架（不含 wxserver/874 二进制） |
-| `feat/wxserver-license` | 含 wxserver + 874 协议服务 + 远程卡密授权 + 十端登录支持 |
+| `main` | 稳定发布分支；由 `dev` 经 PR 合并而来，跟随 `dev` 的完整功能集 |
+| `dev` | 开发主线，含完整适配器集合（`wechat_869` / `wechat_875` 等）；日常改动只提交到这里 |
+| `feat/wxserver875-license` | 875 协议运行时精简集（Dockerfile / conf875 / lib / entrypoint 等），用于构建运行时镜像 |
 
-> **需要微信协议服务（869/874）+ 卡密授权的用户**：请使用 `feat/wxserver-license` 分支，见下方说明。
+> **开发约定**：功能与文档改动统一在 `dev` 提交、推送，再通过 Pull Request 合并进 `main`；`main` 不直接提交。
+> 三个分支共享同一个根提交（2026-11-09 历史截断：共同分叉点之前的历史已丢弃，之后的提交链完整保留），因此 `dev` → `main` 为常规合并，无需特殊参数。旧 clone 需重新克隆。
 
-### feat/wxserver-license 分支（含 869/874 协议 + 卡密授权）
+### feat/wxserver875-license 分支（875 运行时镜像）
 
 ```bash
-# 克隆项目并切换到 feat 分支
-git clone -b feat/wxserver-license https://github.com/sxkiss/allbot.git
+# 克隆项目并切换到运行时分支
+git clone -b feat/wxserver875-license https://github.com/sxkiss/allbot.git
 cd allbot
 
 # 编辑 main_config.toml（协议版本、管理员账号等）
@@ -96,11 +98,10 @@ docker compose logs -f
 ```
 
 **特性：**
-- **双协议**：支持 869 与 874 协议，页面一键切换
-- **多端登录**：iPad / Mac / 安卓 Pad / Windows / 车载 等多种设备类型
-- **授权管理**：基于卡密使用授权，绑定设备
+- 875 协议运行时所需的最小文件集（镜像构建配置、协议库、启动脚本）
+- 与主框架分支共享共同根，按需取用即可
 
-### main 分支（纯 allbot 框架）
+### Docker / 本地部署
 
 <table>
   <tr>
@@ -297,7 +298,7 @@ option_1 = "value"
 ```
 AllBot/
 ├── admin/              # 管理后台（FastAPI + Bootstrap 5）
-├── adapter/            # 多平台适配器（QQ/TG/Web/Win/ocwx/wx/wecom_bot 等）
+├── adapter/            # 多平台适配器（QQ/TG/Web/Win/ocwx/wx/wecom_bot/wechat_869/wechat_875 等）
 ├── plugins/            # 内置插件（默认 13 个，可通过插件市场扩展）
 ├── database/           # 数据持久化（SQLite + Redis）
 ├── utils/              # 工具模块（插件管理、事件系统）

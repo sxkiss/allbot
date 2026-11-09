@@ -1,10 +1,11 @@
 """
-@input: AppConfig 配置与 ReplyRouter/ReplyDispatcher 组件（含 869 admin-key/ws-url/login-qrcode-proxy）
-@output: 初始化统一微信客户端并接入回复路由（注入拉码代理配置到客户端）
+@input: AppConfig 配置与 ReplyRouter/ReplyDispatcher 组件
+@output: 初始化统一微信客户端并接入回复路由
 @position: bot_core 启动流程中的客户端构建层
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
 import asyncio
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -39,19 +40,22 @@ class ClientInitializer:
         logger.debug("WechatAPI 服务器地址: {}", api_config.host)
         logger.debug("Redis 主机地址: {}:{}", api_config.redis_host, api_config.redis_port)
 
-        # 读取协议版本设置（仅作标识兼容，客户端统一为单一实现）
-        protocol_version = self.config.protocol.version.lower()
-        logger.info(f"使用协议版本: {protocol_version}")
-
-        bot = WechatAPIClient(
-            api_config.host,
-            api_config.port,
-            protocol_version=protocol_version,
-            admin_key=api_config.admin_key,
-            ws_url=api_config.ws_url,
+        # 上游连接信息优先由启用的适配器提供（协议配置归属适配器）
+        upstream = self._resolve_upstream_settings()
+        logger.info(
+            "上游客户端: {}:{} protocol={}",
+            upstream["host"], upstream["port"], upstream["protocol_version"],
         )
-        bot.login_qrcode_proxy = api_config.login_qrcode_proxy or ""
-        logger.success("✅ 成功加载统一 WechatAPIClient 客户端（单一实现，以网关协议为主）")
+        # 回写到运行配置，保证后续插件/模块读到的是适配器提供的真实上游，而不是默认值
+        self.config.wechat_api.host = upstream["host"]
+        self.config.wechat_api.port = upstream["port"]
+        self.config.wechat_api.ws_url = upstream["ws_url"]
+        self.config.wechat_api.admin_key = upstream["admin_key"]
+        self.config.protocol.version = upstream["protocol_version"]
+
+        # 主线不再实例化任何协议客户端：创建协议无关门面，运行时解析启用的适配器客户端
+        bot = WechatAPIClient(resolver=self._resolve_active_client)
+        logger.success("✅ 已创建协议无关 BotFacade（具体客户端由适配器提供）")
 
         # 设置客户端属性
         bot.ignore_protect = self.config.allbot.ignore_protection
@@ -62,6 +66,107 @@ class ClientInitializer:
         logger.success("WechatAPI服务已启动")
 
         return bot
+
+    @staticmethod
+    def _resolve_active_client():
+        """返回当前启用的微信类适配器的客户端（供 BotFacade 委托查询类调用）。"""
+        try:
+            from adapter.loader import list_running_adapters, get_running_adapter
+            candidates = []
+            for info in list_running_adapters():
+                instance = get_running_adapter(getattr(info, "name", ""))
+                if instance is None:
+                    continue
+                name = getattr(info, "name", "")
+                candidates.append((name, instance))
+            # 优先 869/875 等微信协议适配器
+            for name, instance in candidates:
+                if "wechat" in name.lower() or name.lower() in {"869", "875"}:
+                    client = ClientInitializer._adapter_client(instance)
+                    if client is not None:
+                        return client
+            for name, instance in candidates:
+                client = ClientInitializer._adapter_client(instance)
+                if client is not None:
+                    return client
+        except Exception as exc:
+            logger.debug("解析活动适配器客户端失败: {}", exc)
+        return None
+
+    @staticmethod
+    def _adapter_client(instance):
+        getter = getattr(instance, "get_client", None)
+        if callable(getter):
+            try:
+                return getter()
+            except TypeError:
+                try:
+                    return getter("")
+                except Exception:
+                    pass
+            except Exception:
+                pass
+        return getattr(instance, "_bot", None) or getattr(instance, "client", None)
+
+    def _resolve_upstream_settings(self) -> dict:
+        """从启用的适配器配置解析上游连接信息，主配置不再保存协议连接项。"""
+        api = self.config.wechat_api
+        settings = {
+            "host": api.host or "127.0.0.1",
+            "port": int(api.port or 9000),
+            "protocol_version": str(self.config.protocol.version or "869").lower(),
+            "admin_key": api.admin_key or "",
+            "ws_url": api.ws_url or "",
+        }
+        try:
+            for config_file in sorted((self.script_dir / "adapter").glob("*/config.toml")):
+                with open(config_file, "rb") as file:
+                    raw = tomllib.load(file)
+                adapter_cfg = raw.get("adapter") or {}
+                if not bool(adapter_cfg.get("enabled")):
+                    continue
+                for section in raw.values():
+                    if not isinstance(section, dict):
+                        continue
+                    if section.get("host") and section.get("port"):
+                        settings.update({
+                            "host": str(section["host"]),
+                            "port": int(section["port"]),
+                            "protocol_version": str(
+                                section.get("protocolVersion") or settings["protocol_version"]
+                            ).lower(),
+                            "admin_key": str(section.get("adminKey") or settings["admin_key"]),
+                            "ws_url": str(section.get("wsUrl") or settings["ws_url"]),
+                        })
+                        return settings
+        except Exception as exc:
+            logger.warning("解析适配器上游配置失败，回退主配置: {}", exc)
+        return settings
+
+    def _resolve_default_platform(self) -> str:
+        """主动推送（无入站上下文）时的默认适配器平台。"""
+        try:
+            import tomllib
+            candidates = []
+            for entry in sorted((self.script_dir / "adapter").iterdir()):
+                config_file = entry / "config.toml"
+                if not config_file.exists():
+                    continue
+                with open(config_file, "rb") as file:
+                    raw = tomllib.load(file)
+                adapter_cfg = raw.get("adapter") or {}
+                if not adapter_cfg.get("enabled"):
+                    continue
+                name = str(adapter_cfg.get("name") or entry.name)
+                candidates.append((name, bool(raw.get("wechat869") or raw.get("wechat875"))))
+            # 优先微信协议适配器
+            for name, is_wechat in candidates:
+                if is_wechat:
+                    return name
+            return candidates[0][0] if candidates else ""
+        except Exception as exc:
+            logger.warning("解析默认适配器平台失败: {}", exc)
+            return ""
 
     def _setup_reply_router(self, bot: Any):
         """设置回复路由器
@@ -78,8 +183,9 @@ class ClientInitializer:
                 redis_db=api_config.redis_db,
                 redis_password=api_config.redis_password or None,
                 queue_name="allbot_reply",
+                default_platform=self._resolve_default_platform(),
             )
-            bot.set_reply_router(reply_router)
+            bot.set_reply_router(reply_router, force=True)
             logger.success("🛰️ ReplyRouter 已启用，所有发送消息将通过适配器队列分发")
 
             # 启动回复调度器

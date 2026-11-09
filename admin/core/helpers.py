@@ -200,62 +200,6 @@ def get_system_status():
         }
 
 
-def update_bot_status(status, details=None, extra_data=None):
-    """更新bot状态，供管理后台读取"""
-    try:
-        # 使用项目根目录的状态文件
-        status_file = Path(current_dir).parent / "bot_status.json"
-
-        # 读取当前状态
-        current_status = {}
-        if status_file.exists():
-            with open(status_file, "r", encoding="utf-8") as f:
-                current_status = json.load(f)
-
-        # 更新状态
-        current_status["status"] = status
-        current_status["timestamp"] = time.time()
-        if details:
-            current_status["details"] = details
-
-            # 检查详情中是否包含二维码URL
-            qrcode_pattern = re.compile(r'获取到登录二维码: (https?://[^\s]+)')
-            match = qrcode_pattern.search(str(details))
-            if match:
-                qrcode_url = match.group(1)
-                current_status["qrcode_url"] = qrcode_url
-
-            # 检查详情中是否包含UUID
-            uuid_pattern = re.compile(r'获取到登录uuid: ([^\s]+)')
-            match = uuid_pattern.search(str(details))
-            if match:
-                uuid = match.group(1)
-                current_status["uuid"] = uuid
-
-                # 如果有uuid但没有qrcode_url，尝试构建
-                if "qrcode_url" not in current_status:
-                    current_status["qrcode_url"] = f"https://api.pwmqr.com/qrcode/create/?url=http://weixin.qq.com/x/{uuid}"
-
-        # 添加额外数据
-        if extra_data and isinstance(extra_data, dict):
-            for key, value in extra_data.items():
-                current_status[key] = value
-
-            # 特别处理extra_data中的二维码信息
-            if "uuid" in extra_data and "qrcode_url" not in current_status:
-                current_status["qrcode_url"] = f"https://api.pwmqr.com/qrcode/create/?url=http://weixin.qq.com/x/{extra_data['uuid']}"
-
-        # 写入状态文件
-        with open(status_file, "w", encoding="utf-8") as f:
-            json.dump(current_status, f, ensure_ascii=False, indent=2)
-
-        logger.debug(f"更新bot状态: {status}")
-        return True
-    except Exception as e:
-        logger.error(f"更新bot状态失败: {e}")
-        return False
-
-
 def restart_system():
     """重启系统（通过退出进程，由外部监控重启）"""
     try:

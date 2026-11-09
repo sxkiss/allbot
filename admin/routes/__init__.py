@@ -93,27 +93,6 @@ def register_refactored_routes(app, templates, bot_instance, get_version_info,
     else:
         logger.warning("版本更新路由所需参数不完整，跳过注册")
 
-    # 4. 注册联系人管理路由
-    try:
-        from .contacts import register_contacts_routes
-        from database.contacts_db import (
-            get_contacts_from_db, save_contacts_to_db,
-            update_contact_in_db, get_contact_from_db, get_contacts_count
-        )
-        get_bot_instance = lambda: bot_instance
-        get_bot_status = getattr(app.state, 'get_bot_status', lambda: {})
-
-        register_contacts_routes(
-            app, bot_instance, get_bot_instance, get_bot_status,
-            get_contacts_from_db, save_contacts_to_db, update_contact_in_db,
-            get_contact_from_db, get_contacts_count
-        )
-        logger.info("✓ 联系人管理路由注册成功")
-    except Exception as e:
-        logger.error(f"✗ 联系人管理路由注册失败: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-
     # 5. 注册文件管理路由
     if current_dir:
         try:

@@ -958,7 +958,7 @@
         console.log("加载联系人列表...");
 
         $.ajax({
-            url: '/api/contacts',
+            url: '/api/reminders/contacts',
             method: 'GET',
             success: function(response) {
                 if (response.success) {
