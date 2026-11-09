@@ -1,6 +1,6 @@
 """
 @input: aiohttp, WatchRoute, WechatAPIClient
-@output: AssistantPlugin - SSE流式插件，伪流回复小助手；支持引用媒体URL提取（图片缓存→公网URL）
+@output: AssistantPlugin - SSE流式插件，伪流回复小助手；支持引用媒体上传（缓存/CDN→/api/files/upload→附件路径）
 @position: plugins/AssistantPlugin 入口
 @auto-doc: Update header and folder INDEX.md when this file changes
 """
@@ -344,8 +344,7 @@ class AssistantPlugin(PluginBase):
         # 每次重连前的等待秒数
         self.reconnect_interval = max(float(cfg.get("reconnect-interval", 2.0) or 0.0), 0.0)
         self.quote_enable = bool(cfg.get("quote-enable", True))
-        self.image_public_base_url = _safe_text(cfg.get("image-public-base-url", "http://example.internal:9090")).strip()
-        self.image_public_route_prefix = _safe_text(cfg.get("image-public-route-prefix", "/media/files")).strip() or "/media/files"
+        # 引用媒体走网关 /api/files/upload（内网直连），复用 api-base-url，无需公网 URL
         self.admin_only = bool(cfg.get("admin-only", True))
         # 管理员全局重置命令：解除所有会话绑定并清空会话池（仅管理员可执行）
         self.admin_reset_commands = [
@@ -698,11 +697,13 @@ class AssistantPlugin(PluginBase):
                     quoted_type = int(quote.get("MsgType") or 0)
                 except (TypeError, ValueError):
                     quoted_type = 0
-                # 仅媒体类型（图片3/语音34/视频43/文件49）才提取媒体 URL；
+                # 仅媒体类型（图片3/语音34/视频43/文件49）才上传媒体；
                 # 文本引用(1)根本没有媒体，跳过下载环节，避免无谓的 await/下载。
                 media_urls: list = []
                 if quoted_type in (3, 34, 43, 49):
-                    media_urls = await self._extract_quote_media_urls(quote)
+                    # 返回「附件路径: <data.path>」行，与前端面板拼法一致，
+                    # 文件已落盘到网关侧，agent 用本地路径 Read，不走公网 URL。
+                    media_urls = await self._extract_quote_media_paths(quote)
                 # 微信分享卡片（链接/视频/音乐/小程序）的 Content 往往只是标题，
                 # 真正的链接在 url/lowurl，描述在 des/destination。必须一并带上，
                 # 否则引用链接会退化成"只有标题、没有可访问地址"。
@@ -730,19 +731,20 @@ class AssistantPlugin(PluginBase):
 
     # ── 引用媒体提取（对齐 HermesPlugin media_pipeline）──────────────
 
-    async def _extract_quote_media_urls(self, quote: dict) -> list:
-        """从引用消息中提取媒体公网 URL（图片/语音/视频/文件，支持 CDN 下载兜底）。
+    async def _extract_quote_media_paths(self, quote: dict) -> list:
+        """提取引用媒体并上传到网关 /api/files/upload，返回「附件路径: xxx」行列表。
 
-        返回公网 URL 列表；无法获取时返回空。
+        与前端面板一致：文件直接落盘到网关侧（内网直连、无需公网 URL），
+        agent 用「附件路径: <data.path>」Read 本地文件。
         提取顺序：
         1. 引用消息 MsgType 分类（3=图片, 34=语音, 43=视频, 49=文件）
         2. 优先查本地缓存（resource_path / md5 命中多子目录）
-        3. 本地缺失时从 CDN 下载（get_msg_image / download_voice / download_video / download_attach）
-        4. 落盘到 files/ 并生成公网 URL
+        3. 本地缺失时从 CDN 下载
+        4. 上传本地文件到网关，返回 "附件路径: <data.path>"
         """
-        urls: list = []
-        if not self.image_public_base_url or not isinstance(quote, dict):
-            return urls
+        refs: list = []
+        if not isinstance(quote, dict):
+            return refs
         try:
             quoted_type = int(quote.get("MsgType") or 0)
         except (ValueError, TypeError):
@@ -756,16 +758,66 @@ class AssistantPlugin(PluginBase):
             if md5_value:
                 local_path = self._find_cached_media("", md5_value)
 
-        # 2. 本地缺失时下载
+        # 2. 本地缺失时从 CDN 下载
         if not local_path or not os.path.isfile(local_path):
-            local_path, md5_value = await self._download_quote_media(quote, quoted_type, quote_xml)
+            local_path, _ = await self._download_quote_media(quote, quoted_type, quote_xml)
         if not local_path or not os.path.isfile(local_path):
-            return urls
+            return refs
 
-        public_url = self._build_public_url(local_path)
-        if public_url:
-            urls.append(public_url)
-        return urls
+        # 3. 上传到网关（内网直连），拿落盘后的本地路径
+        uploaded_path = await self._upload_quote_media(local_path)
+        if uploaded_path:
+            refs.append(f"附件路径: {uploaded_path}")
+        return refs
+
+    async def _upload_quote_media(self, local_path: str) -> str:
+        """上传引用媒体到网关 /api/files/upload，返回 data.path（网关侧本地相对路径）。
+
+        与前端面板同一接口、同一 Bearer token：multipart 字段 file，
+        文件直接落盘到网关侧，agent 用「附件路径: <path>」Read 本地文件。
+        """
+        file_name = os.path.basename(local_path)
+        try:
+            with open(local_path, "rb") as f:
+                payload = f.read()
+        except OSError as exc:
+            logger.warning("[Assistant] 读取引用媒体失败 {}: {}", local_path, exc)
+            return ""
+        if not payload:
+            return ""
+
+        # 上传与对话共用网关 token；临近过期先续租（_refresh 内部有锁，幂等）
+        try:
+            await self._ensure_gateway_token()
+        except Exception:
+            pass
+        url = f"{self.api_base_url.rstrip('/')}/api/files/upload"
+        form = aiohttp.FormData()
+        form.add_field("file", payload, filename=file_name,
+                       content_type=mimetypes.guess_type(file_name)[0] or "application/octet-stream")
+
+        async def _do_post() -> dict:
+            timeout = aiohttp.ClientTimeout(total=max(30.0, self.connect_timeout))
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, data=form, headers=self._auth_headers()) as resp:
+                    body = await resp.text()
+                    if resp.status >= 400:
+                        raise RuntimeError(f"HTTP {resp.status}: {body[:200]}")
+                    return json.loads(body or "{}")
+
+        try:
+            # allbot 部分事件分发路径不在 asyncio Task 内，aiohttp.ClientTimeout 要求
+            # current_task() 存在；用 ensure_future 显式包成 Task（MuseBridge 同款坑）。
+            result = await asyncio.ensure_future(_do_post())
+        except Exception as exc:
+            logger.warning("[Assistant] 引用媒体上传失败 name={}: {}", file_name, exc)
+            return ""
+        path = _safe_text((result.get("data") or {}).get("path")).strip()
+        if not path:
+            logger.warning("[Assistant] 引用媒体上传未返回 path: {}", str(result)[:160])
+            return ""
+        logger.info("[Assistant] 引用媒体已上传 name={} path={} bytes={}", file_name, path, len(payload))
+        return path
 
     def _mk_quote_result(self, file_path: str, md5_hint: str = "") -> Tuple[str, str]:
         """把 _save_quote_binary 的单返回值包装成 (local_path, md5) 契约。
@@ -904,9 +956,7 @@ class AssistantPlugin(PluginBase):
             if md5_value:
                 cached = self._find_cached_media("", md5_value)
                 if cached:
-                    public_url = self._build_public_url(cached)
-                    if public_url:
-                        return cached, md5_value
+                    return cached, md5_value
             if cdn_url and aeskey:
                 return await self._download_quote_image(cdn_url, aeskey, md5_value)
             return "", ""
@@ -1055,12 +1105,6 @@ class AssistantPlugin(PluginBase):
                     if matches:
                         return max(matches, key=lambda p: os.path.getmtime(p))
         return ""
-
-    def _build_public_url(self, local_path: str) -> str:
-        """构建媒体公网 URL。"""
-        file_name = os.path.basename(local_path)
-        route = self.image_public_route_prefix.rstrip("/") or "/media/files"
-        return f"{self.image_public_base_url}{route}/{urllib.parse.quote(file_name)}"
 
     # 网关侧 session_id 校验规则（web_server.py _SESSION_ID_RE）：
     # 仅允许 [A-Za-z0-9_-]，最长 128。含冒号/@/点的旧格式会被 /api/chat/events 直接拒绝。
