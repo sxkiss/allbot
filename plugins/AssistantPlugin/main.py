@@ -32,6 +32,7 @@ from utils.plugin_base import PluginBase
 CHUNK_NORMAL = 200
 DEFAULT_TRIGGER_WORDS = ["小助手"]
 DEFAULT_RESET_CMDS = ["新对话", "新开对话", "/new", "/reset"]
+DEFAULT_ADMIN_RESET_CMDS = ["重置全部会话", "清空全部绑定", "/reset-all", "/clear-all"]
 
 SESSION_POOL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wx_session_pool.json")
 
@@ -48,6 +49,27 @@ def _safe_text(value: Any) -> str:
     return str(value)
 
 
+def _wechat_route_header(message: dict) -> str:
+    """身份元素头：按适配器来源自动附加适配器名字。
+
+    例：869 适配器 -> [WeChatRoute-869]，875 -> [WeChatRoute-875]，web -> [WeChatRoute-web]。
+    来源优先级 platform > Platform > adapter > Adapter（869/875 适配器经
+    ws_message_normalizer 透传 platform=wechat_869 / wechat875 等）；取不到时保持 [WeChatRoute]。
+    """
+    raw = ""
+    for key in ("platform", "Platform", "adapter", "Adapter"):
+        v = _safe_text(message.get(key)).strip().lower()
+        if v:
+            raw = v
+            break
+    tag = ""
+    if raw:
+        compact = raw.replace("wechat_", "").replace("wechat", "").strip("_- ")
+        tag = compact or raw
+        if compact in ("869", "875"):
+            tag = compact
+    return f"[WeChatRoute-{tag}]" if tag else "[WeChatRoute]"
+
 @dataclass
 class WatchRoute:
     route_id: str
@@ -55,6 +77,22 @@ class WatchRoute:
     sender_wxid: str
     sender_name: str
     is_group: bool
+
+
+class SSEGiveUp(Exception):
+    """SSE 重连次数耗尽：连接已放弃，但网关任务很可能仍在运行。
+
+    与真正收到 message_end 的正常结束必须区分开，否则调用方会误判为
+    "任务完成"并向用户发送错误的完成提示。
+    """
+
+
+class GatewayAuthError(Exception):
+    """网关鉴权失败（401/403），可触发 token 强制续租后重试。"""
+
+    def __init__(self, status: int, body: str):
+        super().__init__(f"HTTP {status}: {body[:200]}")
+        self.status = status
 
 
 class SSEClient:
@@ -105,9 +143,11 @@ class SSEClient:
                     start_payload["system_prompt"] = system_prompt
                 job_key = ""
                 async with session.post(start_url, json=start_payload,
-                                       headers=self._auth_headers()) as resp:
+                                        headers=self._auth_headers()) as resp:
                     if resp.status != 200:
                         body = await resp.text()
+                        if resp.status in (401, 403):
+                            raise GatewayAuthError(resp.status, body)
                         raise RuntimeError(
                             f"HTTP {resp.status}: {body[:300]}"
                         )
@@ -157,6 +197,8 @@ class SSEClient:
                                                headers=self._auth_headers()) as resp:
                             if resp.status != 200:
                                 body = await resp.text()
+                                if resp.status in (401, 403):
+                                    raise GatewayAuthError(resp.status, body)
                                 raise RuntimeError(f"HTTP {resp.status}: {body[:300]}")
                             current_event = None
                             buf: list[str] = []
@@ -208,14 +250,21 @@ class SSEClient:
                             if saw_timeout and not saw_end:
                                 attempt += 1
                                 if attempt > self.max_reconnect:
-                                    return
+                                    # 不能静默 return：调用方会误判为任务正常结束。
+                                    raise SSEGiveUp(
+                                        f"SSE 空闲超时重连 {self.max_reconnect} 次后放弃"
+                                        "(网关任务可能仍在运行)"
+                                    )
                                 continue
                             # 收到 message_end 或任务终态：正常结束，不再重连
                             return
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                         attempt += 1
                         if attempt > self.max_reconnect:
-                            raise RuntimeError(f"连接失败(重试{self.max_reconnect}次后仍失败): {e}") from e
+                            raise SSEGiveUp(
+                                f"连接失败(重试{self.max_reconnect}次后仍失败)"
+                                f"(网关任务可能仍在运行): {e}"
+                            ) from e
                     except RuntimeError:
                         # HTTP 非 200：重试无意义，直接抛出
                         raise
@@ -298,6 +347,12 @@ class AssistantPlugin(PluginBase):
         self.image_public_base_url = _safe_text(cfg.get("image-public-base-url", "http://example.internal:9090")).strip()
         self.image_public_route_prefix = _safe_text(cfg.get("image-public-route-prefix", "/media/files")).strip() or "/media/files"
         self.admin_only = bool(cfg.get("admin-only", True))
+        # 管理员全局重置命令：解除所有会话绑定并清空会话池（仅管理员可执行）
+        self.admin_reset_commands = [
+            c.strip().lower()
+            for c in cfg.get("admin-reset-commands", DEFAULT_ADMIN_RESET_CMDS)
+            if str(c).strip()
+        ]
         # 去重已移至框架层 MessageRouter.process()，插件不再维护 _processed_msg_ids
 
         if self.enable and not self.api_base_url:
@@ -345,11 +400,13 @@ class AssistantPlugin(PluginBase):
             return True
         return (exp - int(time.time())) < self.token_refresh_margin
 
-    async def _refresh_gateway_token(self) -> bool:
+    async def _refresh_gateway_token(self, force: bool = False) -> bool:
         """重新登录网关换取新 token，并同步到 SSEClient 与 config.toml。
 
         全程静默：失败仅记 warning，不影响本次对话（旧 token 可能仍有效）。
         成功则写回配置，使容器重启后也无需人工干预。
+
+        force=True 时跳过临近过期检查，强制续租（用于 401/403 后的重试）。
         """
         if not self.gateway_password or not self.api_base_url:
             return False
@@ -358,7 +415,7 @@ class AssistantPlugin(PluginBase):
             return False
         async with self._token_lock:
             # 持锁后再次判断：排队期间可能已被别的请求刷新成功
-            if not self._token_needs_refresh():
+            if not force and not self._token_needs_refresh():
                 return True
             url = f"{self.api_base_url.rstrip('/')}/api/auth/login"
             payload = json.dumps({"password": self.gateway_password}).encode("utf-8")
@@ -422,6 +479,29 @@ class AssistantPlugin(PluginBase):
                 await self._refresh_gateway_token()
         except Exception as e:
             logger.warning("[Assistant] token 续期检查异常: {}", e)
+
+    async def _stream_with_auth_retry(self, message: str, session_id: str, *args, **kwargs):
+        """调用 _client.stream()，遇到 401/403 时强制续租 token 并重试一次。
+
+        主动续期（_ensure_gateway_token）只覆盖"临近过期"的情况；若 token 已被
+        网关侧撤销、或容器启动时 config.toml 里就是过期 token，则只会在请求时
+        才暴露 403。这里做兜底：鉴权失败 → 强制重新登录换 token → 重放一次请求。
+        """
+        try:
+            async for evt in self._client.stream(message, session_id, *args, **kwargs):
+                yield evt
+        except GatewayAuthError as gae:
+            logger.warning(
+                "[Assistant] 网关鉴权失败 HTTP {}，强制续租 token 后重试 session={}",
+                gae.status, session_id,
+            )
+            if not await self._refresh_gateway_token(force=True):
+                raise RuntimeError(
+                    f"网关鉴权失败(HTTP {gae.status})，且 token 强制续租失败"
+                ) from gae
+            logger.info("[Assistant] token 已强制续租，重试对话 session={}", session_id)
+            async for evt in self._client.stream(message, session_id, *args, **kwargs):
+                yield evt
 
     def _load_global_admins(self) -> set:
         candidates = [
@@ -490,6 +570,16 @@ class AssistantPlugin(PluginBase):
             if ":\n" in raw:
                 sender_wxid = raw.split(":\n", 1)[0].strip()
         sender_name = self._extract_sender_name(message, sender_wxid=sender_wxid, is_group=is_group)
+        # WeChat869 不主动下发 SenderName/NickName，需走 bot API 查联系人昵称
+        if not sender_name and sender_wxid and hasattr(self, "bot") and self.bot:
+            try:
+                cached = self.bot.get_local_nickname(sender_wxid, to_wxid if is_group else None)
+                if cached:
+                    candidate = _safe_text(cached).strip()
+                    if candidate and not self._looks_like_wxid_text(candidate, wxid=sender_wxid):
+                        sender_name = candidate
+            except Exception as e:
+                logger.warning("[Assistant] 查询昵称失败 wxid={}: {}", sender_wxid, e)
         return WatchRoute(
             route_id=to_wxid, to_wxid=to_wxid,
             sender_wxid=sender_wxid, sender_name=sender_name, is_group=is_group,
@@ -578,7 +668,7 @@ class AssistantPlugin(PluginBase):
         # ---- 身份头：让模型知道是谁在说、在哪个群 ----
         identity_header = ""
         if route is not None:
-            lines = ["[WeChatRoute]"]
+            lines = [_wechat_route_header(message)]
             lines.append(f"- chat_id: {route.to_wxid}")
             lines.append(f"- is_group: {route.is_group}")
             if route.sender_wxid:
@@ -588,6 +678,15 @@ class AssistantPlugin(PluginBase):
             msg_id = _safe_text(message.get("MsgId")).strip()
             if msg_id:
                 lines.append(f"- msg_id: {msg_id}")
+            # 当前会话 ID：与 _stream_chat 调网关时用的是同一个（同池、同规则），
+            # 注入身份头后，agent 派发/回传长任务（如 codex-agent）时可直接携带，
+            # 完成后用同一 session_id 回传，结果自然落到本用户本会话。
+            try:
+                _sid = await self._resolve_session_id(route)
+                if _sid:
+                    lines.append(f"- session_id: {_sid}")
+            except Exception:
+                pass
             identity_header = "\n".join(lines)
         if self.quote_enable:
             quote = message.get("Quote")
@@ -604,18 +703,26 @@ class AssistantPlugin(PluginBase):
                 media_urls: list = []
                 if quoted_type in (3, 34, 43, 49):
                     media_urls = await self._extract_quote_media_urls(quote)
-                if quoted_content:
+                # 微信分享卡片（链接/视频/音乐/小程序）的 Content 往往只是标题，
+                # 真正的链接在 url/lowurl，描述在 des/destination。必须一并带上，
+                # 否则引用链接会退化成"只有标题、没有可访问地址"。
+                quoted_url = _safe_text(quote.get("url") or quote.get("lowurl")).strip()
+                quoted_desc = _safe_text(quote.get("des") or quote.get("destination")).strip()
+                if quoted_content or quoted_url or media_urls:
                     # 如果 Content 是 XML，提取干净标签而非原始 XML
-                    if quoted_content.lstrip().startswith("<"):
-                        import re as _re
+                    if quoted_content and quoted_content.lstrip().startswith("<"):
                         media_label = "[图片]" if "img" in quoted_content else "[媒体]"
                         quote_block = f"[Quoted message from {quoted_sender or 'unknown'}] {media_label}"
-                        if media_urls:
-                            quote_block += "\n" + "\n".join(media_urls)
                     else:
-                        quote_block = f"[Quoted message from {quoted_sender or 'unknown'}]\n{quoted_content}"
-                        if media_urls:
-                            quote_block += "\n" + "\n".join(media_urls)
+                        quote_block = f"[Quoted message from {quoted_sender or 'unknown'}]"
+                        if quoted_content:
+                            quote_block += f"\n{quoted_content}"
+                    if quoted_desc and quoted_desc not in quote_block:
+                        quote_block += f"\n{quoted_desc}"
+                    if quoted_url and quoted_url not in quote_block:
+                        quote_block += f"\n链接: {quoted_url}"
+                    if media_urls:
+                        quote_block += "\n" + "\n".join(media_urls)
                     prompt = f"{prompt}\n\n{quote_block}" if prompt else quote_block
         if identity_header:
             prompt = f"{identity_header}\n\n{prompt}" if prompt else identity_header
@@ -1142,6 +1249,50 @@ class AssistantPlugin(PluginBase):
     def _is_reset_cmd(self, text: str) -> bool:
         return text.strip().lower() in self.new_session_commands
 
+    def _is_admin_reset_cmd(self, text: str) -> bool:
+        return text.strip().lower() in self.admin_reset_commands
+
+    async def _admin_reset_all_sessions(self, route: WatchRoute) -> None:
+        """管理员命令：解除全部会话绑定、取消所有活跃任务、清空会话池。
+
+        用于全局重置：网关侧会话堆积、或管理员想一次性清除所有用户的会话绑定，
+        下次任何用户发消息都会以全新 session_id 开始。
+        """
+        # 1. 取消所有活跃任务
+        cancelled = 0
+        for session_id, task in list(self._active_tasks.items()):
+            if task and not task.done():
+                task.cancel()
+                cancelled += 1
+        self._active_tasks.clear()
+
+        # 2. 清除会话路由映射与活跃 sid 跟踪
+        routes_cleared = len(self._session_routes)
+        self._session_routes.clear()
+        self._active_sids.clear()
+
+        # 3. 清空会话池持久化文件（含绑定与重置序号）
+        cleared_keys = 0
+        try:
+            pool = self._load_session_pool()
+            cleared_keys = len(pool)
+            self._save_session_pool({})
+        except Exception as e:
+            logger.warning("[Assistant] 清空会话池失败: {}", e)
+
+        msg = (
+            "✅ 已重置全部会话\n"
+            f"取消活跃任务: {cancelled}\n"
+            f"清除路由映射: {routes_cleared}\n"
+            f"清空会话池: {cleared_keys} 项"
+        )
+        await self._send(route, msg)
+        logger.info(
+            "[Assistant] 管理员 {} 执行全局重置: 取消{} 路由{} 池{}",
+            route.sender_name or route.sender_wxid,
+            cancelled, routes_cleared, cleared_keys,
+        )
+
     # ---------- 主入口 ----------
     @on_text_message(priority=45)
     async def handle_text(self, bot: WechatAPIClient, message: dict):
@@ -1162,6 +1313,13 @@ class AssistantPlugin(PluginBase):
             self._session_routes.pop(self._session_key(route), None)
             self._clear_session_pool_key(route)
             await self._send(route, "✅ 已开启新对话")
+            return bool(self.propagate_to_other_plugins)
+
+        # 重置全部会话命令：仅管理员可执行
+        if self._is_admin_reset_cmd(user_text):
+            if not self._is_admin(message):
+                return bool(self.propagate_to_other_plugins)
+            await self._admin_reset_all_sessions(route)
             return bool(self.propagate_to_other_plugins)
         
         # 普通对话无需 admin，需要触发词
@@ -1201,6 +1359,13 @@ class AssistantPlugin(PluginBase):
             await self._send(route, "✅ 已开启新对话")
             return bool(self.propagate_to_other_plugins)
 
+        # 重置全部会话命令：仅管理员可执行
+        if self._is_admin_reset_cmd(user_text):
+            if not self._is_admin(message):
+                return bool(self.propagate_to_other_plugins)
+            await self._admin_reset_all_sessions(route)
+            return bool(self.propagate_to_other_plugins)
+
         # 普通对话无需 admin
         # @消息处理：被 @ 即视为呼叫机器人，无需额外触发词
         # （保留触发词剥离逻辑：若消息以触发词开头则strip掉，若带触发词则按触发词处理）
@@ -1238,6 +1403,13 @@ class AssistantPlugin(PluginBase):
             self._session_routes.pop(self._session_key(route), None)
             self._clear_session_pool_key(route)
             await self._send(route, "✅ 已开启新对话")
+            return bool(self.propagate_to_other_plugins)
+        
+        # 重置全部会话命令：仅管理员可执行
+        if self._is_admin_reset_cmd(user_text):
+            if not self._is_admin(message):
+                return bool(self.propagate_to_other_plugins)
+            await self._admin_reset_all_sessions(route)
             return bool(self.propagate_to_other_plugins)
         
         # 引用消息需触发词（普通对话无需 admin）
@@ -1321,6 +1493,41 @@ class AssistantPlugin(PluginBase):
                     ids.append(sid)
         return ids[:8]
 
+    async def _probe_session_running(self, session_id: str):
+        """查询网关上该 session 是否仍有任务在运行。
+
+        返回 True(仍在跑) / False(已不在跑) / None(无法确认，如 401/超时)。
+        用于 SSE 重连耗尽时如实告知用户任务状态，避免误报"完成"。
+        """
+        try:
+            timeout = aiohttp.ClientTimeout(total=6.0)
+            async with aiohttp.ClientSession(timeout=timeout) as s:
+                async with s.get(
+                    f"{self.api_base_url}/api/chat/status",
+                    params={"session_id": session_id},
+                    headers=self._auth_headers(),
+                ) as resp:
+                    if resp.status != 200:
+                        return None
+                    body = await resp.text()
+            import json as _json
+            data = _json.loads(body)
+            if not isinstance(data, dict) or not data.get("status"):
+                return None
+            payload = data.get("data") or {}
+            running = payload.get("running")
+            if isinstance(running, bool):
+                return running
+            status = str(payload.get("status") or "")
+            if status == "running":
+                return True
+            if status in ("done", "error", "stopped", "none"):
+                return False
+            return None
+        except Exception as e:
+            logger.debug("[Assistant] 查询任务状态失败 sid={}: {}", session_id, e)
+            return None
+
     async def _post_stop(self, session_id: str) -> None:
         """向网关发送 stop，失败时记录日志（不再静默吞掉）。"""
         try:
@@ -1369,7 +1576,7 @@ class AssistantPlugin(PluginBase):
         self._session_routes[session_id] = route
         accumulated = ""
         # 会话进行中的共享状态：工具调用计数（供后台 working 任务读取）
-        state = {"calls": 0}
+        state = {"calls": 0, "sent_anything": False}
         _chat_start_ts = time.monotonic()  # 本次对话耗时计时起点
         # 每隔 progress_working_seconds 秒发一条 working 状态；关闭则 None
         progress_task = None
@@ -1391,12 +1598,15 @@ class AssistantPlugin(PluginBase):
                     else:
                         duration = f"{elapsed_s}秒"
                     await self._send(route, f"⏳ 工作中... 已进行 {duration}，已调用 {state['calls']} 次工具")
+                    # 标记"已向用户发过进行中提示"，结束时需补一条完成/终止提示，
+                    # 否则用户只看到 ⏳ 却永远不知道任务最终结果。
+                    state["notified"] = True
 
         if self.progress_working_seconds > 0 and self.tool_feedback_enable:
             progress_task = asyncio.create_task(_progress_worker())
 
         try:
-            async for evt in self._client.stream(
+            async for evt in self._stream_with_auth_retry(
                 message, session_id, self.default_base_url, self.default_model,
                 workspace=self.workspace, template=self.template, system_prompt=self.system_prompt,
                 mode=self.api_mode
@@ -1421,6 +1631,9 @@ class AssistantPlugin(PluginBase):
                         except Exception:
                             data = ""
                     accumulated += _safe_text(data).replace("\\n", "\n")
+                    # 收到正文即视为「任务有产出」。该标志与是否发送正文无关：
+                    # disable-ai-reply=true 只是不发 AI 正文，仍需据此发完成提示。
+                    state["sent_anything"] = True
                     if (not self.disable_ai_reply) and len(accumulated) >= self.reply_chunk_chars:
                         await self._send(route, accumulated)
                         accumulated = ""
@@ -1429,6 +1642,7 @@ class AssistantPlugin(PluginBase):
                 elif ev == "tool_call":
                     # 仅累计工具调用次数，供 working 状态展示；不逐条发送反馈
                     state["calls"] += 1
+                    state["sent_anything"] = True
 
                 elif ev == "tool_result":
                     # disable_ai_reply=true 表示不向微信发送 AI 侧内容，
@@ -1439,6 +1653,7 @@ class AssistantPlugin(PluginBase):
                             await self._send(route, accumulated)
                             accumulated = ""
                         await self._send(route, f"✅ {self._tool_name(data)}")
+                        state["sent_anything"] = True
 
                 elif ev in ("usage", "stop"):
                     # 会话末尾的 token 用量小结；默认关闭，避免刷屏
@@ -1457,6 +1672,7 @@ class AssistantPlugin(PluginBase):
                     if (not self.disable_ai_reply) and accumulated.strip():
                         await self._send(route, accumulated)
                         accumulated = ""
+                    state["sent_anything"] = True
                     raw_err = data if isinstance(data, str) else str(data)
                     err_msg = raw_err
                     if not err_msg.strip():
@@ -1475,6 +1691,7 @@ class AssistantPlugin(PluginBase):
                     if "SSE 订阅超时" in err_msg:
                         if not state.get("timeout_noticed"):
                             state["timeout_noticed"] = True
+                            state["notified"] = True
                             logger.warning("[Assistant] sse idle timeout(将重连续传) session={}", session_id)
                             await self._send(route, "⏳ 仍在运行中，已自动重连续传")
                         continue
@@ -1485,10 +1702,47 @@ class AssistantPlugin(PluginBase):
             if (not self.disable_ai_reply) and accumulated.strip():
                 await self._send(route, accumulated)
                 logger.info("assistant stream ended session={}", session_id)
+            # 无论任务长短，结束时必须给用户明确信号。
+            # 完成提示属于「状态提示」：disable-ai-reply=true 的语义是
+            # 「只发状态提示和错误，不发送 AI 正文」，因此这里不受该开关抑制，
+            # 与 ⏳ 工作中 提示保持一致（否则用户只见进行中、永远看不到结束）。
+            # 用 sent_anything 标志判断（不能依赖 accumulated，它在发送 chunk 后已清空）
+            if state.get("sent_anything"):
+                elapsed_s = int(time.monotonic() - _chat_start_ts)
+                if elapsed_s >= 60:
+                    duration = f"{elapsed_s // 60}分{elapsed_s % 60}秒"
+                else:
+                    duration = f"{elapsed_s}秒"
+                await self._send(
+                    route,
+                    f"✅ 任务完成，耗时 {duration}，共调用 {state['calls']} 次工具",
+                )
+                logger.info("assistant stream completed session={} elapsed={}s calls={}",
+                            session_id, elapsed_s, state["calls"])
+            if first_use:
+                await self._catchup_session_id(route, message)
+
+        except SSEGiveUp as e:
+            # 重连耗尽：连接放弃，但网关任务很可能仍在运行。
+            # 这里绝不能发 "✅ 任务完成"（会造成用户误判），必须明确告知不确定状态。
+            logger.warning("assistant stream giveup session={}: {}", session_id, e)
+            if (not self.disable_ai_reply) and accumulated.strip():
+                await self._send(route, accumulated)
+            running = await self._probe_session_running(session_id)
+            if running is True:
+                tip = "⚠️ 与后台的连接已中断（自动重连耗尽），任务仍在后台运行，请稍后查看结果"
+            elif running is False:
+                tip = "⚠️ 与后台的连接已中断，任务已不在运行，但结果可能不完整，请查看会话历史"
+            else:
+                tip = "⚠️ 与后台的连接已中断，无法确认任务状态，请稍后查看结果"
+            await self._send(route, tip)
+            logger.info("assistant stream giveup notice sent session={} running={}", session_id, running)
             if first_use:
                 await self._catchup_session_id(route, message)
 
         except asyncio.CancelledError:
+            # 被新消息打断：不是任务失败，也不该静默。用户刚发的新消息会立刻
+            # 触发新一轮回复，这里不额外刷屏，仅记录日志。
             logger.warning("assistant stream cancelled session={}", session_id)
             if first_use:
                 await self._catchup_session_id(route, message)
