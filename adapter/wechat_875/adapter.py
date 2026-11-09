@@ -691,21 +691,18 @@ class Wechat875Adapter:
         # window(会话窗口/接收方)，别被名字骗了当发送方用。
         # 旧 bug：outgoing 时把 from_wxid(=对端) 误填进 SenderWxid → 权限判错。
         v2_sender_id = str(normalized.get("sender_id") or "").strip()
-        is_outgoing = str(normalized.get("direction") or "").lower() == "outgoing"
 
         # 透明转发：适配器不做媒体分类/过滤/结构还原。
         # 普通资源消息、引用消息一律原样交给框架（MsgType/Content 用协议真实值），
         # 完整原始包放 Extra.wechat875.raw —— 真实字段结构由监控插件攒样本观察，
         # 不在适配器层凭猜测拼 XML / 丢消息。
         # 跳过自己发出的回显消息（手机/协议端同步回来的本人消息）。
-        # v2 按方向/真实发送方判定：outgoing 私聊的 from_wxid 是对端(回复目标)，
-        # 单用 from_wxid==account_wxid 会漏判 → 自己发的回显被当别人入站消息进插件，
-        # 叠加 SenderWxid 取错 → 触发 ManagePlugin「无权限」。老格式仍保留原判定。
-        if self.skip_self_message and not is_group and account_wxid and (
-            is_outgoing
-            or from_wxid == account_wxid
-            or (v2_sender_id and v2_sender_id == account_wxid)
-        ):
+        # 只用 from_wxid==account_wxid 判定，不要按 direction==outgoing 跳：
+        # 875 里 boss 用手机发的指令（如「重启」）正是以 v2 outgoing 私聊回推进来，
+        # 且 from_wxid=window(对端)≠本账号，本就不会被这里跳过 —— 这些是真实指令，
+        # 必须进插件由管理员判定执行。曾经加过 is_outgoing→skip，导致插件彻底不触发
+        # （回归，已回退）。无权限的真因仅是 SenderWxid 取错，拨正即可。
+        if self.skip_self_message and not is_group and account_wxid and from_wxid == account_wxid:
             return None
 
         sender_wxid = ""
