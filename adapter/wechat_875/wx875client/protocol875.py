@@ -564,13 +564,17 @@ def normalize_875_message(raw: Dict[str, Any]) -> Dict[str, Any]:
         is_outgoing = direction in ("outgoing", "out", "send") or bool(raw.get("is_outgoing"))
         # 会话窗口（群里=群id，私聊=对端）：决定 channel_id 与回复路由
         window = conversation_id or recipient_id or sender_id
+        v2_is_group = bool(raw.get("is_group")) or window.endswith("@chatroom")
         if is_outgoing:
-            from_wxid = window               # 会话窗口
+            from_wxid = window               # 会话窗口(群id/对端) = 回复目标
             to_wxid = sender_id              # 本账号（发送方）
         else:
-            from_wxid = sender_id or window
+            # 三不变量：回复永远到「接收方一侧」= 会话窗口(window)。
+            # 群聊 window 是群id(@chatroom)，绝不能取 sender_id(成员个人wxid)：
+            # 否则 adapter 拿 from_wxid 当 FromWxid/回复目标 → 群消息被回复到该成员私聊。
+            # 私聊 window==sender_id==对端，两者等价，逻辑不变。
+            from_wxid = window if v2_is_group else (sender_id or window)
             to_wxid = recipient_id or conversation_id
-        v2_is_group = bool(raw.get("is_group")) or window.endswith("@chatroom")
     else:
         sender_id = direction = ""
         is_outgoing = v2_is_group = False
