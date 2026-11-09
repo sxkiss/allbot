@@ -703,7 +703,12 @@ class Wechat875Adapter:
         # 必须进插件由管理员判定执行。曾经加过 is_outgoing→skip，导致插件彻底不触发
         # （回归，已回退）。无权限的真因仅是 SenderWxid 取错，拨正即可。
         if self.skip_self_message and not is_group and account_wxid and from_wxid == account_wxid:
-            return None
+            # v2 下 from_wxid==本账号 只可能是「自聊」(conversation_id==本账号)：
+            # 那是 boss 发给自己的真实指令，必须进插件，不能当回显丢弃。
+            # 普通 outgoing 私聊 from_wxid=window(对端)≠本账号，根本不命中此条件；
+            # 机器人回显同理。故 v2 一律不在此跳过，仅老格式保留原回显跳过行为。
+            if not normalized.get("v2"):
+                return None
 
         sender_wxid = ""
         sender_nick = ""
