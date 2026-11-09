@@ -681,13 +681,31 @@ class Wechat875Adapter:
 
         is_group = bool(normalized.get("is_group")) or from_wxid.endswith("@chatroom")
         account_wxid = str(account.wxid or account.client.wxid or "").strip()
+        # ===== 三个不变量，互不混用（name 易误导，以此为准）=====
+        # 1) 发送方 = sender_id           -> SenderWxid（权限/管理员判定看它）
+        # 2) 接收方 / 会话窗口 = window   -> channel_id / FromWxid（= 回复目标）
+        #    window = conversation_id（私聊=对端wxid，群聊=群id@chatroom）
+        # 3) 回复永远发到「接收方一侧」，与方向无关：
+        #    sxkiss 发到 wxid_22 -> 回复到 wxid_22；sxkiss 发到 11@群 -> 回复到 11@群。
+        # 绝不能把回复发回「发送方」。protocol875 里变量名叫 from_wxid 但装的是
+        # window(会话窗口/接收方)，别被名字骗了当发送方用。
+        # 旧 bug：outgoing 时把 from_wxid(=对端) 误填进 SenderWxid → 权限判错。
+        v2_sender_id = str(normalized.get("sender_id") or "").strip()
+        is_outgoing = str(normalized.get("direction") or "").lower() == "outgoing"
 
         # 透明转发：适配器不做媒体分类/过滤/结构还原。
         # 普通资源消息、引用消息一律原样交给框架（MsgType/Content 用协议真实值），
         # 完整原始包放 Extra.wechat875.raw —— 真实字段结构由监控插件攒样本观察，
         # 不在适配器层凭猜测拼 XML / 丢消息。
-        # 跳过自己发出的回显消息（手机/协议端同步回来的本人消息）
-        if self.skip_self_message and not is_group and account_wxid and from_wxid == account_wxid:
+        # 跳过自己发出的回显消息（手机/协议端同步回来的本人消息）。
+        # v2 按方向/真实发送方判定：outgoing 私聊的 from_wxid 是对端(回复目标)，
+        # 单用 from_wxid==account_wxid 会漏判 → 自己发的回显被当别人入站消息进插件，
+        # 叠加 SenderWxid 取错 → 触发 ManagePlugin「无权限」。老格式仍保留原判定。
+        if self.skip_self_message and not is_group and account_wxid and (
+            is_outgoing
+            or from_wxid == account_wxid
+            or (v2_sender_id and v2_sender_id == account_wxid)
+        ):
             return None
 
         sender_wxid = ""
@@ -701,11 +719,16 @@ class Wechat875Adapter:
                 content = body
             if not sender_wxid:
                 sender_wxid = sender_nick or from_wxid
+            # v2 兜底：上面若退化成群id(nick 缺失)，优先用真实发送方
+            if (not sender_wxid or sender_wxid == from_wxid) and v2_sender_id:
+                sender_wxid = v2_sender_id
             content = f"{sender_wxid}:\n{content}"
             channel_id = from_wxid
             user_id = sender_wxid
         else:
-            sender_wxid = from_wxid
+            # v2 取真实发送方(sender_id)；老格式(sender_id 为空)回退 from_wxid。
+            # incoming: sender_id==from_wxid 行为不变；outgoing: 由对端修正为 REDACTED_USER。
+            sender_wxid = v2_sender_id or from_wxid
             channel_id = from_wxid
             user_id = from_wxid
 
