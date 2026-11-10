@@ -124,6 +124,16 @@ class MessageRouter:
             else:
                 logger.warning("风控保护: 新设备登录后4小时内请挂机")
         elif msg_type == 51:
-            pass  # 忽略类型 51
+            pass  # 协议同步状态消息：明确忽略，不是"未知"
         else:
-            logger.info(f"未知的消息类型: {msg_type}")
+            # 统一归一层不存在"未知消息"：任何 MsgType 都已是完整通用消息集
+            # （含 MsgKind 分类），一律经框架通用出口交给插件处理，绝不丢弃。
+            # 插件 @on_other_message(priority=99) 的 gate 会自行决定拦不拦。
+            checker = getattr(self.allbot, "ignore_check", None)
+            allowed = True if checker is None else checker(
+                message.get("FromWxid", ""), message.get("SenderWxid", "")
+            )
+            if allowed and (self.allbot.ignore_protection or not protector.check(14400)):
+                await EventManager.emit("other_message", self.bot, message)
+            else:
+                logger.debug("通用消息被过滤/风控: type={} kind={}", msg_type, message.get("MsgKind"))

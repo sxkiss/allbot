@@ -281,10 +281,18 @@ class MessageNormalizer:
     # ──────────────────────────────────────────────────────────────
     # 7) 按消息类型产出特有字段（插件无需自己解析协议 XML）
     # ──────────────────────────────────────────────────────────────
+    # 统一消息分类：与 MsgType 解耦，插件只认 MsgKind，新类型零改动
+    _KIND = {
+        1: "text", 3: "image", 34: "voice", 43: "video", 47: "emoji",
+        49: "appmsg", 37: "friend_request", 10002: "system", 10000: "system",
+        48: "location", 42: "card", 50: "voip", 51: "status",
+    }
+
     @staticmethod
     def _normalize_by_type(message: Dict[str, Any]) -> None:
         t = message["MsgType"]
         content = message["Content"]
+        message["MsgKind"] = MessageNormalizer._KIND.get(t, f"type_{t}")
 
         # 文本：@ 列表
         if t == 1:
