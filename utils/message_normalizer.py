@@ -31,9 +31,10 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-# 群消息前缀：形如 "wxid_xxx:\n" 或 "wxid_xxx:"，第一段必须是合法 wxid，
-# 否则不剥离（避免把 XML / 正文里的第一个冒号误当分隔符）。
-_GROUP_PREFIX_RE = re.compile(r"^([a-zA-Z0-9_\-]{5,64}):(\n|)(.*)$", re.S)
+# 群消息前缀：形如 "wxid_xxx:\n"，冒号后必须紧跟换行（与历史 split(":\n", 1)
+# 口径一致）。换行不能设为可选，否则 "hello:world" / "https://..." 等普通
+# 正文会被误切、并把第一段伪造成 SenderWxid。
+_GROUP_PREFIX_RE = re.compile(r"^([a-zA-Z0-9_\-]{5,64}):\n(.*)$", re.S)
 _WXID_RE = re.compile(r"^[a-zA-Z0-9_\-]{5,64}$")
 
 # XML 类消息：内容需去掉换行/制表，且不做群前缀的暴力 split(":")
@@ -241,7 +242,7 @@ class MessageNormalizer:
             # 群前缀剥离：仅当第一段是合法 wxid 时才剥，否则保持正文完整
             m = _GROUP_PREFIX_RE.match(message["Content"])
             if m and _WXID_RE.match(m.group(1)):
-                prefix_wxid, _, body = m.group(1), m.group(2), m.group(3)
+                prefix_wxid, body = m.group(1), m.group(2)
                 message["Content"] = body
                 sender = sender or prefix_wxid
                 actual = actual or prefix_wxid

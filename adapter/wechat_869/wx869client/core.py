@@ -1966,7 +1966,9 @@ class WechatAPIClient(WechatAPIClientBase):
                         r -= 0x100000000
                     if r not in (0, -104):
                         problems.append(f"ret={r}")
-                if node.get("isSendSuccess") is False:
+                # 网关可能把失败标记写成 "false"/"0"/0 等非 bool 形态（见
+                # _coerce_optional_bool 已兼容的取值），严格 `is False` 会漏判。
+                if cls._coerce_optional_bool(node.get("isSendSuccess")) is False:
                     problems.append("isSendSuccess=false")
                 for v in node.values():
                     if isinstance(v, (dict, list)):
@@ -1975,16 +1977,21 @@ class WechatAPIClient(WechatAPIClientBase):
                 for it in node:
                     walk(it)
 
-        walk(data.get("Data") if isinstance(data, dict) else data)
+        # 入参有两种形状：完整响应体 {"Data": ...}，或 call_path(raw=False)
+        # 已剥离后的 Data 本身。Data 为 dict 时并没有 "Data" 键，若仍取
+        # data.get("Data") 会得到 None、漏扫全部回执字段（已送达被记为失败）。
+        root = data.get("Data") if isinstance(data, dict) and "Data" in data else data
+        walk(root)
         return delivered[0], problems
 
     @classmethod
     def _message_delivered(cls, data: Any) -> bool:
         """发送接口专用的送达判定（区别于通用 _looks_like_send_ack）。
 
-        只有 newMsgId 非 0 且无硬失败才算送达；有非白名单 ret /
-        isSendSuccess=false 判未送达；网关仅受理（无 msgid/ret）也判未确认，
-        不再把「已受理」当「已送达」。
+        只有 newMsgId 非 0 且无硬失败才算送达；isSendSuccess=false 判未送达；
+        网关仅受理（无 msgid）也判未确认，不再把「已受理」当「已送达」。
+        ret 非白名单只记入 problems 供日志观测，不否决送达——实测存在
+        「ret 非 0 但消息已生成」的网关噪音，msgid 优先。
         """
         delivered, problems = cls._scan_send_signal(data)
         if delivered and not any(p.startswith("isSendSuccess") for p in problems):
