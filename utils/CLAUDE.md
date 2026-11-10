@@ -94,14 +94,28 @@ await start_performance_monitoring()
 ### 装饰器 API（decorators.py）
 
 #### 事件装饰器
+
+`decorators.py` 提供 **13 个** `on_*_message(priority=50)` 装饰器，对应 13 个事件（`priority` 0-99，越大越优先）：
+
 ```python
-@on_text_message(priority=80)      # 文本消息
-@on_image_message(priority=70)     # 图片消息
-@on_video_message()                # 视频消息
-@on_voice_message()                # 语音消息
-@on_friend_request()               # 好友请求
-@on_group_join()                   # 加入群聊
+@on_text_message(priority=80)      # text_message
+@on_image_message()                # image_message
+@on_voice_message()                # voice_message
+@on_emoji_message()                # emoji_message
+@on_file_message()                 # file_message
+@on_quote_message()                # quote_message
+@on_video_message()                # video_message
+@on_pat_message()                  # pat_message
+@on_at_message()                   # at_message
+@on_system_message()               # system_message
+@on_other_message()                # other_message（通用出口）
+@on_article_message()              # article_message
+@on_xml_message()                  # xml_message
 ```
+
+> 事件全集共 14 个，另有 `friend_request` **没有**对应装饰器，由 `EventManager.emit` 分发；`other_message` 为未知 MsgType 的通用出口。框架只提供上述 13 个 `on_*_message` 与 `schedule`，不提供命令 / 调度器 / 好友请求 / 入群等装饰器。字段与事件契约见 [框架消息契约](../docs/框架消息契约.md)。
+
+另有定时装饰器 `@schedule`（见下）。
 
 #### 定时任务装饰器
 ```python
@@ -130,17 +144,33 @@ class PluginBase(ABC):
 
 ### 事件管理器 API（event_manager.py）
 
+`EventManager` 是**类级单例**，全部方法为 `@classmethod`，不需要实例化。处理器不手工登记：插件实例通过 `bind_instance` 绑定，框架扫描实例上带 `_event_type`（由装饰器写入）的方法并按优先级降序登记（0-99，越大越优先）。
+
 ```python
+from utils.decorators import on_text_message
 from utils.event_manager import EventManager
 
-event_manager = EventManager()
+class MyPlugin:
+    @on_text_message(priority=80)
+    async def handle(self, bot, message):
+        return True          # 返回 True 继续，False 中断分发
 
-# 注册处理器
-event_manager.register("text_message", handler_func, priority=80)
+plugin = MyPlugin()
 
-# 发布事件
-await event_manager.emit("text_message", bot, message)
+# 绑定：扫描实例中带 _event_type 的方法，按优先级降序登记
+EventManager.bind_instance(plugin)
+
+# 发布事件：emit(event_type, api_client, message)，按优先级依次调用处理器
+await EventManager.emit("text_message", bot, message)
+
+# 查看某插件方法的原始优先级
+priorities = EventManager.get_method_priorities("MyPlugin")
+
+# 卸载插件时清理该实例的所有处理器
+EventManager.unbind_instance(plugin)
 ```
+
+> `emit` 会对 `message` 做深拷贝后传给每个处理器；返回最后一个非 `None` 结果，若某处理器返回 `False` 则提前中断。事件与字段契约见 [框架消息契约](../docs/框架消息契约.md)。
 
 ### 配置管理器 API（config_manager.py）
 
@@ -168,7 +198,7 @@ notifier = get_notification_service()
 await notifier.send_notification(
     title="警告：微信离线",
     content="您的微信已离线",
-    template="html"
+    template="text"
 )
 ```
 
@@ -190,7 +220,7 @@ await notifier.send_notification(
 ```toml
 [Performance]
 enabled = true
-monitoring_interval = 5  # 监控间隔（秒）
+monitoring_interval = 30  # 监控间隔（秒）
 max_history_size = 100   # 历史数据最大条目数
 cpu_alert_threshold = 80.0  # CPU 告警阈值（%）
 memory_alert_threshold = 80.0  # 内存告警阈值（%）
@@ -217,7 +247,7 @@ class AdminConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 9090
     username: str = "admin"
-    password: str = "admin123"
+    password: str = "<REDACTED>"
     debug: bool = False
     log_level: str = "INFO"
 
@@ -269,20 +299,24 @@ def test_decorator():
 **测试事件管理器**：
 ```python
 import pytest
+from utils.decorators import on_text_message
 from utils.event_manager import EventManager
+
+class DemoPlugin:
+    def __init__(self):
+        self.called = False
+
+    @on_text_message(priority=80)
+    async def handler(self, bot, message):
+        self.called = True
 
 @pytest.mark.asyncio
 async def test_event_manager():
-    em = EventManager()
-    called = False
-
-    async def handler(bot, message):
-        nonlocal called
-        called = True
-
-    em.register("text_message", handler, priority=80)
-    await em.emit("text_message", None, {})
-    assert called
+    plugin = DemoPlugin()
+    EventManager.bind_instance(plugin)
+    await EventManager.emit("text_message", None, {})
+    assert plugin.called
+    EventManager.unbind_instance(plugin)
 ```
 
 ---

@@ -38,7 +38,7 @@
 
 #### 1. AllBotDB（主数据库）
 ```python
-from database.AllBotDB import AllBotDB
+from database.allbotDB import AllBotDB
 
 db = AllBotDB()  # 单例模式，全局唯一实例
 # 自动创建表（User, Chatroom）
@@ -234,7 +234,7 @@ AllBotDB-url = "sqlite:///AllBot.db"  # 主数据库路径
 **测试用户操作**：
 ```python
 import pytest
-from database.AllBotDB import AllBotDB
+from database.allbotDB import AllBotDB
 
 def test_add_points():
     db = AllBotDB()
@@ -247,7 +247,7 @@ def test_add_points():
 **测试线程安全**：
 ```python
 import threading
-from database.AllBotDB import AllBotDB
+from database.allbotDB import AllBotDB
 
 def test_thread_safety():
     db = AllBotDB()
@@ -330,7 +330,7 @@ def _execute_in_queue(self, method, *args, **kwargs):
 ## 📁 相关文件清单
 
 ### 核心文件
-- `database/AllBotDB.py`：主数据库（约 500 行）
+- `database/allbotDB.py`：主数据库（约 500 行）
 - `database/keyvalDB.py`：键值存储（约 100 行）
 - `database/messsagDB.py`：消息存储（约 200 行）
 - `database/message_counter.py`：消息计数器（约 100 行）

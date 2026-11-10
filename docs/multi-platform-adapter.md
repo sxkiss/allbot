@@ -12,7 +12,7 @@
 
 1. 外部平台消息进入适配器（QQ/TG/Web/ocwx/wecom_bot 等）
 2. 适配器将消息写入 Redis 主队列 `allbot`
-3. `bot_core.py` 中的 `message_consumer` 从 `allbot` 取出消息
+3. `bot_core/` 包中的消息消费者从 `allbot` 取出消息
 4. `AllBot.process_message` 解析并触发插件处理
 5. 插件通过 `bot.send_text_message` 等方法发送回复
 6. `ReplyRouter` 将回复写入主回复队列 `allbot_reply`
@@ -20,6 +20,8 @@
 8. 适配器消费 `replyQueue`，将消息回写到平台
 
 ## 2. 入站消息格式（推荐）
+
+> 注：下表的 `Content: { "string": "文本内容" }`、`FromUserName` / `ToUserName: { "string": ... }` 是**归一器输入形状**（适配器入队时写入的原始形状），不是插件可见字段。归一后 `Content` 为纯 `str`，`FromUserName` / `ToUserName` 被移除，身份改用 `FromWxid` / `ToWxid` 等标准字段。字段与事件契约见 [框架消息契约](框架消息契约.md)（全仓唯一事实源）。
 
 入站消息建议遵循以下字段，以保证与 `utils/allbot_legacy.py` 等通用处理逻辑兼容：
 
@@ -97,6 +99,20 @@ enable = false
 platform = "<adapter-name>"
 ```
 
+上例是最小骨架，实际还需平台 Redis 段（键以 `adapter/web/config.toml` 为准）：
+
+```toml
+[<adapter-name>.redis]
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""
+queue = "allbot"
+```
+
+- **双开关**：`[adapter].enabled`（loader 是否启动）与 `[<adapter-name>].enable`（业务开关）都需为 `true`，只开其一适配器安全空转。
+- `module` / `class` 有默认值，可省略；config 三段完整说明见 §5 步骤 3。
+
 `ocwx` 建议使用“最小模板 + 账号槽位扩展”的方式，而不是把默认值全部展开到配置文件：
 
 ```toml
@@ -129,13 +145,177 @@ platform = "ocwx"
 
 ## 5. 新增适配器步骤
 
-1. 创建 `adapter/<name>/` 目录与 `config.toml`
-2. 实现适配器类，负责：
-   - 入站消息写入 `allbot`
-   - 出站消息消费 `replyQueue`
-   - 入站媒体消息（图片/视频/文件）下载与本地缓存，填充 `ResourcePath` /（可选）`ImageBase64` /（可选）`ImageMD5`
-3. 在 `config.toml` 中设置 `enabled = true`
-4. 重启服务加载适配器
+下面按「前提 → 落地 → 验证」给出完整 12 步。所有符号以现版框架为准；消息字段、事件名、路由与归一契约一律以 [框架消息契约](框架消息契约.md)（全仓唯一事实源）为准。
+
+### 步骤 1｜前提：Redis 与职责边界
+
+框架本身**不建立任何平台协议连接**：WebSocket / HTTP / 长连接都由适配器自己建立并维护。框架与适配器之间只通过两个 Redis 队列解耦：
+
+- 入站主队列 `allbot`：适配器写入原始消息，框架消费。
+- 出站主回复队列 `allbot_reply`：框架写入回复，`ReplyDispatcher` 按 `platform` 分发到各适配器 `replyQueue`。
+
+开始前确认 Redis 可用，且两边的队列名与框架一致（主链路方向见 §1）。
+
+### 步骤 2｜目录：`config.toml` 必须
+
+在 `adapter/<name>/` 下建立：
+
+```
+adapter/<name>/
+  ├─ config.toml        # 必须：loader 只扫它来发现适配器
+  ├─ __init__.py        # 可选：仅用于导出适配器类
+  ├─ <name>_adapter.py  # 适配器实现
+  └─ README.md          # 建议：后台「适配器管理」会读取并展示
+```
+
+其中**只有 `config.toml` 是加载器发现适配器的依据**，其余文件按需要组织（目录约定见 §3）。
+
+### 步骤 3｜config 三段与双开关
+
+直接复制 [`adapter/web/config.toml`](../adapter/web/config.toml) 作模板逐键修改：
+
+```toml
+[adapter]
+name = "<name>"
+enabled = false                       # 开关一：loader 是否启动本适配器
+module = "adapter.<name>"             # 有默认值，可省略
+class = "<Name>Adapter"               # 有默认值，可省略
+replyQueue = "allbot_reply:<name>"    # 出站回复队列
+replyMaxRetry = 3
+replyRetryInterval = 2
+logEnabled = true
+logLevel = "INFO"
+
+[<name>]                             # 平台段，段名一般与 name 一致
+enable = false                        # 开关二：适配器业务开关
+platform = "<name>"                   # 写入入站消息的平台标识
+aliases = []                          # 可选别名
+botWxid = ""                          # 可选
+
+[<name>.redis]
+host = "127.0.0.1"
+port = 6379
+db = 0
+password = ""
+queue = "allbot"                      # 入站主队列
+```
+
+三段职责：`[adapter]` 管加载与回复队列，`[<name>]` 管平台标识与协议连接，`[<name>.redis]` 管入队连接。
+
+- **双开关**：`[adapter].enabled` 与 `[<name>].enable` **都要为 `true`** 才真正工作；只开一个会「启动了但安全空转」。
+- `module` / `class` 有默认值（模板中显式写出只为清晰）。
+- 协议连接项（`host` / `port` / `protocolVersion` / `adminKey` / `wsUrl` 等）属于**平台段**，写在适配器自己的 `config.toml` 里，**不要写进 `main_config.toml`**（见步骤 9）。
+
+### 步骤 4｜鸭子类型骨架
+
+框架不要求继承任何基类。`adapter/base.py` **不提供可继承的适配器基类**，只提供 `AdapterLogger`（统一 `[Adapter:]` 日志前缀）与 `LoginCapable`（结构型 `Protocol`，可选登录面板契约）；也不要求 `send_message` / `receive_message` 之类的接口。适配器按约定「长得像」即可：
+
+```python
+from pathlib import Path
+from adapter.base import AdapterLogger  # 可选：统一日志前缀
+
+class <Name>Adapter:
+    def __init__(self, config_data: dict, config_path: Path):
+        # config_data：loader 读好的 config.toml 字典；config_path：配置文件路径
+        self.config_data = config_data
+        self.config_path = config_path
+
+    def run(self):
+        # 阻塞主循环，由 loader 在独立线程中调用
+        ...
+
+    def stop(self):
+        # 可选：热插拔停旧实例时调用
+        ...
+```
+
+- 必须的是 `__init__(config_data, config_path)` 与 `run()`；`run()` 阻塞、运行在独立线程（`adapter/loader.py`）。
+- 可选 `stop()`（优雅停止）。
+- 需要被 facade 委托查询能力时，提供 `get_client()` / `client` / `_bot` 之一。
+- 需要后台登录面板时，按 `LoginCapable` 的**结构**实现 `capabilities` / `list_accounts` / `login_start` / `login_status` / `login_qrcode` / `login_logout`，无需继承。
+
+### 步骤 5｜入站：只负责原样入队
+
+```python
+import json
+redis.rpush(queue, json.dumps(raw, ensure_ascii=False))
+```
+
+- `queue` 取 `[<name>.redis].queue`（默认 `allbot`）。
+- **框架统一归一**：适配器只把平台原始消息写进队列，**不要二次解析协议包、不要切分正文**。群前缀 `wxid_xxx:\n` 的剥离由框架 `MessageNormalizer` 负责，普通 `hello:world` / `https://...` 不会被误切。
+- 下表字段只是**归一器输入形状**（`Content` 可为 `{"string": ...}`，`FromUserName` / `ToUserName` 可为 `{"string": ...}`），不是插件可见字段。最小集：`MsgId` / `MsgType` / `Content` / `CreateTime` / `IsGroup` / `MsgSource` / `platform` / `SenderWxid`，加 `FromWxid` 或 `FromUserName`、`ToWxid` 或 `ToUserName`；媒体凭据可放 `Extra.<platform>.raw`。
+- 图片等媒体的入站约定见 §2.1。
+
+### 步骤 6｜归一契约：交给框架
+
+入队后由 `MessageRouter.process` 调**一次** `MessageNormalizer.normalize`（幂等），再按 MsgType 分发：
+
+- 归一后 `Content` 是**纯 `str`**，`FromUserName` / `ToUserName` 被移除，身份改用 `FromWxid` / `ToWxid` 等标准字段。
+- 路由表、14 个事件名、字段全集见 [框架消息契约](框架消息契约.md)。
+- **未知 MsgType 不会丢弃**：走通用出口 `other_message`（经 `ignore_check` 与风控 gate 后 `EventManager.emit`）；`37` 是 `friend_request`，`51` 明确 `pass`。适配器无需为未知类型做特殊处理，更不要自己丢弃。
+
+### 步骤 7｜出站：消费 replyQueue
+
+适配器用 `BLPOP` 阻塞消费自己的 `[adapter].replyQueue`：
+
+```python
+_, payload = redis.blpop(replyQueue)
+data = json.loads(payload)
+# payload 关键字段：platform / msg_type / wxid / content / account_wxid
+```
+
+按 `msg_type` 调用平台客户端的 `send_*_message` 完成回写。完整出站链（插件侧）：
+
+```
+bot.send_text_message(...)  →  BotFacade._send  →  ReplyRouter(allbot_reply)
+  →  ReplyDispatcher  →  适配器 replyQueue  →  BLPOP → send_*_message
+```
+
+（`WechatAPI/facade.py`、`bot_core/client_initializer.py`。）
+
+### 步骤 8｜多账户：靠上下文解析，别缓存
+
+多账户适配器把 `platform` + `account_wxid` 写进出站 payload / 入站消息。框架用 `utils/reply_context.py` 的 `ContextVar` + `context_resolver`（`bot_core/client_initializer.py`）按这两个值解析该用哪个客户端；`facade._resolve_delegate` **不缓存** context 结果，正是为了避免跨账号串号。适配器侧只要保证 `account_wxid` 正确透传即可，不要自行缓存客户端映射。
+
+### 步骤 9｜自动发现：无需改主程序
+
+`start_adapters`（`adapter/loader.py`）扫描 `adapter/*/config.toml`，读取双开关，为启用的适配器各起一个独立线程调 `run()`。**新增适配器不需要改任何主程序代码**。同时 `_resolve_upstream_settings` 会从启用适配器的 config 读 `host` / `port` / `protocolVersion` / `adminKey` / `wsUrl` 回写运行配置——再次强调：**协议连接项归属适配器 `config.toml`，不写 `main_config.toml`**。
+
+### 步骤 10｜启动顺序
+
+1. 先确保 Redis 可达（入站 `allbot` / 出站 `allbot_reply`）。
+2. 备好平台侧协议服务 / 凭据，填进适配器 `config.toml`。
+3. 把 `[adapter].enabled` 与 `[<name>].enable` **两个开关都置 `true`**。
+4. 启动主服务（或走后台「适配器」页热插拔），`start_adapters` 自动发现并在独立线程拉起 `run()`。
+5. 观察 `[Adapter:<name>]` 日志确认实例就绪。
+
+### 步骤 11｜验证与排错
+
+- 日志前缀 `[Adapter:]`（`adapter/base.py`）：所有适配器日志都带它，按前缀过滤即可定位。
+- 入站验证：往平台发一条消息，确认 `allbot` 有 `RPUSH`、框架有处理日志、插件收到归一后的纯 `str` `Content`。
+- 出站验证：让插件回一条，确认 `allbot_reply` → 适配器 `replyQueue` → 平台收到。
+- 若「启动了但没连平台」：先查双开关是否都开、`<name>.redis` 连接是否正确、协议连接项是否误写进了 `main_config.toml`。
+
+### 步骤 12｜常见坑 + 三档现成基准
+
+常见坑：
+
+- 只开 `enabled` 或只开 `enable` → 适配器安全空转。
+- 适配器里二次解析正文 / 自己切 `wxid_xxx:` 前缀 → 与框架归一重复，且会误切普通正文。
+- 把 `Content: {"string": ...}` 当成插件可见格式 → 那是**输入形状**，插件侧是纯 `str`。
+- 缓存 `account_wxid → 客户端` 映射 → 多账户串号（框架故意不缓存）。
+- 丢弃未知 MsgType → 应原样入队，框架走 `other_message`。
+- 协议连接项写进 `main_config.toml` → loader 读不到，应放适配器 `config.toml`。
+
+三档可直接抄的现成实现（由简到繁，均为现存文件）：
+
+| 基准 | 文件 | 适合 |
+| --- | --- | --- |
+| 最简（被动、无长连接） | `adapter/web/web_adapter.py` | 只要 Redis 入队 / 出站，Web 后台调用 |
+| 中等（长连接 + 媒体） | `adapter/qq/qq_adapter.py` | 需维护 WebSocket 与媒体下载 |
+| 多账户 + 登录面板 | `adapter/wechat_875/adapter.py` | `ContextVar` 多账户 + `LoginCapable` |
+
+更多字段 / 事件细节一律以 [框架消息契约](框架消息契约.md) 为准。
 
 ## 6. ocwx 适配器说明
 

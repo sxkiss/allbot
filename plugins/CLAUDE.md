@@ -34,18 +34,19 @@
    ```python
    plugins_dir = Path("plugins/")
    for entry in plugins_dir.iterdir():
-       if entry.is_dir() and (entry / "__init__.py").exists():
-           # 动态导入插件类
+       if entry.is_dir() and (entry / "main.py").exists():
+           # 只扫 main.py；importlib.import_module(f"plugins.{dirname}.main")
    ```
 
 2. **过滤阶段**
-   - 读取 `main_config.toml` 中的 `disabled-plugins` 列表
-   - 检查插件 `config.toml` 中的 `enable` 配置
+   - 读取 `main_config.toml` 中的 `[AllBot] disabled-plugins` 列表（唯一禁用依据）
+   - 框架**不读取**各插件 `config.toml` 的 `enable`（那是插件自己的业务开关）
 
 3. **初始化阶段**
-   - 实例化插件类
-   - 注册装饰器标记的事件处理器
-   - 添加定时任务（如有 `@schedule` 装饰器）
+   - 实例化 `PluginBase` 子类（`__init__(self)` 无 bot 参数）
+   - `EventManager.bind_instance` 注册带 `_event_type` 标记的事件处理器
+   - `on_enable(bot)` 注册定时任务（如有 `@schedule`），随后 `async_init()`
+   - 自动发现即可加载，无需任何手动注册代码
 
 4. **事件分发**
    - `EventManager` 根据优先级排序处理器
@@ -109,15 +110,26 @@ async def morning_task(self, bot):
 
 ### 可用装饰器列表
 
-| 装饰器 | 触发条件 | 示例 |
+`utils/decorators.py` 提供 `schedule` + **13 个** `on_*_message(priority=50)` 装饰器，处理器签名固定为 `async def handler(self, bot, message)`：
+
+| 装饰器 | 对应事件 / 触发条件 | 示例 |
 |--------|---------|------|
-| `@on_text_message` | 文本消息 | `@on_text_message(priority=80)` |
-| `@on_image_message` | 图片消息 | `@on_image_message(priority=70)` |
-| `@on_video_message` | 视频消息 | `@on_video_message()` |
-| `@on_voice_message` | 语音消息 | `@on_voice_message()` |
-| `@on_friend_request` | 好友请求 | `@on_friend_request()` |
-| `@on_group_join` | 加入群聊 | `@on_group_join()` |
-| `@schedule` | 定时任务 | `@schedule('interval', seconds=30)` |
+| `@on_text_message` | `text_message` 文本 | `@on_text_message(priority=80)` |
+| `@on_image_message` | `image_message` 图片 | `@on_image_message(priority=70)` |
+| `@on_voice_message` | `voice_message` 语音 | `@on_voice_message()` |
+| `@on_video_message` | `video_message` 视频 | `@on_video_message()` |
+| `@on_emoji_message` | `emoji_message` 表情 | `@on_emoji_message()` |
+| `@on_file_message` | `file_message` 文件 | `@on_file_message()` |
+| `@on_at_message` | `at_message` 被 @ | `@on_at_message()` |
+| `@on_quote_message` | `quote_message` 引用 | `@on_quote_message()` |
+| `@on_pat_message` | `pat_message` 拍一拍 | `@on_pat_message()` |
+| `@on_system_message` | `system_message` 系统消息 | `@on_system_message()` |
+| `@on_article_message` | `article_message` 公众号文章 | `@on_article_message()` |
+| `@on_xml_message` | `xml_message` XML/卡片/链接 | `@on_xml_message()` |
+| `@on_other_message` | `other_message` 其它 MsgType 通用出口 | `@on_other_message()` |
+| `@schedule` | 定时任务 | `@schedule('interval', seconds=30)` / `@schedule('cron', hour=8)` |
+
+第 14 个事件 `friend_request`（好友请求）**没有装饰器**，靠 `EventManager.emit` 分发；框架只提供 `on_*_message` 事件装饰器与 `schedule` 定时装饰器。`priority` 取 `0-99`，**越大越优先**（`utils/event_manager.py` 用 `sort(reverse=True)`），返回 `True` 继续、`False` 中断。完整事件/字段契约见 [框架消息契约.md](../docs/框架消息契约.md)。
 
 ---
 
@@ -156,18 +168,28 @@ option_2 = 123
 
 ### 消息对象结构（message 参数）
 
+`message` 是框架统一归一后的字典（归一器输入形状里的 `{"string": ...}` 包装不属于插件可见字段）。常用字段：
+
 ```python
 {
-    "wxid": "wxid_xxx",  # 发送者微信 ID
-    "roomid": "xxx@chatroom",  # 群聊 ID（私聊时为空）
-    "content": "消息内容",
-    "type": 1,  # 消息类型：1=文本, 3=图片, 34=语音, 43=视频
-    "timestamp": 1234567890,
-    "isSelf": False,  # 是否为自己发送
-    "nickname": "发送者昵称",
-    # ... 其他字段见 WechatAPI 文档
+    "Content": "消息内容（纯 str）",       # 归一结果，不是 {"string": ...}
+    "FromWxid": "会话 ID（群聊为群 ID）",
+    "ToWxid": "接收方 ID",
+    "SenderWxid": "群内真实发送者 ID",
+    "ActualUserWxid": "实际用户 ID",
+    "IsGroup": False,
+    "MsgType": 1,
+    "MsgKind": "type_1",
+    "platform": "...",
+    "Ats": [],
+    "Quote": {},
+    "MediaContext": {},
+    "_normalized": True,
+    # 类型特有字段（AppType/AppKind/Filename/aeskey/voiceurl/...）按消息类型出现
 }
 ```
+
+**不存在**：归一器输入侧的用户名字段（归一阶段已移除）与旧版小写键名。完整字段表见 [框架消息契约.md](../docs/框架消息契约.md)。
 
 ### 数据库模型（部分插件使用）
 
@@ -235,18 +257,14 @@ isort plugins/YourPlugin/
 **A**：在装饰器中指定 `priority` 参数，或在 `config.toml` 中设置全局优先级（后者覆盖前者）。
 
 ### Q2: 如何访问数据库？
-**A**：通过 `database.AllBotDB.AllBotDB()` 获取单例实例，调用 CRUD 方法。
-```python
-from database.AllBotDB import AllBotDB
-db = AllBotDB()
-points = db.get_points("wxid_xxx")
-```
+**A**：数据库模块位于 `database/` 包下（如 `database/allbotDB.py`、`database/messsagDB.py` 等），按各模块实际导出的方法调用；具体方法名以对应源码为准，不要臆造。
 
 ### Q3: 如何发送消息？
-**A**：使用 `bot.send_text()`、`bot.send_image()` 等方法。
+**A**：主推 `bot.send_text_message(wxid, content, at="")`（`send_text` 是其别名），其余用 facade 承诺的 `send_*_message` 系列（`send_image_message` / `send_voice_message` / `send_file_message` / `send_at_message` …）。
 ```python
-await bot.send_text("wxid_xxx", "Hello, World!")
+await bot.send_text_message("wxid_xxx", "Hello, World!")
 ```
+不要用任何未带 `_message` 后缀或不在清单内的发送名（facade 有 `__getattr__` 转发但不保证可用）。
 
 ### Q4: 如何读取插件配置？
 **A**：在插件 `__init__` 方法中使用 `tomllib` 读取 `config.toml`。
@@ -273,7 +291,8 @@ with open(config_path, "rb") as f:
 - `utils/event_manager.py`：事件分发器（优先级队列）
 
 ### 示例插件
-- `plugins/ExamplePlugin/`：最小化示例
+- `plugins/Protocol869Demo/`：真实可跑示例（文本/引用/表情装饰器 + `tomllib` 读配置）
+- `plugins/MessageParserRecorder/`：覆盖 12 类消息装饰器的示例
 - `plugins/BotStatus/`：简单状态查询插件
 - `plugins/Dify/`：复杂 AI 对话插件（推荐参考）
 
@@ -304,4 +323,4 @@ with open(config_path, "rb") as f:
 
 ---
 
-**开发者提示**：插件开发时请遵循 SOLID 原则，保持单一职责，避免在单个插件中实现过多功能。如需扩展核心功能，建议修改 `bot_core.py` 或 `utils/` 模块。
+**开发者提示**：插件开发时请遵循 SOLID 原则，保持单一职责，避免在单个插件中实现过多功能。如需扩展核心功能，建议修改 `bot_core/` 包（orchestrator / message_listener 等模块）或 `utils/` 模块。

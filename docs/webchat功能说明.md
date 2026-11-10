@@ -29,8 +29,6 @@ Web适配器作为被动适配器，不主动监听消息，而是通过API接�
 - `POST /api/webchat/send` - 发送消息
 - `GET /api/webchat/sessions` - 获取会话列表
 - `GET /api/webchat/sessions/{session_id}` - 获取会话消息
-- `DELETE /api/webchat/sessions/{session_id}` - 删除会话
-- `POST /api/webchat/sessions/{session_id}/clear` - 清空会话消息
 
 **文件位置：** `admin/web_chat_api.py`
 
@@ -56,7 +54,7 @@ Web适配器作为被动适配器，不主动监听消息，而是通过API接�
 4. Web适配器将消息发送到Redis队列（allbot）
 5. Bot从队列消费消息
 6. 消息通过插件系统处理
-7. 插件通过 `reply_router.send_text()` 发送回复
+7. 插件通过 `bot.send_text_message()` 发送回复（`ReplyRouter` 为底层出站路由，见 `utils/reply_router.py`）
 8. ReplyRouter将回复发送到主回复队列（allbot_reply）
 9. ReplyDispatcher将回复分发到Web适配器队列（allbot_reply:web）
 10. Web适配器从队列获取回复

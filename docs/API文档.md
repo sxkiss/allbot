@@ -74,13 +74,13 @@ POST /api/send_message
 }
 ```
 
-### 4.2 聊天历史（已禁用）
+### 4.2 聊天历史（路由已移除）
 
 ```
 POST /api/chat/history
 ```
 
-该接口目前返回“功能已禁用”的提示，用于与旧前端保持兼容。
+该路由在现版已移除，不再对外提供。
 
 ## 5. Web 对话接口
 
@@ -90,8 +90,6 @@ POST /api/chat/history
 | POST | `/api/webchat/send` | 发送 Web 对话消息 |
 | GET | `/api/webchat/sessions` | 会话列表 |
 | GET | `/api/webchat/sessions/{session_id}` | 会话消息 |
-| DELETE | `/api/webchat/sessions/{session_id}` | 删除会话 |
-| POST | `/api/webchat/sessions/{session_id}/clear` | 清空会话消息 |
 
 ## 6. 插件与适配器
 
@@ -149,16 +147,13 @@ POST /api/chat/history
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/contacts` | 联系人列表 |
-| GET | `/api/contacts/update_all` | 更新联系人缓存 |
-| GET | `/api/contacts/{wxid}/refresh` | 刷新单个联系人 |
-| POST | `/api/group/members` | 获取群成员 |
-| POST | `/api/group/member/detail` | 群成员详情 |
 | POST | `/api/group/announcement` | 群公告（已禁用） |
 | GET | `/api/notification/settings` | 通知配置 |
 | POST | `/api/notification/settings` | 保存通知配置 |
 | POST | `/api/notification/test` | 测试通知 |
 | GET | `/api/notification/history` | 通知历史 |
+
+> 注：协议剥离时，联系人列表、联系人缓存刷新、群成员等依赖协议客户端的接口已删除；联系人/群相关仅保留 `POST /api/group/announcement`。
 
 ## 9. 定时提醒
 
@@ -172,5 +167,5 @@ POST /api/chat/history
 ## 10. 备注
 
 - 若接口返回 `success=false`，请查看 `error` 或 `message` 字段获取原因。
-- 部分功能（如聊天历史）已标记为禁用，文档仍保留以便前端兼容。
-- 869 专属能力（如撤回、拍一拍、二维码、标签、动态调用）不再通过管理后台 HTTP API 暴露；如需使用，请在插件中直接调用 `Client869` 方法，参考 `plugins/README.md` 与 `plugins/Protocol869Demo/`。
+- 聊天历史等历史兼容路由在现版已移除，不再提供服务。
+- 869 专属能力（如撤回、拍一拍、二维码、标签、动态调用）不再通过管理后台 HTTP API 暴露；如需使用，请在插件中直接调用 `WechatAPIClient`（`WechatAPI/facade.py` 门面，能力方法见该文件 :150-250）方法，参考 `plugins/README.md` 与 `plugins/Protocol869Demo/`。

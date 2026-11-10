@@ -58,7 +58,7 @@
 | welcome | aibot_respond_welcome_msg（markdown 文本体） |
 | raw | 透传 body（可指定 cmd） |
 | link / news / url | **template_card**（有封面 `news_notice`，无封面 `text_notice`，`card_action` 跳转） |
-| text 内嵌 appmsg XML（Client869 `send_app_message`） | 解析 type=5 链接卡 → template_card；其它 appmsg 降级 markdown |
+| text 内嵌 appmsg XML（`send_app_message` 出站） | 解析 type=5 链接卡 → template_card；其它 appmsg 降级 markdown |
 | photo/img/document/md/url/appmsg 等别名 | 归一到 image/file/markdown/link/text-like |
 
 入站 `msgid` 为 hex 时会映射为数字 `MsgId/NewMsgId`（原始值保存在 `Extra.wecom_bot.raw_msgid`），避免框架 `int(MsgId)` 崩溃。

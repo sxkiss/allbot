@@ -1,6 +1,6 @@
 # 更新日志（CHANGELOG）
 
-> 记录架构级变更，防止文档漂移。最近更新：2026-11-09。
+> 记录架构级变更，防止文档漂移。最近更新：2026-11-10。
 
 ## 2026-11-09 · 仓库历史截断与分支职责明确
 
@@ -34,6 +34,8 @@
 
 重启后严格时间窗实测（`--since 8s`）：注入 1 条 `bot` → `命中 / 推送 / 分发 / 出站 / 网关 HTTP / isSendSuccess` 各 **1**，队列 `0/0/0`，无刷屏。
 
+> 注：以上为当时实测的验证基线；现版送达判据已改为 `newMsgId>0`（见 [框架消息契约](框架消息契约.md) · 869 送达判据）。
+
 ### 文档同步清单（本次已更新）
 
 `docs/配置指南.md`、`docs/用户手册.md`、`docs/系统架构文档.md`、`ARCHITECTURE.md`、
@@ -42,3 +44,14 @@
 
 保留的历史记录（不改）：`docs/分支保护与main回退说明.md`、`869协议与框架收消息适配报告.md`（历史报告）、
 `adapter/wx|ocwx/*` 的扫码描述（其它适配器自身能力）。
+
+## 2026-11-10 · 开发文档对齐现版代码（四大重构）
+
+本批只更新 `.md` 文档、不改任何代码；把全仓开发文档与教程对齐到现版代码事实，并新建 [框架消息契约](框架消息契约.md) 作为全仓消息契约唯一事实源（归一字段、事件、路由、插件/适配器契约、facade 承诺 API 一律以它为准）。对齐所依据的四大重构：
+
+- **统一适配器模式（协议剥离）**：协议实现由 `adapter/` 提供；主框架不建任何协议连接、只消费 Redis `allbot` 队列；`start_adapters` 扫 `adapter/*/config.toml` 自动发现，协议连接项归属适配器 config，不写 `main_config.toml`。
+- **框架统一归一 + 事件/路由契约**：`MessageRouter.process` 只调一次 `MessageNormalizer.normalize`（幂等、`preprocess` 空实现兼容）；归一后 `Content` 为纯 `str`、`FromUserName`/`ToUserName` 被移除，明确区分「归一器输入形状 `{string}`」与「归一结果」；`37`→`friend_request`、`51`→明确 `pass`、其它任何 MsgType → 通用出口 `other_message` 绝不丢弃；14 个事件 + 13 个 `on_*_message` 装饰器 + `schedule`。
+- **出站链路根治**：`BotFacade → ReplyRouter(allbot_reply) → ReplyDispatcher → 适配器 replyQueue → 终端直发`；facade `__setattr__` 守卫阻断 send-wrapper 外泄造成的纯出站回环；多账户按 `platform` / `account_wxid` 经 `ContextVar` 解析、结果不缓存以避免跨账号串号。
+- **协议无关门面层**：`WechatAPI/` 只保留 `BotFacade` 承诺 API 与 legacy bases，不再按协议版本列举实现；插件发消息只用承诺 API 清单。
+
+另对齐 `e22c554`：群前缀仅当 `wxid_xxx:\n`（冒号后紧跟换行）才剥离，`hello:world` / `https://...` 等普通正文不切分。顶层导航同步：`README.md` 补「框架消息契约」入口、插件数改为 21 个目录、协议清单改指 `adapter/`；`ARCHITECTURE.md` 门面层表述与归一/通用出口链接一并更新。历史条目正文、验证数值与「869 报告历史保留」均按原样保留。

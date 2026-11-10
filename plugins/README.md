@@ -10,10 +10,10 @@
 
 ```text
 plugins/YourPlugin/
-├── __init__.py      # 插件标识文件
-├── config.toml      # 插件配置文件 (可选)
-├── main.py          # 插件逻辑核心 (必须)
-└── README.md        # 插件说明文档
+├── main.py          # 必须：插件类定义，加载器只扫这个文件
+├── __init__.py      # 可选：仅做导出（不是入口）
+├── config.toml      # 可选：由插件自己用 tomllib 读取
+└── README.md        # 可选：插件说明文档
 ```
 
 ---
@@ -50,19 +50,32 @@ class YourPlugin(PluginBase):
 
 ---
 
-## 三、 常用消息监听装饰器
+## 三、 常用消息监听装饰器（14 事件全集）
 
-你可以通过在方法上添加装饰器来捕获不同类型的微信消息：
+处理器签名固定为 `async def handler(self, bot, message)`；用装饰器声明要监听的事件。框架共分发 **14 个事件**，其中 13 个有对应的 `on_*_message` 装饰器：
 
-- `@on_text_message(priority=10)`: 监听文本消息。
-- `@on_at_message(priority=10)`: 监听在群里被 @ 的消息。
-- `@on_image_message(priority=10)`: 监听图片消息。
-- `@on_voice_message(priority=10)`: 监听语音消息。
-- `@on_file_message(priority=10)`: 监听文件消息。
-- `@on_quote_message(priority=10)`: 监听引用消息。
-- `@on_xml_message(priority=10)`: 监听 XML 格式消息。
+| 事件 | 装饰器 | 含义 |
+| :--- | :--- | :--- |
+| `text_message` | `@on_text_message` | 文本 |
+| `image_message` | `@on_image_message` | 图片 |
+| `voice_message` | `@on_voice_message` | 语音 |
+| `video_message` | `@on_video_message` | 视频 |
+| `emoji_message` | `@on_emoji_message` | 表情 |
+| `file_message` | `@on_file_message` | 文件 |
+| `at_message` | `@on_at_message` | 被 @ |
+| `quote_message` | `@on_quote_message` | 引用/回复 |
+| `pat_message` | `@on_pat_message` | 拍一拍 |
+| `system_message` | `@on_system_message` | 系统消息 |
+| `article_message` | `@on_article_message` | 公众号文章 |
+| `xml_message` | `@on_xml_message` | XML / 卡片 / 链接 / 小程序 |
+| `other_message` | `@on_other_message` | 其它任何 MsgType 的通用出口（不丢弃） |
+| `friend_request` | 无装饰器 | 好友请求，靠 `EventManager.emit` 分发 |
 
-> **提示**: `priority` 数值越小，插件处理消息的优先级越高。
+`message` 是框架统一归一后的字典：`Content` 为纯 `str`，会话/发送者用 `FromWxid` / `SenderWxid`，另有 `MsgKind` / `MsgType` / `platform` / `Ats` / `Quote` / `MediaContext` / `_normalized` 等；归一器输入侧的用户名字段与旧版小写键名在插件侧都不存在。完整字段契约见 [框架消息契约.md](../docs/框架消息契约.md)。
+
+> **提示**: `priority` 取 `0-99`，**数值越大越优先**（`utils/event_manager.py` 用 `sort(reverse=True)`），默认 `50`。处理器返回 `True` 继续交给后续处理器，返回 `False` 中断本次分发。
+
+**定时任务**：用 `from utils.decorators import schedule`，例如 `@schedule('interval', seconds=30)` 或 `@schedule('cron', hour=8)`；定时任务装饰器只有 `schedule` 一种。任务函数签名为 `async def task(self, bot)`，由基类在 `on_enable` 时自动注册、`on_disable` 时卸载。
 
 ---
 
@@ -81,7 +94,7 @@ class YourPlugin(PluginBase):
 
 ### 4.1 869 客户端专属能力（插件可直接调用）
 
-当 `bot.protocol_version == "869"` 时，插件拿到的 `bot` 实际为 `Client869`，可直接调用 869 专属方法；非 869 协议下这些方法会抛 `NotImplementedError`（请先判定协议或 `hasattr`）。
+当 `bot.protocol_version == "869"` 时，`bot`（协议无关门面 `WechatAPIClient`）会委托到 869 协议客户端，可调用 869 专属方法；非 869 协议下这些方法可能抛 `NotImplementedError`（请先判定协议或 `hasattr`）。
 这些能力不再通过管理后台 `/api/869/*` 暴露，统一改为插件内部直接调用。
 
 **协议判定示例：**
@@ -127,6 +140,9 @@ if not is_869:
 2.  **异常处理**: 插件内部逻辑应包含 `try...except`，避免单个插件崩溃导致整个系统异常。
 3.  **不阻塞异步**: 避免在处理方法中使用 `time.sleep()`，请使用 `await asyncio.sleep()`。
 4.  **资源清理**: 插件产生的临时文件请及时清理（可利用 `utils.files_cleanup` 模块）。
+5.  **生命周期**: 现版钩子是 `on_enable(self, bot=None)` / `on_disable()` / `async_init()`（均为 `async`）。`__init__(self)` 无 bot 参数，基类不提供 `self.bot` / `self.logger`（日志用 `from loguru import logger`，要用 bot 就在 `on_enable` 里自存）。重写 `on_enable` / `on_disable` 时务必 `await super().on_enable(bot)` / `await super().on_disable()`，以注册/卸载定时任务。
+6.  **自动发现**: 加载器只扫 `plugins/*/main.py`、找 `PluginBase` 子类并实例化，无需任何手动注册代码。
+7.  **开关归属**: 禁用只走 `main_config.toml` 的 `[AllBot] disabled-plugins`；插件 `config.toml` 里的 `enable` 是插件自己用 `tomllib` 读取的业务开关，框架不读取。全局优先级 `[basic].priority`（或 `[<Name>].priority`）由基类自动读取并 clamp 到 `0-99`，会覆盖装饰器上的 `priority`。
 
 ---
 

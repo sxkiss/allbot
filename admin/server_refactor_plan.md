@@ -1,5 +1,7 @@
 # admin/server.py 模块化重构方案
 
+> **历史归档**：本文记录 2026-01 的重构过程，引用的若干详细报告未纳入本仓库版本控制，链接仅作历史留痕；现版架构以 `ARCHITECTURE.md` 与 `docs/框架消息契约.md` 为准。
+
 ## 文档信息
 - **创建时间**: 2026-01-18
 - **更新时间**: 2026-01-19 15:00
@@ -285,7 +287,7 @@ async def endpoint(username: str = Depends(require_auth)):
 
 **解决**: 从 `fastapi` 导入 `Depends`，移除参数传递
 
-**详细报告**: [ARCHITECTURE_ISSUE_REPORT.md](ARCHITECTURE_ISSUE_REPORT.md)
+**详细报告**: `ARCHITECTURE_ISSUE_REPORT.md`（历史产物，未入库，见 10.1）
 
 ### 6.3 重复路由（3 处）
 
@@ -395,10 +397,10 @@ def register_routes(app, Depends):  # 不要将 Depends 作为参数
 
 ### 10.1 生成的报告
 
-1. **[CODE_OPTIMIZATION_REPORT.md](CODE_OPTIMIZATION_REPORT.md)** - 代码优化详细报告
-2. **[CODE_VERIFICATION_REPORT.md](CODE_VERIFICATION_REPORT.md)** - 功能完整性验证报告
-3. **[ARCHITECTURE_ISSUE_REPORT.md](ARCHITECTURE_ISSUE_REPORT.md)** - 架构问题详细分析
-4. **[FINAL_REVIEW_REPORT.md](FINAL_REVIEW_REPORT.md)** - 最终审查报告（汇总）
+1. `CODE_OPTIMIZATION_REPORT.md` - 代码优化详细报告（历史产物，未入库）
+2. `CODE_VERIFICATION_REPORT.md` - 功能完整性验证报告（历史产物，未入库）
+3. `ARCHITECTURE_ISSUE_REPORT.md` - 架构问题详细分析（历史产物，未入库）
+4. `FINAL_REVIEW_REPORT.md` - 最终审查报告（汇总，历史产物，未入库）
 
 ### 10.2 备份文件
 

@@ -9,7 +9,7 @@
 # AllBot - 智能微信机器人系统
 
 > **本文档为 AI 辅助开发优化而设计**
-> 最后更新：2026-01-22 18:38:56
+> 最后更新：2026-11-10
 
 ---
 
@@ -33,7 +33,7 @@
 /auto-doc
 ```
 
-**auto-doc 技能说明**：详见 [/auto-doc/SKILL.md](/auto-doc/SKILL.md)
+**auto-doc 技能说明**：该技能为外部工具（本仓库不含 `auto-doc/` 目录），请以实际安装的技能文档为准；本仓库的文档约定以 `docs/框架消息契约.md` 及本文「文档体系」章节为准。
 
 **为什么强制使用**：
 - 📝 自动维护三层文档体系（ARCHITECTURE.md、INDEX.md、文件头注释）
@@ -116,8 +116,8 @@ AllBot 采用 auto-doc 三层文档规范：**根 `CLAUDE.md`（架构概览）*
 AllBot 是一个**基于微信协议的智能机器人系统**，通过插件化架构和多平台适配器设计，提供了以下核心能力：
 
 - **智能对话**：集成多种 AI 平台（Dify、OpenAI、FastGPT、SiliconFlow 等）
-- **插件生态**：内置 13 个插件（`plugins/`），并支持通过插件市场扩展更多能力
-- **多协议支持**：支持 pad/ipad/mac/ipad2/car/win 等多种微信协议版本
+- **插件生态**：`plugins/` 下 21 个插件目录，并支持通过插件市场扩展更多能力
+- **多平台接入**：协议实现由 `adapter/` 下的各平台适配器提供（详见 ARCHITECTURE.md）
 - **管理后台**：基于 FastAPI + Bootstrap 5 的 Web 管理界面
 - **容器化部署**：Docker + Docker Compose 开箱即用
 
@@ -140,7 +140,7 @@ AllBot 是一个**基于微信协议的智能机器人系统**，通过插件化
 | **日志系统** | Loguru |
 | **前端** | Bootstrap 5 + Chart.js + Vue 3 |
 | **容器化** | Docker + Docker Compose |
-| **微信协议** | xywechatpad-binary (多版本支持) |
+| **协议接入** | 协议无关门面（`WechatAPI/`）+ 各平台实现在 `adapter/` |
 
 ### 核心架构原则
 
@@ -162,8 +162,8 @@ AllBot 是一个**基于微信协议的智能机器人系统**，通过插件化
 │        核心调度 (bot_core/)             │
 │  - 消息路由 - 事件分发 - 优先级队列      │
 ├─────────────────────────────────────────┤
-│       插件系统 (Plugin System)          │
-│  13 个内置插件 | 装饰器驱动 | 热加载支持  │
+│        插件系统（插件目录）              │
+│  21 个插件目录 | 装饰器驱动 | 热加载支持  │
 ├─────────────────────────────────────────┤
 │     WechatAPI 客户端 (封装层)           │
 │  好友 | 群聊 | 朋友圈 | 红包 | 登录      │
@@ -185,15 +185,15 @@ graph TD
     A --> E["适配器层"];
     A --> F["基础设施"];
 
-    B --> B1["bot_core/<br/>986 行 | 核心调度引擎"];
-    B --> B2["main.py<br/>477 行 | 程序入口"];
+    B --> B1["bot_core/<br/>1,149 行 | 核心调度引擎"];
+    B --> B2["main.py<br/>491 行 | 程序入口"];
     B --> B3["WechatAPI/<br/>微信客户端封装"];
 
-    C --> C1["plugins/<br/>13 个内置插件"];
-    C --> C2["utils/plugin_manager.py<br/>581 行 | 插件管理器"];
+    C --> C1["plugins/<br/>21 个插件目录"];
+    C --> C2["utils/plugin_manager.py<br/>592 行 | 插件管理器"];
     C --> C3["utils/plugin_base.py<br/>插件基类"];
 
-    D --> D1["admin/server.py<br/>279 行 | FastAPI 后台"];
+    D --> D1["admin/server.py<br/>198 行 | FastAPI 后台"];
     D --> D2["admin/routes/<br/>模块化路由"];
     D --> D3["admin/static/<br/>前端资源"];
 
@@ -226,23 +226,23 @@ graph TD
 
 | 模块路径 | 职责 | 核心文件 | 代码量 | 文档链接 |
 |---------|------|----------|--------|---------|
-| **核心引擎** | 启动编排、消息调度、插件协调 | `bot_core/` | 986 行（7 文件） | [详细文档](./bot_core/CLAUDE.md) |
-| **主程序** | 启动流程、配置管理、监控重启 | `main.py` | 477 行 | - |
-| **WechatAPI/** | 微信协议封装（好友/群聊/朋友圈） | `Client/*.py` | 12 个文件 | [详细文档](./WechatAPI/CLAUDE.md) |
-| **plugins/** | 内置插件（默认 13 个，可通过插件市场扩展） | 各插件 `main.py` | 13 个插件 | [详细文档](./plugins/CLAUDE.md) |
-| **admin/** | Web 管理后台（FastAPI，已重构） | `server.py` | 279 行 | [详细文档](./admin/CLAUDE.md) |
-| **adapter/** | 多平台适配器（QQ/TG/Web/Win） | `loader.py` | 120 行 | [详细文档](./adapter/CLAUDE.md) |
+| **核心引擎** | 启动编排、消息调度、插件协调 | `bot_core/` | 1,149 行（7 个 .py） | [详细文档](./bot_core/CLAUDE.md) |
+| **主程序** | 启动流程、配置管理、监控重启 | `main.py` | 491 行 | - |
+| **WechatAPI/** | 协议无关门面层（facade / errors / Client） | `Client/*.py` | 3 个文件 | [详细文档](./WechatAPI/CLAUDE.md) |
+| **plugins/** | 插件目录（共 21 个，可通过插件市场扩展） | 各插件 `main.py` | 21 个插件目录 | [详细文档](./plugins/CLAUDE.md) |
+| **admin/** | Web 管理后台（FastAPI，已重构） | `server.py` | 198 行 | [详细文档](./admin/CLAUDE.md) |
+| **adapter/** | 多平台适配器（QQ/TG/Web/Win 等） | `loader.py` | 353 行 | [详细文档](./adapter/CLAUDE.md) |
 | **database/** | 数据持久化（SQLite/Redis） | `*.py` | 8 个 Python 文件 | [详细文档](./database/CLAUDE.md) |
-| **utils/** | 工具函数库（装饰器/日志/性能监控） | `*.py` | 32 个 Python 文件 | [详细文档](./utils/CLAUDE.md) |
-| **docs/** | 用户手册与开发指南 | `*.md` | 12 个文档 | - |
+| **utils/** | 工具函数库（装饰器/日志/性能监控） | `*.py` | 26 个 Python 文件 | [详细文档](./utils/CLAUDE.md) |
+| **docs/** | 用户手册与开发指南 | `*.md` | 15 个文档 | - |
 | **Docker** | 容器化部署配置 | `Dockerfile`, `docker-compose.yml` | - | - |
 
 **统计数据**：
-- Python 文件（不含 plugins/）：137 个（36,639 行）
-- Python 文件（含 plugins/）：158 个（48,377 行）
-- 配置/源码文件（.py/.toml/.yml/.yaml/.json/.ini/.cfg/.conf，排除 .git 与 __pycache__，含 plugins/）：197 个
-- plugins/ 内置插件目录：13 个（支持插件市场扩展）
-- 核心关键文件行数：bot_core/ 986 + main.py 477 + utils/plugin_manager.py 581 ≈ 2,044 行
+- Python 文件（不含 plugins/）：192 个（70,328 行）
+- Python 文件（含 plugins/）：245 个（98,868 行）
+- 配置/源码文件（.py/.toml/.yml/.yaml/.json/.ini/.cfg/.conf，排除 .git 与 __pycache__，含 plugins/）：305 个
+- plugins/ 插件目录：21 个（支持插件市场扩展）
+- 核心关键文件行数：bot_core/ 1,149 + main.py 491 + utils/plugin_manager.py 592 ≈ 2,232 行
 
 ---
 
@@ -266,7 +266,7 @@ pip install -r requirements.txt
 
 # 2. 配置文件
 cp main_config.template.toml main_config.toml
-# 编辑 main_config.toml，设置管理员、协议版本等
+# 编辑 main_config.toml，设置管理员账号、Redis 连接等
 
 # 3. 启动 Redis
 redis-server
@@ -334,11 +334,11 @@ class MyPlugin(PluginBase):
         return True  # 继续执行
 ```
 
-**插件统计**（内置 13 个）：
+**插件统计**（`plugins/` 共 21 个目录）：
 - AI 平台插件：Dify、DifyConversationManager
-- 娱乐插件：FishingPlugin、RandomPicture
-- 工具插件：DependencyManager、ManagePlugin、FileDownloader、FileUploadTest、Reminder、VideoSender
-- 系统插件：BotStatus、GroupMonitor、GroupWelcome
+- 娱乐/媒体插件：RandomPicture、RandomPhoto、VideoDemand、DouyinParser、Screenshot
+- 工具插件：DependencyManager、ManagePlugin、Reminder、MessageParserRecorder、FileDownloader、FileUploadTest
+- 系统/集成插件：BotStatus、GroupMonitor、GroupWelcome、AssistantPlugin、ClawPlugin、HermesPlugin、RevokeBotMessage、Protocol869Demo
 
 详细列表见 [plugins/CLAUDE.md](./plugins/CLAUDE.md)
 
@@ -395,7 +395,7 @@ class MyPlugin(PluginBase):
 ### 5. 数据持久化（database/）
 
 **数据库模块**：
-- `AllBotDB.py`：主数据库（用户、群组、配置）
+- `allbotDB.py`：主数据库（用户、群组、配置）
 - `keyvalDB.py`：键值存储（缓存、临时数据）
 - `messsagDB.py`：消息历史记录
 - `message_counter.py`：消息统计
@@ -565,7 +565,7 @@ docker logs -f allbot
 
 | 模式 | 应用位置 | 作用 |
 |------|---------|------|
-| **单例模式** | `database/AllBotDB.py` | 全局唯一数据库连接 |
+| **单例模式** | `database/allbotDB.py` | 全局唯一数据库连接 |
 | **装饰器模式** | `utils/decorators.py` | 事件处理器注册 |
 | **工厂模式** | `utils/plugin_manager.py` | 插件动态加载 |
 | **观察者模式** | `utils/event_manager.py` | 事件发布/订阅 |
@@ -588,10 +588,10 @@ docker logs -f allbot
 3. 查看日志文件 `logs/allbot_*.log` 中的插件加载信息
 4. 确认装饰器优先级未被其他插件覆盖
 
-### Q2: 如何添加新的微信协议版本？
-1. 在 `WechatAPI/Client/` 中扩展协议适配逻辑
-2. 修改 `main_config.toml` 中 `[Protocol] version` 配置
-3. 确保协议服务端（如 XYWechatPad）已部署并配置正确
+### Q2: 如何接入新的平台/协议？
+1. 新增 `adapter/<platform>/` 目录（含 `config.toml` 与适配器实现），由 `adapter/loader.py` 自动发现，无需改主程序。
+2. 协议连接项（网关地址、WS、凭据等）写在该适配器自己的 `config.toml`，不再写 `main_config.toml`。
+3. 主框架已完成协议剥离，`main_config.template.toml` 已不含 `[Protocol]` 段；消息契约见 `docs/框架消息契约.md`，架构见 `docs/系统架构文档.md`。
 
 ### Q3: 数据库迁移怎么处理？
 当前使用 SQLAlchemy 的 `create_all()` 自动建表，不支持复杂迁移。
@@ -642,7 +642,7 @@ curl http://localhost:9090/api/system/stats
 
 1. **从示例插件开始**：阅读 `plugins/BotStatus/`、`plugins/RandomPicture/`、`plugins/Reminder/`
 2. **理解装饰器机制**：`utils/decorators.py` + `utils/event_manager.py`
-3. **掌握数据持久化**：`database/AllBotDB.py` 的 CRUD 操作
+3. **掌握数据持久化**：`database/allbotDB.py` 的 CRUD 操作
 4. **深入核心调度**：`bot_core/` 的消息处理流程（入口：`bot_core/orchestrator.py`）
 5. **扩展前端界面**：`admin/templates/` + `admin/static/`
 

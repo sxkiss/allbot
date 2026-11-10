@@ -22,8 +22,9 @@ Built-in plugins also cover lightweight live information retrieval such as offic
 - `bot_core/INDEX.md`: Core orchestrator, login, and message pipeline
 - `plugins/INDEX.md`: Built-in plugins and lifecycle integration points
 - `tests/INDEX.md`: Project regression tests (offline reply-chain no-loop harness)
-- `WechatAPI/INDEX.md`: Wechat protocol clients (legacy + 869)
+- `WechatAPI/INDEX.md`: Protocol-independent facade layer (`BotFacade` + legacy bases); protocol implementations live in `adapter/`
 - `utils/INDEX.md`: Shared utilities (config, protocol mapping, etc.)
+- `docs/框架消息契约.md`: Single source of truth for framework normalization (one `MessageNormalizer.normalize` pass), the 14-event contract, and the generic `other_message` exit for unknown MsgTypes
 
 ## Repository baseline (2026-11-09)
 
