@@ -505,25 +505,25 @@ class WechatAPIClient(WechatAPIClientBase):
                     raise RuntimeError(text or f"协议接口请求失败: Code={code}")
 
                 if success_flag is False:
-                    # 协议 quirk：部分网关接口（如 /message/SendCdnDownload）返回 Code=200、
-                    # Data 有实际内容，但 Success=false。此时不应视为失败，否则会把已拿到的数据丢掉。
-                    if self._has_usable_data(payload):
+                    # 发送接口：必须用送达判据，不能仅凭 Data 非空 / isSendSuccess
+                    # 布尔就判成功（这正是「不存在的微信号也判定成功」的根因）。
+                    # 不抛异常：回复已入队发出，抛异常只会引发重试风暴；
+                    # 判定由 send_* 的 success 标志与这里的告警说真话。
+                    if self._is_send_related_path(request_path):
+                        if self._message_delivered(payload):
+                            logger.debug("WechatAPIClient 发送已确认送达: path={}", request_path)
+                        else:
+                            _ok, _problems = self._scan_send_signal(payload)
+                            logger.warning(
+                                "WechatAPIClient 发送未确认送达(网关仅受理,无newMsgId/ret=0): path={} problems={} text={}",
+                                request_path, _problems or [], text,
+                            )
+                    elif self._has_usable_data(payload):
                         logger.warning(
                             "WechatAPIClient 接口 Success=false 但 Data 非空(协议 quirk，按成功处理): path={} text={}",
                             request_path,
                             text,
                         )
-                    elif self._is_send_related_path(request_path):
-                        if self._looks_like_send_ack(payload):
-                            logger.warning(
-                                "WechatAPIClient 发送接口 Success=false 但有发送回执(可能协议 quirk): path={} text={}",
-                                request_path,
-                                text,
-                            )
-                        else:
-                            raise RuntimeError(
-                                text or f"协议发送失败: path={request_path} Success=false 无回执"
-                            )
                     else:
                         raise RuntimeError(
                             text or f"协议接口请求失败: path={request_path} Success=false"
@@ -624,14 +624,17 @@ class WechatAPIClient(WechatAPIClientBase):
         send_success = None
         if isinstance(data, list) and data and isinstance(data[0], dict):
             send_success = data[0].get("isSendSuccess")
+        delivered, problems = self._scan_send_signal(payload)
 
         logger.info(
-            "WechatAPIClient 响应: {} {} code={} success={} isSendSuccess={} text={}",
+            "WechatAPIClient 响应: {} {} code={} success={} isSendSuccess={} delivered={} problems={} text={}",
             method,
             path,
             code,
             success_flag,
             send_success,
+            delivered,
+            problems or [],
             str(text)[:120],
         )
 
@@ -1934,6 +1937,68 @@ class WechatAPIClient(WechatAPIClientBase):
         return None
 
     @classmethod
+    def _scan_send_signal(cls, data: Any):
+        """按 869 铁律扫描发送回执 -> (delivered, problems)。
+
+        - newMsgId 非 0：消息已在服务端生成，最可靠的送达证据（可覆盖 ret 噪音）
+        - ret 白名单 {0, -104}；非白名单（如 -2 / 4294967294）= 真实失败信号，
+          常藏在 Data[].resp.chat_send_ret_list[].ret
+        - Data[].isSendSuccess 显式 false = 硬失败
+        - 外层 Success 是噪音，不参与判定（实测成功时恒为 false）
+        """
+        problems: list = []
+        delivered = [False]
+
+        def coerce_int(v):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return 0
+
+        def walk(node):
+            if isinstance(node, dict):
+                for k in ("newMsgId", "NewMsgId", "new_msg_id"):
+                    if coerce_int(node.get(k)) > 0:
+                        delivered[0] = True
+                if node.get("ret") is not None:
+                    r = coerce_int(node.get("ret"))
+                    if r > 0x7FFFFFFF:      # unsigned -> signed（4294967294 -> -2）
+                        r -= 0x100000000
+                    if r not in (0, -104):
+                        problems.append(f"ret={r}")
+                # 网关可能把失败标记写成 "false"/"0"/0 等非 bool 形态（见
+                # _coerce_optional_bool 已兼容的取值），严格 `is False` 会漏判。
+                if cls._coerce_optional_bool(node.get("isSendSuccess")) is False:
+                    problems.append("isSendSuccess=false")
+                for v in node.values():
+                    if isinstance(v, (dict, list)):
+                        walk(v)
+            elif isinstance(node, list):
+                for it in node:
+                    walk(it)
+
+        # 入参有两种形状：完整响应体 {"Data": ...}，或 call_path(raw=False)
+        # 已剥离后的 Data 本身。Data 为 dict 时并没有 "Data" 键，若仍取
+        # data.get("Data") 会得到 None、漏扫全部回执字段（已送达被记为失败）。
+        root = data.get("Data") if isinstance(data, dict) and "Data" in data else data
+        walk(root)
+        return delivered[0], problems
+
+    @classmethod
+    def _message_delivered(cls, data: Any) -> bool:
+        """发送接口专用的送达判定（区别于通用 _looks_like_send_ack）。
+
+        只有 newMsgId 非 0 且无硬失败才算送达；isSendSuccess=false 判未送达；
+        网关仅受理（无 msgid）也判未确认，不再把「已受理」当「已送达」。
+        ret 非白名单只记入 problems 供日志观测，不否决送达——实测存在
+        「ret 非 0 但消息已生成」的网关噪音，msgid 优先。
+        """
+        delivered, problems = cls._scan_send_signal(data)
+        if delivered and not any(p.startswith("isSendSuccess") for p in problems):
+            return True   # msgid 覆盖 ret 噪音（铁律：ret 非0但已送达确实存在）
+        return False
+
+    @classmethod
     def _looks_like_send_ack(cls, data: Any) -> bool:
         success = cls._extract_send_success_flag(data)
         if success is True:
@@ -2032,11 +2097,18 @@ class WechatAPIClient(WechatAPIClientBase):
         }
         data = await self.call_path("/message/SendTextMessage", body=payload)
         result = self._extract_send_tuple(data)
+        delivered = self._message_delivered(data)
+        if not delivered:
+            _ok, _problems = self._scan_send_signal(data)
+            logger.warning(
+                "WechatAPIClient SendTextMessage 未确认送达: to={} 摘要={}",
+                wxid, _problems or "网关仅受理,无newMsgId/ret=0",
+            )
         await self._record_outbound(
             to_wxid=wxid,
             content=content,
-            success=self._looks_like_send_ack(data),
-            error="",
+            success=delivered,
+            error="" if delivered else "未确认送达:无newMsgId/ret=0",
             client_msg_id=(result[0] or result[2]) if result else 0,
             route_type="direct",
         )

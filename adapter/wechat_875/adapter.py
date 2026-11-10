@@ -120,6 +120,9 @@ from .wx875client import WechatAPIClient
 from .wx875client import protocol875
 
 
+# 出站回复重新入队的轮次计数键（防止失败 payload 无限闭环）。
+_REPLY_ROUND_KEY = "_ab_reply_rounds"
+
 class _PermanentReplyError(Exception):
     """不可重试的回复错误（未知 msg_type / 未知 action 方法等）。"""
 
@@ -178,6 +181,8 @@ class Wechat875Adapter:
         self.reply_queue = str(adapter_cfg.get("replyQueue") or "allbot_reply:wechat875")
         self.reply_max_retry = max(1, int(adapter_cfg.get("replyMaxRetry", 3)))
         self.reply_retry_interval = max(0.2, float(adapter_cfg.get("replyRetryInterval", 2)))
+        # 失败 payload 最多重新入队几轮；封顶后丢弃，杜绝无限重发。
+        self.reply_max_rounds = max(1, int(adapter_cfg.get("replyMaxRounds", 2)))
 
         redis_cfg = self.wx_cfg.get("redis") or {}
         self.redis_queue = str(redis_cfg.get("queue") or "allbot")
@@ -589,7 +594,9 @@ class Wechat875Adapter:
                 # INFO 级：确保默认 logLevel=INFO 下能看到真实入站消息（便于判断「有没有消息」）
                 self._logger.info(
                     f"入站消息 platform={self.platform} account={account.wxid} "
-                    f"from={normalized['FromWxid']} msg_id={normalized['MsgId']} "
+                    f"from={normalized['FromWxid']} "
+                    f"sender={normalized.get('SenderWxid', '')} "
+                    f"msg_id={normalized['MsgId']} "
                     f"content={str(normalized.get('Content', {}).get('string', ''))[:40]}"
                 )
             except Exception as exc:
@@ -732,7 +739,11 @@ class Wechat875Adapter:
             # incoming: sender_id==from_wxid 行为不变；outgoing: 由对端修正为 REDACTED_USER。
             sender_wxid = v2_sender_id or from_wxid
             channel_id = from_wxid
-            user_id = from_wxid
+            # 与群聊一致：UserId 携带真实发送者(sender_wxid)，不再退化成
+            # 会话窗口/接收方(from_wxid)。875 outgoing 私聊此前把接收方当
+            # 发送者输出，群聊分支一直是 sender_wxid，导致群私聊口径不一致。
+            # 仅改 UserId；channel_id/FromWxid 仍是对端(回复路由)，不动。
+            user_id = sender_wxid
 
         timestamp = self._coerce_timestamp(normalized.get("timestamp"))
         msg_id = self._build_numeric_msg_id(
@@ -822,8 +833,15 @@ class Wechat875Adapter:
                 std["MsgType"] = _mtype
                 # 下载所需的原始结构化参数一并透出（endpoint/msg_id/section/file_no…）
                 std["Extra"]["wechat875"]["resources"] = {
-                    _k2: raw.get(_k2) for _k2 in ("image", "video", "emoji", "xml_fields")
+                    _k2: raw.get(_k2) for _k2 in ("image", "video", "emoji", "voice", "xml_fields")
                     if isinstance(raw.get(_k2), dict) and raw.get(_k2)
+                }
+            elif isinstance(raw.get("voice"), dict) and raw["voice"]:
+                # 语音：Content 保留转写文字（不伪造 XML）；download_context 经
+                # Extra.wechat875.raw 透传，框架 MessageNormalizer 自动注册给 client。
+                std["MsgType"] = 34
+                std["Extra"]["wechat875"]["resources"] = {
+                    "voice": raw["voice"], "xml_fields": _xf,
                 }
 
         # ===== 真·引用翻译：app.reference → 框架标准 type=57 引用 XML =====
@@ -944,6 +962,19 @@ class Wechat875Adapter:
                 return
             except asyncio.CancelledError:
                 raise
+            except TimeoutError:
+                # ① 结果未知：发消息 / CdnUpload 是副作用写操作，超时只代表
+                # "等响应超时"，微信侧很可能已经发送成功（8.1MB 视频实测 30s
+                # 超时后仍发出，旧逻辑重试+回队导致重复发送 12 次）。
+                # 出站采用 at-most-once：超时一律不重试、不回队，直接丢弃。
+                # 注：Py3.11 起 asyncio.TimeoutError 即内置 TimeoutError（其
+                # str() 为空，正是旧日志里「失败（第1/3次）: 」空白的来源）。
+                self._logger.error(
+                    f"回复发送超时（结果未知，不重试不回队以避免重复发送）: "
+                    f"msg_type={payload.get('msg_type')} "
+                    f"target={payload.get('wxid') or payload.get('channel_id')}"
+                )
+                return
             except Exception as exc:
                 last_error = exc
                 self._logger.warning(
@@ -952,9 +983,22 @@ class Wechat875Adapter:
                 if attempt < self.reply_max_retry:
                     await asyncio.sleep(self.reply_retry_interval)
 
-        self._logger.error(f"回复多次失败，重新入队等待: {last_error}")
+        # ③ 兜底：其它失败重新入队也带轮次计数并封顶，杜绝无限闭环。
+        # 计数写回 payload 后重新序列化，不能用原 payload_str（否则计数丢失）。
+        rounds = int(payload.get(_REPLY_ROUND_KEY) or 0) + 1
+        if rounds >= self.reply_max_rounds:
+            self._logger.error(
+                f"回复达到最大重新入队轮次({self.reply_max_rounds})，已丢弃以防无限重发: "
+                f"{last_error}"
+            )
+            await asyncio.sleep(self.reply_retry_interval)
+            return
+        payload[_REPLY_ROUND_KEY] = rounds
+        self._logger.error(
+            f"回复多次失败，重新入队等待(轮次 {rounds}/{self.reply_max_rounds}): {last_error}"
+        )
         try:
-            self._redis.rpush(self.reply_queue, payload_str)
+            self._redis.rpush(self.reply_queue, json.dumps(payload, ensure_ascii=False))
         except Exception as exc:
             self._logger.error(f"回复重新入队失败: {exc}")
         await asyncio.sleep(self.reply_retry_interval)

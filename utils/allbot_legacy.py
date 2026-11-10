@@ -30,6 +30,42 @@ from database.message_counter import get_instance as get_message_counter
 
 
 class AllBot:
+    def _resolve_media_client(self, message: Dict[str, Any]):
+        """A：按消息来源平台解析媒体下载应使用的协议客户端。
+
+        全局 BotFacade 的 resolver 按目录字母序挑到 wechat_869，875 消息的
+        msgId 打到 869 网关必然失败（"提交数据错误!"）。复用 MessageRouter 现成
+        的 _resolve_client_for：875 → 对应账户的 875 客户端；其它平台/无 platform
+        /解析失败一律回退全局 self.bot（行为与改前完全一致，869 与新适配器零影响）。
+        """
+        platform = str(message.get("platform") or message.get("Platform") or "").lower()
+        if "875" in platform:
+            try:
+                from utils.allbot.message_router import MessageRouter
+                client = MessageRouter._resolve_client_for(message)
+                if client is not None:
+                    return client
+            except Exception as exc:
+                logger.debug("按来源解析媒体客户端失败，回退全局: {}", exc)
+        return self.bot
+
+    @staticmethod
+    def _is_quote_video(message: Dict[str, Any]) -> bool:
+        """视频下载门控：仅引用消息才需要框架侧下载视频。
+
+        普通视频消息(MsgType=43，含 875 自发回显)不再无条件 download_video；
+        引用视频(MsgType=49)走 process_quote_message，由插件用 CDN 字段自行下载。
+        """
+        if message.get("Quote"):
+            return True
+        if "<refermsg" in str(message.get("Content") or ""):
+            return True
+        extra = message.get("Extra")
+        w875 = extra.get("wechat875") if isinstance(extra, dict) else None
+        if isinstance(w875, dict) and w875.get("reference"):
+            return True
+        return False
+
     def __init__(self, bot_client: WechatAPIClient):
         self.bot = bot_client
         self.wxid = None
@@ -675,55 +711,15 @@ class AllBot:
             logger.info("未知的消息类型: {}", message)
 
     async def process_text_message(self, message: Dict[str, Any]):
-        """处理文本消息"""
-        message["Content"] = message.get("Content", {}).get("string", "")
-
-        if message["FromWxid"].endswith("@chatroom"):  # 群聊消息
-            message["IsGroup"] = True
-            split_content = message["Content"].split(":\n", 1)
-            if len(split_content) > 1:
-                message["Content"] = split_content[1]
-                message["SenderWxid"] = split_content[0]
-
-                # 不更新群聊中发送者的联系人信息
-                # 根据需求，只更新群聊本身信息，不更新群聊中发送者信息
-            else:
-                message["Content"] = split_content[0]
-                message["SenderWxid"] = self.wxid
-        else:
-            message["SenderWxid"] = message["FromWxid"]
-            if message["FromWxid"] == self.wxid:
-                message["FromWxid"] = message["ToWxid"]
-            message["IsGroup"] = False
-
-            # Web 对话：固定为最高权限发送人（仅影响权限判断，不影响回复路由）
-            if message.get("platform") == "web" and self.admins:
-                admin_wxid = self.admins[0]
-                if admin_wxid and isinstance(admin_wxid, str):
-                    message["SenderWxid"] = admin_wxid
-
-        try:
-            root = ET.fromstring(message.get("MsgSource", ""))
-            ats = (
-                root.find("atuserlist").text
-                if root.find("atuserlist") is not None
-                else ""
-            )
-        except Exception as e:
-            if not message.get("MsgSource"):  # 空字符串常见于普通文本消息
-                logger.debug("MsgSource 为空，跳过 atuserlist 解析，无需报错。")
-            else:
-                logger.warning(f"MsgSource 解析失败，内容非有效XML: {message.get('MsgSource')}")
-                logger.debug(f"解析文本消息失败: {e}")
-            ats = ""
-
-        if ats:
-            ats = ats.strip(",").split(",")
-        else:
-            ats = []
-        message["Ats"] = ats if ats and ats[0] != "" else []
-
+        """消息处理：统一字段已由 MessageNormalizer.normalize 一次产出。"""
+        # 适配器消息 → 框架统一解析归一 → 通用消息集 → 插件；此处不二次处理
+        # Content/身份/群/媒体/卡片/引用/Ats/Pat，直接使用归一结果。
+        message.setdefault("SenderWxid", self.wxid)
+        message.setdefault("ActualUserWxid", message["SenderWxid"])
+        message.setdefault("IsGroup", False)
+        message.setdefault("Ats", [])
         bot_wxid = (getattr(self.bot, "wxid", None) or self.wxid or "").strip()
+        # Ats 已由 MessageNormalizer 从 MsgSource 一次解析产出，直接可用。
 
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
@@ -779,32 +775,14 @@ class AllBot:
                 logger.warning("风控保护: 新设备登录后4小时内请挂机")
 
     async def process_image_message(self, message: Dict[str, Any]):
-        """处理图片消息"""
-        image_base64 = message.get("ImageBase64")
-        message["Content"] = (
-            (image_base64 if isinstance(image_base64, str) else message.get("Content", {}).get("string", ""))
-            .replace("\n", "")
-            .replace("\t", "")
-        )
-
-        if message["FromWxid"].endswith("@chatroom"):
-            message["IsGroup"] = True
-            split_content = message["Content"].split(":", 1)
-            if len(split_content) > 1:
-                message["Content"] = split_content[1]
-                message["SenderWxid"] = split_content[0]
-
-                # 不更新群聊中发送者的联系人信息
-                # 根据需求，只更新群聊本身信息，不更新群聊中发送者信息
-            else:
-                message["Content"] = split_content[0]
-                message["SenderWxid"] = self.wxid
-        else:
-            message["SenderWxid"] = message["FromWxid"]
-            if message["FromWxid"] == self.wxid:
-                message["FromWxid"] = message["ToWxid"]
-            message["IsGroup"] = False
-
+        """消息处理：统一字段已由 MessageNormalizer.normalize 一次产出。"""
+        # 适配器消息 → 框架统一解析归一 → 通用消息集 → 插件；此处不二次处理
+        # Content/身份/群/媒体/卡片/引用/Ats/Pat，直接使用归一结果。
+        message.setdefault("SenderWxid", self.wxid)
+        message.setdefault("ActualUserWxid", message["SenderWxid"])
+        message.setdefault("IsGroup", False)
+        message.setdefault("Ats", [])
+        bot_wxid = (getattr(self.bot, "wxid", None) or self.wxid or "").strip()
         logger.info(
             "收到图片消息: 消息ID:{} 来自:{} 发送人:{} XML:{}",
             message.get("MsgId", ""),
@@ -822,25 +800,11 @@ class AllBot:
             is_group=message["IsGroup"],
         )
 
-        aeskey, cdnmidimgurl, length, md5 = None, None, None, None
-        try:
-            root = ET.fromstring(message["Content"])
-            img_element = root.find("img")
-            if img_element is not None:
-                aeskey = img_element.get("aeskey")
-                cdnmidimgurl = img_element.get("cdnbigimgurl") or img_element.get("cdnmidimgurl")
-                length = img_element.get("length")
-                md5 = img_element.get("md5")
-                logger.debug(
-                    f"解析图片XML成功: aeskey={aeskey}, length={length}, md5={md5}"
-                )
-
-                # 保存MD5信息到消息中，方便后续使用
-                message["ImageMD5"] = md5
-        except Exception as e:
-            logger.error("解析图片消息失败: {}, 内容: {}", e, message["Content"])
-            aeskey = cdnmidimgurl = None
-            length = md5 = None
+        # 图片凭据（aeskey/cdnmidimgurl/ImageMD5）已由 MessageNormalizer
+        # 从 <msg><img> 一次解析产出，不再二次解析。
+        aeskey = message.get("aeskey")
+        cdnmidimgurl = message.get("cdnmidimgurl")
+        md5 = message.get("ImageMD5")
 
         # 如果适配器提供了本地缓存路径，优先建立 files 映射，方便后续引用
         self._sync_resource_media(message)
@@ -851,7 +815,7 @@ class AllBot:
         try:
             if aeskey and cdnmidimgurl:
                 logger.debug("直接使用get_msg_image下载图片")
-                image_data = await self.bot.get_msg_image(aeskey, cdnmidimgurl)
+                image_data = await self._resolve_media_client(message).get_msg_image(aeskey, cdnmidimgurl)
                 if image_data:
                     import base64
 
@@ -1022,32 +986,14 @@ class AllBot:
             logger.warning(f"嵌入 base64 图片失败: {exc}")
 
     async def process_voice_message(self, message: Dict[str, Any]):
-        """处理语音消息"""
-        message["Content"] = (
-            message.get("Content", {})
-            .get("string", "")
-            .replace("\n", "")
-            .replace("\t", "")
-        )
-
-        if message["FromWxid"].endswith("@chatroom"):
-            message["IsGroup"] = True
-            split_content = message["Content"].split(":", 1)
-            if len(split_content) > 1:
-                message["Content"] = split_content[1]
-                message["SenderWxid"] = split_content[0]
-
-                # 不更新群聊中发送者的联系人信息
-                # 根据需求，只更新群聊本身信息，不更新群聊中发送者信息
-            else:
-                message["Content"] = split_content[0]
-                message["SenderWxid"] = self.wxid
-        else:
-            message["SenderWxid"] = message["FromWxid"]
-            if message["FromWxid"] == self.wxid:
-                message["FromWxid"] = message["ToWxid"]
-            message["IsGroup"] = False
-
+        """消息处理：统一字段已由 MessageNormalizer.normalize 一次产出。"""
+        # 适配器消息 → 框架统一解析归一 → 通用消息集 → 插件；此处不二次处理
+        # Content/身份/群/媒体/卡片/引用/Ats/Pat，直接使用归一结果。
+        message.setdefault("SenderWxid", self.wxid)
+        message.setdefault("ActualUserWxid", message["SenderWxid"])
+        message.setdefault("IsGroup", False)
+        message.setdefault("Ats", [])
+        bot_wxid = (getattr(self.bot, "wxid", None) or self.wxid or "").strip()
         logger.info(
             "收到语音消息: 消息ID:{} 来自:{} 发送人:{} XML:{}",
             message.get("MsgId", ""),
@@ -1065,26 +1011,27 @@ class AllBot:
             is_group=message["IsGroup"],
         )
 
-        if message["IsGroup"] or not message.get("ImgBuf", {}).get("buffer", ""):
-            voiceurl, length = None, None
+        # voiceurl/length 已由 MessageNormalizer 一次解析产出，不再二次解析 XML。
+        # 869 语音网关 GetMsgVoice 稳定返回 -2：按指示忽略异常且不下载；
+        # 875 走适配器自带 download_context 的客户端实现。
+        platform = str(message.get("platform") or "")
+        voiceurl = message.get("voiceurl")
+        length = message.get("length")
+        silk_base64 = message.get("ImgBuf", {}).get("buffer", "") or ""
+        if (("875" in platform) and (message["IsGroup"] or not silk_base64)
+                and voiceurl and length):
             try:
-                root = ET.fromstring(message["Content"])
-                voicemsg_element = root.find("voicemsg")
-                if voicemsg_element is not None:
-                    voiceurl = voicemsg_element.get("voiceurl")
-                    length = int(voicemsg_element.get("length"))
-            except Exception as e:
-                logger.error("解析语音消息失败: {}, 内容: {}", e, message["Content"])
-                return
-
-            if voiceurl and length:
-                silk_base64 = await self.bot.download_voice(
+                silk_base64 = await self._resolve_media_client(message).download_voice(
                     message["MsgId"], voiceurl, length
-                )
+                ) or ""
+            except Exception as exc:
+                logger.debug("语音下载失败，忽略: {}", exc)
+                silk_base64 = ""
+        if silk_base64:
+            try:
                 message["Content"] = await self.bot.silk_base64_to_wav_byte(silk_base64)
-        else:
-            silk_base64 = message.get("ImgBuf", {}).get("buffer", "")
-            message["Content"] = await self.bot.silk_base64_to_wav_byte(silk_base64)
+            except Exception as exc:
+                logger.debug("语音转码失败，忽略: {}", exc)
 
         if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
@@ -1093,32 +1040,14 @@ class AllBot:
                 logger.warning("风控保护: 新设备登录后4小时内请挂机")
 
     async def process_emoji_message(self, message: Dict[str, Any]):
-        """处理表情消息"""
-        message["Content"] = (
-            message.get("Content", {})
-            .get("string", "")
-            .replace("\n", "")
-            .replace("\t", "")
-        )
-
-        if message["FromWxid"].endswith("@chatroom"):  # 群聊消息
-            message["IsGroup"] = True
-            split_content = message["Content"].split(":\n", 1)
-            if len(split_content) > 1:
-                message["Content"] = split_content[1]
-                message["ActualUserWxid"] = split_content[0]
-
-                # 不更新群聊中发送者的联系人信息
-                # 根据需求，只更新群聊本身信息，不更新群聊中发送者信息
-            else:
-                message["Content"] = split_content[0]
-                message["ActualUserWxid"] = self.wxid
-        else:
-            message["ActualUserWxid"] = message["FromWxid"]
-            if message["FromWxid"] == self.wxid:
-                message["FromWxid"] = message["ToWxid"]
-            message["IsGroup"] = False
-
+        """消息处理：统一字段已由 MessageNormalizer.normalize 一次产出。"""
+        # 适配器消息 → 框架统一解析归一 → 通用消息集 → 插件；此处不二次处理
+        # Content/身份/群/媒体/卡片/引用/Ats/Pat，直接使用归一结果。
+        message.setdefault("SenderWxid", self.wxid)
+        message.setdefault("ActualUserWxid", message["SenderWxid"])
+        message.setdefault("IsGroup", False)
+        message.setdefault("Ats", [])
+        bot_wxid = (getattr(self.bot, "wxid", None) or self.wxid or "").strip()
         logger.info(
             "收到表情消息: 消息ID:{} 来自:{} 发送人:{} XML:{}",
             message.get("MsgId", ""),
@@ -1148,33 +1077,14 @@ class AllBot:
                 logger.warning("风控保护: 新设备登录后4小时内请挂机")
 
     async def process_xml_message(self, message: Dict[str, Any]):
-        """处理xml消息"""
-        message["Content"] = (
-            message.get("Content", {})
-            .get("string", "")
-            .replace("\n", "")
-            .replace("\t", "")
-        )
-
-        if message["FromWxid"].endswith("@chatroom"):
-            message["IsGroup"] = True
-            split_content = message["Content"].split(":", 1)
-            if len(split_content) > 1:
-                message["Content"] = split_content[1]
-                message["SenderWxid"] = split_content[0]
-
-                # 不更新群聊中发送者的联系人信息
-                # 根据需求，只更新群聊本身信息，不更新群聊中发送者信息
-            else:
-                message["Content"] = split_content[0]
-                message["SenderWxid"] = self.wxid
-        else:
-            message["SenderWxid"] = message["FromWxid"]
-            if message["FromWxid"] == self.wxid:
-                message["FromWxid"] = message["ToWxid"]
-            message["IsGroup"] = False
-
-        # 保存消息到数据库（即使解析失败也保存）
+        """消息处理：统一字段已由 MessageNormalizer.normalize 一次产出。"""
+        # 适配器消息 → 框架统一解析归一 → 通用消息集 → 插件；此处不二次处理
+        # Content/身份/群/媒体/卡片/引用/Ats/Pat，直接使用归一结果。
+        message.setdefault("SenderWxid", self.wxid)
+        message.setdefault("ActualUserWxid", message["SenderWxid"])
+        message.setdefault("IsGroup", False)
+        message.setdefault("Ats", [])
+        bot_wxid = (getattr(self.bot, "wxid", None) or self.wxid or "").strip()
         await self.msg_db.save_message(
             msg_id=int(message.get("MsgId", 0)),
             sender_wxid=message["SenderWxid"],
@@ -1184,40 +1094,16 @@ class AllBot:
             is_group=message["IsGroup"],
         )
 
-        try:
-            root = ET.fromstring(message["Content"])
-            appmsg = root.find("appmsg")
-            if appmsg is None:
-                logger.warning("XML 中未找到 appmsg 节点，内容: {}", message["Content"])
-                return
-            type_element = appmsg.find("type")
-            if type_element is None:
-                logger.warning("XML 中未找到 type 节点，内容: {}", message["Content"])
-                return
-            type_value = int(type_element.text)
-            logger.debug(
-                "解析到的 XML 类型: {}, 完整内容: {}", type_value, message["Content"]
-            )
-        except ET.ParseError as e:
-            logger.error("解析 XML 失败: {}, 完整内容: {}", e, message["Content"])
+        # 49 全子类型（5链接/6文件/57引用/74上传中/小程序/频道...）已由
+        # MessageNormalizer 一次解析为 AppType/AppKind/Quote/AppAttach/AppTitle。
+        type_value = int(message.get("AppType") or 0)
+        if not type_value:
+            logger.debug("未归一出 AppType，跳过 XML 分发: {}", message["Content"][:80])
             return
-        except Exception as e:
-            logger.error("处理 XML 时发生异常: {}, 完整内容: {}", e, message["Content"])
-            return
-
-        # 调试：打印原始消息结构（视频/语音引用）
-        if message.get("MsgType") == 49:
-            try:
-                root = ET.fromstring(message["Content"])
-                appmsg = root.find("appmsg")
-                if appmsg is not None:
-                    refermsg = appmsg.find("refermsg")
-                    if refermsg is not None:
-                        ref_type = refermsg.find("type")
-                        ref_content = refermsg.find("content")
-                        logger.info("RAW_QUOTE type={} refer_content={}", int(ref_type.text) if ref_type is not None and ref_type.text else -1, ref_content.text if ref_content is not None else "N/A")
-            except Exception as e:
-                logger.warning("解析引用消息原始结构失败: {}", e)
+        quote = message.get("Quote")
+        if quote:
+            logger.info("RAW_QUOTE type={} refer_content={}",
+                        quote.get("type"), str(quote.get("content", ""))[:80])
         if type_value == 57:  # 引用消息
             await self.process_quote_message(message)
         elif type_value == 6:  # 文件消息
@@ -1732,26 +1618,14 @@ class AllBot:
         return False
 
     async def process_video_message(self, message):
-        message["Content"] = message.get("Content", {}).get("string", "")
-
-        if message["FromWxid"].endswith("@chatroom"):
-            message["IsGroup"] = True
-            split_content = message["Content"].split(":", 1)
-            if len(split_content) > 1:
-                message["Content"] = split_content[1]
-                message["SenderWxid"] = split_content[0]
-
-                # 不更新群聊中发送者的联系人信息
-                # 根据需求，只更新群聊本身信息，不更新群聊中发送者信息
-            else:
-                message["Content"] = split_content[0]
-                message["SenderWxid"] = self.wxid
-        else:
-            message["SenderWxid"] = message["FromWxid"]
-            if message["FromWxid"] == self.wxid:
-                message["FromWxid"] = message["ToWxid"]
-            message["IsGroup"] = False
-
+        """消息处理：统一字段已由 MessageNormalizer.normalize 一次产出。"""
+        # 适配器消息 → 框架统一解析归一 → 通用消息集 → 插件；此处不二次处理
+        # Content/身份/群/媒体/卡片/引用/Ats/Pat，直接使用归一结果。
+        message.setdefault("SenderWxid", self.wxid)
+        message.setdefault("ActualUserWxid", message["SenderWxid"])
+        message.setdefault("IsGroup", False)
+        message.setdefault("Ats", [])
+        bot_wxid = (getattr(self.bot, "wxid", None) or self.wxid or "").strip()
         logger.info(
             "收到视频消息: 消息ID:{} 来自:{} 发送人:{} XML:{}",
             message.get("MsgId", ""),
@@ -1769,7 +1643,14 @@ class AllBot:
             is_group=message["IsGroup"],
         )
 
-        message["Video"] = await self.bot.download_video(message.get("MsgId", 0))
+        # 门控：仅引用消息才下载视频（A 同时让下载走消息来源对应的客户端）。
+        # 普通视频(含 875 自发回显)不再把 875 的 msgId 打到 869 网关。
+        if self._is_quote_video(message):
+            message["Video"] = await self._resolve_media_client(message).download_video(
+                message.get("MsgId", 0)
+            )
+        else:
+            logger.debug("视频消息非引用，跳过框架侧下载: MsgId={}", message.get("MsgId", ""))
 
         if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
@@ -1779,27 +1660,13 @@ class AllBot:
 
     async def process_file_message(self, message: Dict[str, Any]):
         """处理文件消息"""
-        try:
-            root = ET.fromstring(message["Content"])
-            appmsg = root.find("appmsg")
-            appattach = appmsg.find("appattach") if appmsg is not None else None
-            title_node = appmsg.find("title") if appmsg is not None else None
-            attach_node = appattach.find("attachid") if appattach is not None else None
-            ext_node = appattach.find("fileext") if appattach is not None else None
-
-            filename = (title_node.text or "").strip() if title_node is not None and title_node.text else ""
-            attach_id = (attach_node.text or "").strip() if attach_node is not None and attach_node.text else ""
-            file_extend = (ext_node.text or "").strip() if ext_node is not None and ext_node.text else ""
-            if not file_extend and filename:
-                file_extend = Path(filename).suffix.lstrip(".")
-            if not filename or not attach_id:
-                raise ValueError("缺少文件名或 attach_id")
-        except Exception as e:
-            logger.error("解析文件消息失败: {}, 内容: {}", e, message["Content"])
+        # 文件字段已由 MessageNormalizer 从 <appmsg><appattach> 一次产出。
+        filename = message.get("Filename") or ""
+        file_extend = message.get("FileExtend") or ""
+        attach_id = message.get("AttachId") or ""
+        if not filename or not attach_id:
+            logger.debug("文件消息缺少文件名/attach_id，跳过下载: {}", message["Content"][:80])
             return
-
-        message["Filename"] = filename
-        message["FileExtend"] = file_extend
 
         logger.info(
             "收到文件消息: 消息ID:{} 来自:{} 发送人:{} XML:{}",
@@ -1818,7 +1685,7 @@ class AllBot:
             is_group=message["IsGroup"],
         )
 
-        message["File"] = await self.bot.download_attach(attach_id)
+        message["File"] = await self._resolve_media_client(message).download_attach(attach_id)
 
         if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):
@@ -1827,34 +1694,16 @@ class AllBot:
                 logger.warning("风控保护: 新设备登录后4小时内请挂机")
 
     async def process_system_message(self, message: Dict[str, Any]):
-        """处理系统消息"""
-        message["Content"] = message.get("Content", {}).get("string", "")
-
-        if message["FromWxid"].endswith("@chatroom"):
-            message["IsGroup"] = True
-            split_content = message["Content"].split(":", 1)
-            if len(split_content) > 1:
-                message["Content"] = split_content[1]
-                message["SenderWxid"] = split_content[0]
-
-                # 不更新群聊中发送者的联系人信息
-                # 根据需求，只更新群聊本身信息，不更新群聊中发送者信息
-            else:
-                message["Content"] = split_content[0]
-                message["SenderWxid"] = self.wxid
-        else:
-            message["SenderWxid"] = message["FromWxid"]
-            if message["FromWxid"] == self.wxid:
-                message["FromWxid"] = message["ToWxid"]
-            message["IsGroup"] = False
-
-        try:
-            root = ET.fromstring(message["Content"])
-            msg_type = root.attrib["type"]
-        except Exception as e:
-            logger.error("解析系统消息失败: {}, 内容: {}", e, message["Content"])
-            return
-
+        """消息处理：统一字段已由 MessageNormalizer.normalize 一次产出。"""
+        # 适配器消息 → 框架统一解析归一 → 通用消息集 → 插件；此处不二次处理
+        # Content/身份/群/媒体/卡片/引用/Ats/Pat，直接使用归一结果。
+        message.setdefault("SenderWxid", self.wxid)
+        message.setdefault("ActualUserWxid", message["SenderWxid"])
+        message.setdefault("IsGroup", False)
+        message.setdefault("Ats", [])
+        bot_wxid = (getattr(self.bot, "wxid", None) or self.wxid or "").strip()
+        # SysMsgType 已由 MessageNormalizer 一次解析（sysmsg 根 type 属性）。
+        msg_type = str(message.get("SysMsgType") or "")
         if msg_type == "pat":
             await self.process_pat_message(message)
         elif msg_type == "ClientCheckGetExtInfo":
@@ -1869,19 +1718,10 @@ class AllBot:
 
     async def process_pat_message(self, message: Dict[str, Any]):
         """处理拍一拍请求消息"""
-        try:
-            root = ET.fromstring(message["Content"])
-            pat = root.find("pat")
-            patter = pat.find("fromusername").text
-            patted = pat.find("pattedusername").text
-            pat_suffix = pat.find("patsuffix").text
-        except Exception as e:
-            logger.error("解析拍一拍消息失败: {}, 内容: {}", e, message["Content"])
-            return
-
-        message["Patter"] = patter
-        message["Patted"] = patted
-        message["PatSuffix"] = pat_suffix
+        # Patter/Patted/PatSuffix 已由 MessageNormalizer 一次解析产出。
+        message.setdefault("Patter", "")
+        message.setdefault("Patted", "")
+        message.setdefault("PatSuffix", "")
 
         logger.info(
             "收到拍一拍消息: 消息ID:{} 来自:{} 发送人:{} 拍者:{} 被拍:{} 后缀:{}",
@@ -2441,6 +2281,16 @@ class AllBot:
         return True
 
     def ignore_check(self, FromWxid: str, SenderWxid: str):
+        # 875 v2 outgoing 私聊：FromWxid 是「会话窗口/接收方」(如 filehelper
+        # 等系统账号窗口)，不是发送方；真实发送方是 SenderWxid(已由框架归一)。
+        # 系统账号/公众号过滤本意是挡『系统推送』，不该误挡本账号/管理员在
+        # 这些窗口里发出的真实指令，否则 emit 前就被静默丢弃、插件收不到。
+        # 系统推送自身 SenderWxid 是系统账号，不在 admins，不受此守卫影响。
+        if SenderWxid and (
+            SenderWxid == getattr(self, "wxid", "")
+            or SenderWxid in (getattr(self, "admins", None) or [])
+        ):
+            return True
         # 过滤公众号消息（公众号wxid通常以gh_开头）
         if SenderWxid and isinstance(SenderWxid, str) and SenderWxid.startswith("gh_"):
             logger.debug(f"忽略公众号消息: {SenderWxid}")

@@ -1,0 +1,11 @@
+[MessageParserRecorder]
+# 插件总开关（框架按各插件 config.toml 的 enable 决定是否加载处理器）
+enable = true
+# 记录文件（相对插件目录）；结构化 JSONL，一行一条
+record_file = "records/messages.jsonl"
+# 是否在日志里额外打印一条人类可读摘要（不改发送行为）
+log_summary = true
+# 单条文本/base64 字段最大保留长度（避免把大图 base64 刷进记录）
+max_text_len = 400
+# 是否记录框架已落盘资源的本地校验（只读 stat，不触发下载）
+verify_resource_path = true

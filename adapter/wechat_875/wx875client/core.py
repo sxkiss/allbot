@@ -3430,11 +3430,49 @@ class WechatAPIClient(WechatAPIClientBase):
         except Exception:
             pass
 
+    async def _download_by_context(self, msg_id: Any, kind: str) -> str:
+        """框架层通用下载上下文：按 MsgId 取回网关自报的 endpoint+参数直连。
+
+        适配器消息 → MessageNormalizer 注册 download_context → 本方法消费。
+        不再重拼参数；新适配器只要透出 raw 即继承此能力，零代码改动。
+        JSON 响应(视频)走 base64 提取，二进制响应(语音 SILK)直接编码。
+        """
+        try:
+            from utils.message_normalizer import media_context_registry
+        except Exception:
+            return ""
+        req = media_context_registry.get_request(msg_id, kind)
+        if not req:
+            return ""
+        endpoint, body = req
+        try:
+            key = self._resolve_request_key(endpoint, None)
+            params = {protocol875.AUTH_QUERY_KEY_875: key} if key else {}
+            headers = {protocol875.AUTH_HEADER_KEY_875: key} if key else {}
+            url = endpoint if endpoint.startswith(("http://", "https://")) else f"{self.base_url}{endpoint}"
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=body, params=params,
+                                        headers=headers or None, timeout=30) as resp:
+                    ctype = resp.headers.get("Content-Type", "")
+                    if "json" in ctype:
+                        payload = await resp.json(content_type=None)
+                        return self._extract_base64_from_payload(payload) or ""
+                    raw = await resp.read()
+                    return base64.b64encode(raw).decode() if raw else ""
+        except Exception as exc:
+            logger.debug("[WechatAPIClient] context 下载失败 kind={} err={}", kind, exc)
+            return ""
+
     async def download_voice(self, msg_id: Union[str, int], voiceurl: str, length: int) -> str:
         cache_key = _sanitize_cache_key(f"voice_{msg_id}")
         cached = self._media_cache_get(cache_key)
         if cached:
             return cached
+        # 网关自带 download_context 优先：框架归一已按 MsgId 注册，直连端点。
+        ctx_result = await self._download_by_context(msg_id, "voice")
+        if ctx_result:
+            self._media_cache_put(cache_key, ctx_result)
+            return ctx_result
 
         old_payload = {
             "Wxid": self.wxid,
@@ -3474,6 +3512,12 @@ class WechatAPIClient(WechatAPIClientBase):
             logger.info("[WechatAPIClient] download_video 缓存命中 key={} len={}", cache_key, len(cached))
             return cached
         logger.info("[WechatAPIClient] download_video 未命中，开始下载 key={}", cache_key)
+
+        # 网关自带 download_context 优先：框架归一已按 MsgId 注册，直连端点。
+        ctx_result = await self._download_by_context(msg_id, "video")
+        if ctx_result:
+            self._media_cache_put(cache_key, ctx_result)
+            return ctx_result
 
         # 优先使用 CDN 下载（FileType=4 为视频）
         if cdnvideourl and aeskey:
