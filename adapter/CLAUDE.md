@@ -92,44 +92,34 @@ mediaCacheDir = "admin/static/temp/qq"
 
 ## 🔌 对外接口（适配器规范）
 
-### 标准适配器接口
+### 适配器契约（鸭子类型）
 
-所有适配器必须实现以下接口：
+框架不要求继承任何基类，也不强制 `send_message` / `receive_message` 之类的接口。`adapter/base.py` 里**只有** `AdapterLogger`（统一 `[Adapter:]` 日志前缀）与 `LoginCapable`（结构型 `Protocol`，可选登录面板契约），**不提供任何供继承的适配器基类**。适配器按约定提供方法即可：
 
 ```python
-class AdapterBase:
-    def __init__(self, config: dict, config_path: Path):
-        """
-        初始化适配器
-        :param config: 配置字典（从 config.toml 读取）
-        :param config_path: 配置文件路径
-        """
-        pass
+from pathlib import Path
+
+class XxxAdapter:
+    def __init__(self, config_data: dict, config_path: Path):
+        # config_data：loader 读好的 config.toml 字典；config_path：配置文件路径
+        self.config_data = config_data
+        self.config_path = config_path
 
     def run(self):
-        """
-        启动适配器主循环（阻塞方法，在独立线程中运行）
-        """
-        pass
+        # 阻塞主循环，由 loader 在独立线程中调用
+        ...
 
-    async def send_message(self, target: str, content: str, **kwargs):
-        """
-        发送消息到目标用户/群组
-        :param target: 目标 ID（用户 ID 或群组 ID）
-        :param content: 消息内容
-        :param kwargs: 扩展参数（如 message_type, reply_to 等）
-        """
-        pass
-
-    async def receive_message(self) -> dict:
-        """
-        接收消息（返回统一格式的消息对象）
-        :return: 消息字典
-        """
-        pass
+    def stop(self):
+        # 可选：热插拔停旧实例时调用
+        ...
 ```
 
+- 必须的是 `__init__(config_data, config_path)` 与 `run()`；可选 `stop()`。
+- 需要被 facade 委托查询能力时提供 `get_client()` / `client` / `_bot` 之一；需要后台登录面板时按 `LoginCapable` 的**结构**实现 `capabilities` / `list_accounts` / `login_*` 方法，无需继承。
+
 ### 统一消息格式
+
+> 注：下例的 `Content: {"string": ...}`、`FromUserName` / `ToUserName: {"string": ...}` 是**归一器输入形状**（适配器入队时写入的原始形状），不是插件可见字段。归一后 `Content` 为纯 `str`，`FromUserName` / `ToUserName` 被移除，身份改用 `FromWxid` / `ToWxid` 等标准字段。字段与事件契约见 [框架消息契约](../docs/框架消息契约.md)（全仓唯一事实源）。
 
 适配器接收的消息必须转换为以下格式：
 
@@ -241,7 +231,7 @@ host = "0.0.0.0"
 port = 8088
 auth_enabled = true
 username = "admin"
-password = "admin123"
+password = "YOUR_PASSWORD"   # 占位，勿写真实口令
 ```
 
 **实现文件**：
@@ -346,18 +336,19 @@ def test_message_convert():
 **A**：
 1. 在 `adapter/` 中创建新目录（如 `adapter/discord/`）
 2. 创建 `config.toml`、`discord_adapter.py`、`README.md`
-3. 实现 `AdapterBase` 接口
-4. 启用配置后重启程序
+3. 按鸭子类型实现 `__init__(config_data, config_path)` + `run()`（无需继承基类；`adapter/base.py` 只有 `AdapterLogger` / `LoginCapable`）
+4. `config.toml` 双开关（`[adapter].enabled` 与 `[discord].enable`）都置 `true`，由 `start_adapters` 自动扫描加载，无需改主程序
+
+完整 12 步教程见 [多平台适配器说明 · §5 新增适配器步骤](../docs/multi-platform-adapter.md)。
 
 ### Q2: 适配器如何与插件系统通信？
 **A**：
-通过 `utils/reply_router.py` 进行消息路由：
-```python
-from utils.reply_router import ReplyRouter
+适配器不直接调用插件，两侧只通过 Redis 队列解耦，**别把入站 / 出站职责搞反**：
 
-router = ReplyRouter()
-await router.dispatch(message)  # 消息分发到插件系统
-```
+- **入站**：适配器 `RPUSH allbot` 原始消息 → `MessageRouter.process` 调一次 `MessageNormalizer.normalize`（框架统一归一）→ 经 `MessageRouter._route_by_type` 按 MsgType 分发 / `EventManager.emit` → 插件。字段与事件契约见 [框架消息契约](../docs/框架消息契约.md)。
+- **出站**：插件 `bot.send_text_message` → `BotFacade._send` → `ReplyRouter`（`allbot_reply`，其 `dispatch_loop` 负责消费）→ `ReplyDispatcher` → 适配器 `replyQueue`，适配器 `BLPOP` 后调用平台客户端 `send_*_message`。
+
+即：`MessageRouter._route_by_type` + `EventManager.emit` 是入站分发，`ReplyRouter.dispatch_loop` 是出站，二者不是同一条链。
 
 ### Q3: 如何调试适配器？
 **A**：
@@ -408,34 +399,45 @@ await router.dispatch(message)  # 消息分发到插件系统
 
 ### 添加新平台适配器
 
+完整 12 步教程见 [多平台适配器说明 · §5](../docs/multi-platform-adapter.md)。这里给出最小骨架：
+
 **步骤**：
 1. 创建目录：`adapter/new_platform/`
-2. 创建配置文件：`adapter/new_platform/config.toml`
+2. 创建配置文件 `adapter/new_platform/config.toml`（复制 `adapter/web/config.toml` 逐键改，注意三段 + 双开关）：
    ```toml
    [adapter]
-   enabled = true
-   module = "adapter.new_platform.new_adapter"
-   class = "NewAdapter"
+   name = "new_platform"
+   enabled = true                 # 开关一
+   replyQueue = "allbot_reply:new_platform"
+
+   [new_platform]
+   enable = true                  # 开关二（两个都要开）
+   platform = "new_platform"
+
+   [new_platform.redis]
+   queue = "allbot"
    ```
 
-3. 创建适配器类：`adapter/new_platform/new_adapter.py`
+3. 创建适配器类 `adapter/new_platform/new_adapter.py`（鸭子类型，真实签名 `__init__(config_data, config_path)` + `run()`；`adapter/base.py` 只有 `AdapterLogger` / `LoginCapable`，无需继承基类）：
    ```python
+   from pathlib import Path
    from loguru import logger
 
    class NewAdapter:
-       def __init__(self, config: dict, config_path: Path):
-           self.config = config
+       def __init__(self, config_data: dict, config_path: Path):
+           self.config_data = config_data
+           self.config_path = config_path
 
        def run(self):
+           # 阻塞主循环，由 loader 在独立线程中调用
            logger.info("NewAdapter started")
-           # 主循环逻辑
 
-       async def send_message(self, target: str, content: str, **kwargs):
-           # 发送消息实现
+       def stop(self):
+           # 可选：热插拔停旧实例时调用
            pass
    ```
 
-4. 测试配置：启用适配器并重启程序
+4. 启用配置（双开关都 `true`）后由 `start_adapters` 自动扫描加载，无需改主程序
 5. 编写文档：`adapter/new_platform/README.md`
 
 ---

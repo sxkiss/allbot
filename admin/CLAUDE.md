@@ -140,8 +140,8 @@ def register_websocket_routes(app):
    server_thread = start_server(
        host_arg="0.0.0.0",
        port_arg=9090,
-       username_arg="admin",
-       password_arg="admin123",
+       username_arg="<自定义用户名>",
+       password_arg="<强密码, 见 main_config.toml [Admin]>",
        debug_arg=False,
        bot=None
    )
@@ -183,8 +183,8 @@ def register_websocket_routes(app):
 enabled = true
 host = "0.0.0.0"
 port = 9090
-username = "admin"
-password = "admin123"
+username = "<自定义用户名>"
+password = "<强密码；系统拒绝默认/弱口令，见 main_config.toml [Admin]>"
 debug = false
 log_level = "INFO"
 ```

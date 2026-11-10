@@ -79,6 +79,8 @@ deviceId = ""     # 留空自动生成
 
 ## 入站标准字段
 
+> 注：以下为**归一器输入形状**（适配器入队时写入 Redis `allbot` 的原始形状，如 `Content: {"string": ...}`、`FromUserName` / `ToUserName: {"string": ...}`），不是插件可见字段。归一后 `Content` 为纯 `str`，`FromUserName` / `ToUserName` 被移除，身份改用 `FromWxid` / `ToWxid` 等标准字段。归一后字段、事件名与路由契约见 [框架消息契约](../../docs/框架消息契约.md)（全仓唯一事实源）。
+
 每条入站消息包含：
 
 ```json
@@ -189,6 +191,8 @@ deviceId = ""     # 留空自动生成
 
 ## 登录与验证教程（逐账户）
 
+> 本节为**运维验证流程**（拉码 / 扫码 / 人脸验证 / 状态自检），不是适配器编写教程。编写新适配器请参阅 [多平台适配器说明 · §5 新增适配器步骤](../../docs/multi-platform-adapter.md)。
+
 ### 前置条件
 1. 875 协议服务可达（`baseUrl`，默认 `http://127.0.0.1:18062`；WS `wsUrl` 默认 `18089/ws/sync`）。
 2. `adapter/wechat_875/config.toml`：`[adapter].enabled = true`、`[wechat875].enable = true`。
@@ -230,6 +234,8 @@ curl 'http://127.0.0.1:9090/api/adapters/wechat_875/login/status?account=wxid_a'
 - **人脸验证**：见下方「人脸验证（Pad 验证）教程」独立章节——它与适配器扫码登录是两段流程，不做完账号不会上线。
 
 ## 人脸验证（Pad 验证）教程
+
+> 运维验证内容，非编写教程。
 
 > 875 登录分两段：**① 后台扫码（上一节）+ ② 可能触发的人脸验证（本节）**。新设备 / 部分账号扫码后微信会要求人脸验证，且该能力**独立于本适配器**，走 875 协议服务自身的人脸桥，适配器 `capabilities` 不含人脸相关项。只扫码、未做人脸时 `connected` 会一直是 `false`。
 

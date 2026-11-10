@@ -66,7 +66,7 @@ Swagger UI 提供了完整的 API 测试环境，主要功能：
 
 点击右上角的 `Authorize` 按钮：
 - 选择 `HTTPBasic` 认证方式
-- 输入用户名和密码（默认：admin / admin123）
+- 输入你在 `main_config.toml [Admin]` 中设置的用户名与强密码
 - 点击 `Authorize` 确认
 
 #### 步骤 4：填写参数
@@ -128,7 +128,7 @@ AllBot 管理后台支持两种认证方式：
 ```bash
 # Curl 示例
 curl -X GET "http://localhost:9090/api/system/status" \
-     -H "Authorization: Basic YWRtaW46YWRtaW4xMjM="
+     -H "Authorization: Basic <base64(用户名:密码)>"
 ```
 
 ```python
@@ -138,7 +138,7 @@ from requests.auth import HTTPBasicAuth
 
 response = requests.get(
     "http://localhost:9090/api/system/status",
-    auth=HTTPBasicAuth("admin", "admin123")
+    auth=HTTPBasicAuth("<用户名>", "<密码>")
 )
 ```
 
@@ -150,7 +150,7 @@ response = requests.get(
 # 1. 登录获取 Cookie
 curl -X POST "http://localhost:9090/api/auth/login" \
      -H "Content-Type: application/json" \
-     -d '{"username": "admin", "password": "admin123"}' \
+     -d '{"username": "<用户名>", "password": "<密码>"}' \
      -c cookies.txt
 
 # 2. 使用 Cookie 调用其他 API
@@ -158,18 +158,22 @@ curl -X GET "http://localhost:9090/api/system/status" \
      -b cookies.txt
 ```
 
-### 默认凭证
+### 管理后台凭据
 
-| 字段 | 默认值 | 配置位置 |
-|------|--------|----------|
-| 用户名 | `admin` | `main_config.toml` → `[Admin].username` |
-| 密码 | `admin123` | `main_config.toml` → `[Admin].password` |
+首次启动须在 `main_config.toml` 的 `[Admin]` 段设置用户名与强密码——系统不提供任何默认凭据，且启动时会校验 `admin/core/app_setup.py:344-360` 的 `default_passwords` 弱口令清单，命中即拒绝启动。
 
-⚠️ **安全提示**：生产环境请务必修改默认密码！
+| 字段 | 配置位置 |
+|------|----------|
+| 用户名 | `main_config.toml` → `[Admin].username` |
+| 密码 | `main_config.toml` → `[Admin].password` |
 
 ---
 
 ## 🏷️ API 分组说明
+
+> 以下仅列**代码中实际注册**的代表性端点（以 `admin/routes/` 路由注册为准）。
+> 完整、自动生成的清单以运行态 Swagger `/docs` 与 `openapi.json` 为准；
+> 协议剥离时已移除账号切换 / 联系人 / 朋友圈等历史端点，不再列出。
 
 ### 系统（System）
 - `GET /api/system/status`：获取机器人状态
@@ -181,14 +185,8 @@ curl -X GET "http://localhost:9090/api/system/status" \
 ### 插件（Plugin）
 - `GET /api/plugins/list`：获取插件列表
 - `POST /api/plugins/toggle`：启用/禁用插件
-- `POST /api/plugins/reload`：重载插件
 - `GET /api/plugins/config`：获取插件配置
 - `POST /api/plugins/config`：保存插件配置
-
-### 账号（Account）
-- `GET /api/accounts/list`：获取账号列表
-- `POST /api/accounts/switch`：切换账号
-- `POST /api/accounts/logout`：登出账号
 
 ### 文件（File）
 - `GET /api/files/list`：获取文件列表
@@ -196,29 +194,16 @@ curl -X GET "http://localhost:9090/api/system/status" \
 - `DELETE /api/files/delete`：删除文件
 - `GET /api/files/download`：下载文件
 
-### 联系人（Contact）
-- `GET /api/contacts/list`：获取联系人列表
-- `GET /api/contacts/search`：搜索联系人
-- `GET /api/contacts/detail`：获取联系人详情
-
-### 朋友圈（Moment）
-- `GET /api/pyq/list`：获取朋友圈列表
-- `POST /api/pyq/like`：点赞朋友圈
-- `POST /api/pyq/comment`：评论朋友圈
-
 ### 提醒（Reminder）
-- `GET /api/reminders/list`：获取提醒列表
-- `POST /api/reminders/add`：添加提醒
-- `DELETE /api/reminders/delete`：删除提醒
+- `GET /api/reminders`：获取提醒列表
+- `GET /api/reminders/{wxid}`：按会话查询提醒
+- `GET /api/reminders/{wxid}/{id}`：查询单条提醒
 
 ### 适配器（Adapter）
-- `GET /api/adapters/list`：获取适配器列表
-- `GET /api/adapters/status`：获取适配器状态
-- `POST /api/adapters/config`：配置适配器
-
-### AI 平台（AI Platform）
-- `GET /api/ai-platforms/list`：获取 AI 平台列表
-- `POST /api/ai-platforms/config`：配置 AI 平台密钥
+- `GET /api/adapters`：获取适配器列表
+- `POST /api/adapters/{adapter_name}/toggle`：启停适配器
+- `POST /api/adapters/{adapter_name}/config`：配置适配器
+- `GET /api/adapters/{adapter_name}/login/qrcode`：登录二维码（按适配器能力）
 
 ---
 

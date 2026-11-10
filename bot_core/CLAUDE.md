@@ -39,9 +39,9 @@ bot_core/
 ├── __init__.py                  # 模块入口，导出公共接口
 ├── orchestrator.py              # 主编排器，协调所有启动流程
 ├── client_initializer.py        # WechatAPI 客户端初始化
-├── login_handler.py             # 微信登录处理
 ├── service_initializer.py       # 服务初始化（数据库、插件、通知等）
 ├── message_listener.py          # 消息监听与分发
+├── ws_message_normalizer.py     # WS 消息数组提取与 AddMsgs 归一化
 └── status_manager.py            # 状态管理（全局状态跟踪）
 ```
 
@@ -51,13 +51,11 @@ bot_core/
 graph TD
     A[__init__.py] --> B[orchestrator.py]
     B --> C[client_initializer.py]
-    B --> D[login_handler.py]
     B --> E[service_initializer.py]
     B --> F[message_listener.py]
     B --> G[status_manager.py]
 
     C --> H[WechatAPI.Client]
-    D --> H
     E --> I[utils/plugin_manager.py]
     E --> J[database/]
     F --> K[utils/event_manager.py]
@@ -107,22 +105,25 @@ async def bot_core():
 ```python
 class ClientInitializer:
     def initialize_client(self) -> WechatAPIClient:
-        # 1. 确定协议版本 (pad/ipad/mac/win 等)
-        # 2. 设置 API 服务器地址
-        # 3. 配置 Redis 连接
-        # 4. 创建 WechatAPIClient 实例
-        # 5. 返回客户端对象
+        # 1. 创建协议无关门面 WechatAPIClient（不含任何协议实现）
+        # 2. 绑定回复路由 ReplyRouter
+        # 3. 注入按消息上下文解析客户端的 resolver（platform / account_wxid）
+        # 4. 返回门面实例
 ```
 
-**支持的协议版本**:
-- `849`: pad 协议
-- `ipad`: iPad 协议
-- `mac`: Mac 协议
-- `ipad2`: iPad 2 协议
-- `car`: 车载微信协议
-- `win`: Windows 协议
+**客户端解析**:
+- 门面本身不实现协议；查询类调用按当前消息上下文的 `platform` / `account_wxid`
+  解析运行中的适配器客户端（`client_initializer.py:74-102,120-122`），**结果不缓存**，
+  避免跨账号串号；无上下文时回退 `_resolve_active_client`。
+- 协议连接参数写在各适配器自己的 `config.toml`，`main_config.toml` 模板不含协议版本段。
 
-**配置来源**: `main_config.toml` 中的 `[Protocol]` 和 `[WechatAPIServer]` 部分
+**协议实现位置**（`adapter/` 下，由 `adapter/loader.py` 自动发现，无需改主程序）:
+- 带 `*_adapter.py`：`ocwx` / `qq` / `tg` / `web` / `wechat_869` / `wechat_875` /
+  `wechat_observatory` / `wecom_bot` / `win` / `wx`
+- 仅 `README` + `config.toml`：`dingtalk` / `discord` / `feishu` / `mqtt` / `xiaoyi` / `yuanbao`
+- 公共：`base.py` / `loader.py` / `session_store.py` / `gateway_common`
+
+> 详见 [adapter/INDEX.md](../adapter/INDEX.md) 与 [WechatAPI/INDEX.md](../WechatAPI/INDEX.md)。
 
 ---
 
@@ -183,7 +184,7 @@ class ServiceInitializer:
 - 自动重启监控器启动
 
 **依赖模块**:
-- `database/AllBotDB.py`: 主数据库
+- `database/allbotDB.py`: 主数据库
 - `database/messsagDB.py`: 消息历史数据库
 - `database/keyvalDB.py`: 键值存储
 - `utils/plugin_manager.py`: 插件管理器
@@ -194,35 +195,42 @@ class ServiceInitializer:
 
 ### 5. message_listener.py - 消息监听器
 
-**职责**: 监听消息队列并分发到插件系统
+**职责**: 消费 Redis 入站队列并驱动插件处理；主框架不建立任何协议连接
 
 **核心类**: `MessageListener`
 
-**监听模式**:
+**监听模式**（`message_listener.py:221-258`）:
 ```python
 class MessageListener:
     async def start_listening(self, message_db):
-        if mode == "redis":
-            # Redis 消息队列模式
-            await self._listen_redis_queue()
-        elif mode == "websocket":
-            # WebSocket 实时消息模式
-            await self._listen_websocket()
-        elif mode == "rabbitmq":
-            # RabbitMQ 消息队列模式
-            await self._listen_rabbitmq()
+        # 主框架只消费 Redis 入站队列，不建立任何协议连接
+        queues = discover_inbound_queues(self.script_dir)   # 动态发现入站队列
+        worker_count = max(1, min(32, message_consumer_workers))
+        for queue_name in queues:                           # 每个入站队列一组独立 worker
+            for i in range(worker_count):
+                asyncio.create_task(
+                    message_consumer(self.allbot, self.redis, message_db,
+                                     worker_id=f"{queue_name}#{i+1}",
+                                     queue_name=queue_name)
+                )
+        # message_consumer 内：await redis.blpop(queue_name) 阻塞取消息
 ```
+> 不能让一组 worker `BLPOP` 多个键，Redis 会按 key 顺序取，排在后面的队列会被饿死；
+> 每队列独立一组 worker 才能做到按来源物理隔离。真实实现见 `message_listener.py:29-94,221-258`。
 
-**消息处理流程**:
+**消息处理流程**（归一唯一入口与字段契约见 [框架消息契约](../docs/框架消息契约.md)）:
 ```
-接收消息 → 消息归一化 → 事件分发 → 插件处理 → 响应路由
+适配器原始消息 → Redis 入站队列 → 框架统一归一（MessageNormalizer.normalize）
+                → 按 MsgType 分发 / EventManager.emit → 插件 → 响应路由
 ```
 
 **关键功能**:
-- 多种消息队列支持（Redis/WebSocket/RabbitMQ）
-- 消息归一化处理（统一不同平台的消息格式）
-- 异步消息处理（避免阻塞）
-- 消息持久化（保存到 MessageDB）
+- 统一 Redis 入站队列：`discover_inbound_queues` 从各适配器 `config.toml` 的
+  `[*.redis].queue` 动态发现，主队列 `allbot` 始终兜底
+- 每队列一组独立 worker 并行 `BLPOP`（`message-consumer-workers`，默认 4，clamp 1-32）
+- 主框架不建立协议连接，登录/扫码由各适配器在管理后台完成
+- 消息持久化在各 `process_*` 内 `msg_db.save_message`（如 `allbot_legacy.py:724-731`），
+  不在监听器
 
 **依赖模块**:
 - `utils/message_normalizer.py`: 消息格式归一化
@@ -387,14 +395,18 @@ if bot:
 
 ### 自定义消息处理
 
-```python
-from bot_core.message_listener import MessageListener
+框架的消息入口是 `utils/allbot/core.py` 的 `AllBot.process_message`（**无下划线**），
+它把消息委托给 `MessageRouter.process` 完成统一归一与事件分发；插件通过装饰器注册
+处理器，不需要覆盖监听器方法（见 [框架消息契约](../docs/框架消息契约.md)）。
 
-class CustomListener(MessageListener):
-    async def _process_message(self, message: dict):
-        # 自定义消息处理逻辑
-        print(f"收到消息: {message}")
-        await super()._process_message(message)
+```python
+from utils.decorators import on_text_message
+
+class MyPlugin:
+    @on_text_message(priority=80)
+    async def handle(self, bot, message):
+        # message 为归一后的通用消息集，字段见框架消息契约
+        return True          # 返回 True 继续，False 中断
 ```
 
 ---
@@ -413,7 +425,7 @@ class CustomListener(MessageListener):
 | `utils/login_cache.py` | 登录缓存 |
 | `utils/notification_service.py` | 通知服务 |
 | `utils/allbot/core.py` | AllBot 核心类 |
-| `database/AllBotDB.py` | 主数据库 |
+| `database/allbotDB.py` | 主数据库 |
 | `database/messsagDB.py` | 消息数据库 |
 | `database/keyvalDB.py` | 键值存储 |
 | `WechatAPI/` | 微信 API 封装 |
