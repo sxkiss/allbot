@@ -23,14 +23,14 @@ class MessageRouter:
         message_counter = get_message_counter()
         message_counter.increment()
 
-        # 消息格式标准化（使用 MessageNormalizer）
-        MessageNormalizer.normalize(message)
-
-        # 消息预处理（使用 MessageNormalizer）
-        MessageNormalizer.preprocess(message)
-
-        # 处理自己发的消息
-        self._handle_self_message(message)
+        # 统一归一（唯一入口）：适配器任意形状 -> 全类型通用消息集。
+        # 身份/群前缀/Content/媒体凭据/卡片链接/引用/拍一拍 一次性产出，
+        # 后续 legacy 各 process_* 直接使用，不再二次解析或切分正文。
+        MessageNormalizer.normalize(
+            message,
+            bot_wxid=getattr(self.allbot, "wxid", "") or "",
+            admins=getattr(self.allbot, "admins", None),
+        )
 
         # 异步更新联系人信息
         await self._update_contact_async(message)
@@ -110,8 +110,9 @@ class MessageRouter:
             34: self.allbot._process_voice_message,
             43: self.allbot._process_video_message,
             47: self.allbot._process_emoji_message,
-            49: self.allbot._process_xml_message,
+            49: self.allbot._process_xml_message,   # 卡片/链接/文件/引用/小程序
             10002: self.allbot._process_system_message,
+            10000: self.allbot._process_system_message,
         }
 
         handler = type_handlers.get(msg_type)

@@ -54,7 +54,10 @@ class ClientInitializer:
         self.config.protocol.version = upstream["protocol_version"]
 
         # 主线不再实例化任何协议客户端：创建协议无关门面，运行时解析启用的适配器客户端
-        bot = WechatAPIClient(resolver=self._resolve_active_client)
+        bot = WechatAPIClient(
+            resolver=self._resolve_active_client,
+            context_resolver=self._resolve_context_client,
+        )
         logger.success("✅ 已创建协议无关 BotFacade（具体客户端由适配器提供）")
 
         # 设置客户端属性
@@ -66,6 +69,41 @@ class ClientInitializer:
         logger.success("WechatAPI服务已启动")
 
         return bot
+
+    @staticmethod
+    def _resolve_context_client():
+        """按当前消息上下文(reply_context)解析客户端；无上下文/非微信类返回 None。
+
+        供 BotFacade 查询类调用优先使用：875 消息的 download_video 等不再打到
+        按目录序挑到的 869 网关。无上下文时返回 None → facade 回退原有逻辑，
+        启动期/定时任务/869 行为完全不变。返回对象不缓存，避免全局串号。
+        """
+        try:
+            from utils.reply_context import get_context
+            from adapter.loader import list_running_adapters, get_running_adapter
+            ctx = get_context() or {}
+            platform = str(ctx.get("platform") or "").lower()
+            account = str(ctx.get("account_wxid") or "").strip()
+            if not platform or not account or "875" not in platform:
+                return None
+            for info in list_running_adapters():
+                name = str(getattr(info, "name", "") or "")
+                if "875" not in name.lower():
+                    continue
+                inst = get_running_adapter(name)
+                if inst is None:
+                    continue
+                getter = getattr(inst, "get_client", None)
+                if callable(getter):
+                    try:
+                        client = getter(account)
+                    except TypeError:
+                        client = getter()
+                    if client is not None:
+                        return client
+        except Exception as exc:
+            logger.debug("按消息上下文解析客户端失败: {}", exc)
+        return None
 
     @staticmethod
     def _resolve_active_client():
