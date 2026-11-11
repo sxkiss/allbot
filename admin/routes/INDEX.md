@@ -197,3 +197,4 @@
 | feedback_routes.py | API | 意见反馈提交（固定 xxtui key 推送） |
 | message_routes.py | Compat | 旧前端兼容消息接口（send_message/group/announcement） |
 | misc.py | Misc | 杂项聚合（auth/ws/qrcode/notification/terminal）+ 依赖安装 |
+| webhook_inbound_routes.py | Webhook | 通用 webhook 入站（POST /webhook/inbound）+ WS 实时推流（/webhook/subscribe）；多方式鉴权，二进制帧原样推给活跃连接，不缓存消息/不落盘/不解析业务结构 |

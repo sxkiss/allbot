@@ -26,6 +26,17 @@ debug = true               # 是否开启调试模式
 log_level = "INFO"         # 日志级别，可选值: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
 secret-key = "k5_I0SXxWDAYP_PTiT1uJTxbnQayxASJk0bUdGa9DeE"
 
+# 通用 webhook 入站 + WebSocket 实时推流（复用 9090 管理后台 app，不新开端口/服务）
+# 外部 POST 原始包 -> 鉴权 -> 立刻 fan-out 推给当前所有 WS 订阅者 -> 推完即弃
+# 不排队/不缓存/不计数/不补发历史、不写文件/DB/Redis；默认关闭避免暴露
+# 鉴权（POST 与 WS 共用）统一使用上方 [Admin].password（支持 ADMIN_PASSWORD 环境变量覆盖）
+[Webhook]
+enable = false                       # 总开关；false 时 POST 返回 404、WS 拒绝连接(close 1008)
+path = "/webhook/inbound"            # POST 入站字面量默认路径（可在配置里改）
+subscribe-path = "/webhook/subscribe" # WS 订阅长连接路径（二进制帧=原始 body 原样字节）
+max-body-bytes = 1048576             # 原始 body 上限，超限返回 413（默认 1MB）
+timestamp-tolerance-seconds = 300    # HMAC 时间戳防重放容差（秒），0 表示不校验新鲜度
+
 # 日志系统设置（第二阶段优化）
 [Logging]
 enable_file_log = true     # 是否启用文件日志
