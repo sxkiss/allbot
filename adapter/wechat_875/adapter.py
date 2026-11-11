@@ -871,27 +871,23 @@ class Wechat875Adapter:
                     # 框架/MuseBridge 才拿得到 aeskey/cdn 去下载落盘。
                     _svr = str(_ref.get("svr_id") or _ref.get("new_msg_id") or "")
                     _inner = w875_lookup_media(_svr) or "<msg></msg>"
-                _title = content.split(":\n", 1)[-1] if ":\n" in content else content
-                # 残缺引用包防护（2026-11-11）：网关偶发只推「被引用原文」、
-                # 把 app.title / xml_fields.title（本次正文位）整段漏掉，且
-                # content 恰好等于被引用原文。此时 content 不是本次正文，不能
-                # 再冒充 <title> —— 否则框架 process_quote_message 会把它当
-                # 本次正文塞进 message["Content"]，正文里若带 museX号（旧命令）
-                # 就会被 MuseBridge 误判为唤醒词触发。判据：三处正文位全等于
-                # 被引用原文且标题位缺失。置空 <title>（_es 会给空格，框架
-                # .text 不为 None 安全），<refermsg><content> 仍保留原文。
-                _ref_body = str(_ref.get("content") or "").strip()
+                # 本条正文只认协议给的权威字段 app.title / xml_fields.title
+                # （= 原始 appmsg 的 <title>）。content 是网关拼的摘要副本，
+                # 正常时与 title 相等；协议偶发丢掉本次正文时，会把摘要回填成
+                # 引用框原文（museX号 旧命令）或占位符「收到一条应用消息」，
+                # 此时绝不能拿它冒充 <title>——否则框架把引用框原文当本次正文，
+                # 引用里的 museX号 就会被 MuseBridge 当唤醒词误触发。
+                # <refermsg><content> 始终只放被引用原文，不受影响。
                 _app_title = str(_app.get("title") or "").strip()
                 _xf_title = str((raw.get("xml_fields") or {}).get("title") or "").strip() \
                     if isinstance(raw.get("xml_fields"), dict) else ""
-                if (_ref_body and _title.strip() == _ref_body
-                        and not _app_title and not _xf_title):
+                _title = _app_title or _xf_title
+                if not _title:
                     self._logger.warning(
-                        f"[wechat_875] 引用包正文位缺失(content==被引用原文且title全缺)，"
-                        f"置空本条正文避免误触发唤醒词 "
+                        f"[wechat_875] 引用消息缺少本条正文(app.title/xml_fields.title 全缺)，"
+                        f"不把摘要 content 当正文，避免引用框触发词误唤醒 "
                         f"msg_id={normalized.get('MsgId') or normalized.get('msg_id') or ''}"
                     )
-                    _title = ""
                 _xml = (
                     '<?xml version="1.0"?><msg><appmsg appid="" sdkver="0">'
                     f'<title>{_es(_title)}</title><type>57</type><refermsg>'
