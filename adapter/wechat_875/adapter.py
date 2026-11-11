@@ -29,16 +29,27 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlsplit
 
-# ---- 引用媒体资源索引：svr_id -> 被引用原媒体的内层 XML ----
-# 实证：875 把「引用」与「被引用原媒体」拆成两条消息；原媒体（更早到达，
-# 时序 4/4 先到 146~991s）带 xml_fields(aeskey/cdnmidimgurl/...)。引用消息
-# 的 app.reference.svr_id 正好等于原媒体的 new_msg_id/svr_id/id。从已落盘的
-# wechat875_raw.jsonl 建索引，翻译引用时把资源 XML 填进 refermsg.content，
-# 框架 type=3/43 分支 re.search 出 aeskey/cdn，MuseBridge 才能下载落盘。
-_W875_MEDIA_XML_INDEX = None
+# ---- 引用资源缓存：svr_id -> 完整原始包（存 Redis，不落文件）----
+# 875 把「引用」与「被引用原消息」拆成两条消息；原消息更早到达，引用消息的
+# app.reference.svr_id == 原消息的 new_msg_id/svr_id/id。收包时把每条原始包
+# 按这三个 id 各写一份进 Redis（SETEX 带 TTL），引用翻译时按 svr_id GET 回
+# 原消息现算：文本引用取 content，媒体引用用 xml_fields 拼 <msg><img.../>。
+# 与 wechat_875webhook 共用同一 Redis 实例/前缀，缓存可互相命中，零新增依赖。
+
+
+def _w875_msg_keys(raw):
+    """一条原始消息可被 reference.svr_id 命中的全部候选 key。"""
+    return tuple(
+        k for k in (
+            str(raw.get("new_msg_id") or ""),
+            str(raw.get("svr_id") or ""),
+            str(raw.get("id") or ""),
+        ) if k
+    )
 
 
 def w875_make_media_inner_xml(raw):
+    """从原消息 xml_fields 拼媒体内层 XML（框架 type=3/43 需 aeskey/cdn）。"""
     xf = raw.get("xml_fields") if isinstance(raw.get("xml_fields"), dict) else {}
     if not xf:
         return ""
@@ -55,53 +66,51 @@ def w875_make_media_inner_xml(raw):
     return "<msg><%s %s /></msg>" % (tag, attrs)
 
 
-def w875_media_index_path():
-    return Path(__file__).resolve().parent / "records" / "wechat875_raw.jsonl"
+def w875_make_text_inner(raw):
+    """被引用原消息是纯文本时返回其正文（供 refermsg.content 用）。"""
+    c = raw.get("content")
+    if not (isinstance(c, str) and c.strip()):
+        return ""
+    kind = str(raw.get("kind") or "").lower()
+    mtype = raw.get("type")
+    is_text = (kind == "text") or (
+        mtype == 1 and kind not in
+        ("app", "image", "video", "emoji", "voice", "location", "system", "unknown")
+    )
+    return c if is_text else ""
 
 
-def w875_load_media_index():
-    global _W875_MEDIA_XML_INDEX
-    idx = {}
+def w875_cache_set(rds, prefix, ttl, raw):
+    """收包时把一条原始包按 (new_msg_id,svr_id,id) 各写一份进 Redis，带 TTL。"""
+    if rds is None or not isinstance(raw, dict):
+        return
+    keys = _w875_msg_keys(raw)
+    if not keys:
+        return
     try:
-        with open(w875_media_index_path(), encoding="utf-8") as f:
-            for line in f:
-                try:
-                    rec = json.loads(line)
-                    raw = rec.get("raw") or {}
-                    inner = w875_make_media_inner_xml(raw)
-                    if not inner:
-                        continue
-                    for k in (str(raw.get("new_msg_id") or ""),
-                              str(raw.get("svr_id") or ""), str(raw.get("id") or "")):
-                        if k:
-                            idx[k] = inner
-                except Exception:
-                    continue
+        val = json.dumps(raw, ensure_ascii=False, default=str)
+        pipe = rds.pipeline()
+        for k in keys:
+            pipe.setex(prefix + k, ttl, val)
+        pipe.execute()
     except Exception:
         pass
-    _W875_MEDIA_XML_INDEX = idx
-    return idx
 
 
-def w875_index_media(raw):
-    """落盘新原媒体消息时增量入索引（未回灌过就交给首次 lookup 全量扫）。"""
-    global _W875_MEDIA_XML_INDEX
-    if _W875_MEDIA_XML_INDEX is None:
-        return
-    inner = w875_make_media_inner_xml(raw)
-    if not inner:
-        return
-    for k in (str(raw.get("new_msg_id") or ""),
-              str(raw.get("svr_id") or ""), str(raw.get("id") or "")):
-        if k:
-            _W875_MEDIA_XML_INDEX[k] = inner
-
-
-def w875_lookup_media(svr_id):
-    global _W875_MEDIA_XML_INDEX
-    if _W875_MEDIA_XML_INDEX is None:
-        w875_load_media_index()
-    return (_W875_MEDIA_XML_INDEX or {}).get(str(svr_id), "")
+def w875_cache_get_raw(rds, prefix, svr_id):
+    """引用翻译时按 svr_id 取回被引用原消息完整原始包（dict，取不到为 {}）。"""
+    if rds is None or not svr_id:
+        return {}
+    try:
+        v = rds.get(prefix + str(svr_id))
+        if not v:
+            return {}
+        if isinstance(v, (bytes, bytearray)):
+            v = bytes(v).decode("utf-8", "replace")
+        d = json.loads(v)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
 
 
 try:  # redis 为运行必需依赖；延迟到实际启动时校验，便于 enable=false 安全构造
@@ -199,6 +208,10 @@ class Wechat875Adapter:
         self.reconnect_interval = max(1.0, float(self.wx_cfg.get("reconnectInterval", 5)))
         self.default_device_name = str(self.wx_cfg.get("deviceName") or "iPad")
         self.skip_self_message = bool(self.wx_cfg.get("skipSelfMessage", True))
+        # 原始包缓存（供引用反查）：只存 Redis、不落文件，带 TTL 自动过期。
+        # 与 wechat_875webhook 同前缀同实例，缓存可互相命中。
+        self._cache_prefix = str(self.wx_cfg.get("rawCachePrefix") or "w875:raw:")
+        self._cache_ttl = max(60, int(self.wx_cfg.get("rawCacheTtlSec", 7 * 24 * 3600)))
 
         self._stop_event = threading.Event()
         self._loop_thread: Optional[threading.Thread] = None
@@ -572,6 +585,10 @@ class Wechat875Adapter:
         raws: List[Dict[str, Any]] = []
         self._collect_messages(payload, raws)
         for raw in raws:
+            # 先把完整原始包写进 Redis(带TTL)，供后续引用按 svr_id 反查。
+            # 同帧「被引用原消息」在前时边写边查即可覆盖。不落任何文件。
+            w875_cache_set(getattr(self, "_redis", None),
+                           self._cache_prefix, self._cache_ttl, raw)
             try:
                 normalized = self._normalize_to_standard(account, raw)
             except Exception as exc:
@@ -587,10 +604,6 @@ class Wechat875Adapter:
                     self.redis_queue,
                     json.dumps(normalized, ensure_ascii=False),
                 )
-                # 无条件落原始包：绕开框架事件链（引用消息在 parse 阶段就 return、
-                # 不 emit 事件，事件订阅式监控永远看不到真实引用结构），先把真实
-                # 结构攒到独立 jsonl，攒够样本再谈「翻译成 type=57 + 识别被引用正文」。
-                self._record_raw(account, raw, normalized)
                 # INFO 级：确保默认 logLevel=INFO 下能看到真实入站消息（便于判断「有没有消息」）
                 self._logger.info(
                     f"入站消息 platform={self.platform} account={account.wxid} "
@@ -601,31 +614,6 @@ class Wechat875Adapter:
                 )
             except Exception as exc:
                 self._logger.error(f"消息入队失败: {exc}")
-
-    def _record_raw(self, account, raw: Dict[str, Any], normalized: Dict[str, Any]) -> None:
-        """无条件把 875 入站原始包落盘（不依赖框架事件 emit）。
-
-        引用消息（MsgType=49 + 纯显示文本）在框架 process_xml_message 的
-        ET.fromstring 阶段就 return，不 emit 任何事件，事件订阅式监控永远
-        看不到真实引用结构。这里在入队口直接写独立 jsonl，攒样本用。
-        """
-        try:
-            rec = {
-                "ts": time.time(),
-                "platform": self.platform,
-                "account": str(getattr(account, "wxid", "") or ""),
-                "msg_id": str(normalized.get("MsgId") or ""),
-                "msg_type": normalized.get("MsgType"),
-                "content": str(normalized.get("Content", {}).get("string", ""))[:200],
-                "raw": raw,
-            }
-            path = Path(__file__).resolve().parent / "records" / "wechat875_raw.jsonl"
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
-            w875_index_media(raw)
-        except Exception as exc:
-            self._logger.warning(f"原始包落盘失败: {exc}")
 
     def _collect_messages(
         self,
@@ -865,12 +853,19 @@ class Wechat875Adapter:
                 _svrid = _ref.get("svr_id") or _ref.get("new_msg_id") or ""
                 _inner = _ref.get("content")
                 if not _inner:
-                    # 被引用媒体：app.reference 只给 svr_id，资源定位符在「另一条
-                    # 先到的原媒体消息」的 xml_fields（实证 4/4 可按 svr_id 关联）。
-                    # 查落盘索引拼 <msg><img .../></msg> 填进 refermsg.content，
-                    # 框架/MuseBridge 才拿得到 aeskey/cdn 去下载落盘。
+                    # reference 无 content 时，被引用原文在「更早到达的另一条
+                    # 原消息」里。按 svr_id 从 Redis 取回原包现算（不落文件）：
+                    # - 文本引用(1)：取原消息 content 纯文本，绝不塞 <msg></msg>
+                    #   （否则下游把引用识别成 [媒体]）
+                    # - 媒体引用(其它)：用原消息 xml_fields 拼 <msg><img.../>
+                    #   框架 type=3/43 才能 re.search 出 aeskey/cdn 下载。
                     _svr = str(_ref.get("svr_id") or _ref.get("new_msg_id") or "")
-                    _inner = w875_lookup_media(_svr) or "<msg></msg>"
+                    _orig = w875_cache_get_raw(
+                        getattr(self, "_redis", None), self._cache_prefix, _svr)
+                    if _ref_type == "1":
+                        _inner = w875_make_text_inner(_orig) or " "
+                    else:
+                        _inner = w875_make_media_inner_xml(_orig) or "<msg></msg>"
                 # 本条正文只认协议给的权威字段 app.title / xml_fields.title
                 # （= 原始 appmsg 的 <title>）。content 是网关拼的摘要副本，
                 # 正常时与 title 相等；协议偶发丢掉本次正文时，会把摘要回填成

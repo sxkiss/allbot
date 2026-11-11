@@ -87,5 +87,5 @@ docs/reports/diagnostic-quote-media-20260816.md
 adapter/wechat_869/data/
 
 # 适配器登录态/运行时数据（含卡密、设备指纹），不入库
-adapter/wechat_875/wx875client/login_stat.json
+adapter/*/wx875client/login_stat.json
 adapter/wechat_875/data/
