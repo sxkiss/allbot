@@ -21,6 +21,11 @@ deviceName = "iPad"
 # 可选：平台别名，用于回复队列 platform 过滤（默认仅 wechat875）
 # aliases = ["wechat875", "wx875"]
 
+# 原始包缓存（供引用消息按 svr_id 反查）：只进 Redis、不落文件，TTL 到点自动过期。
+# 与 wechat_875webhook 共用同实例同前缀，缓存可互相命中。
+rawCachePrefix = "w875:raw:"
+rawCacheTtlSec = 604800   # 7 天
+
 # 多账户：每个账户一张卡密 + 独立设备名/设备码（可选）
 # 注意：enable=true 且至少配置一个账户才会启动。
 # [[wechat875.accounts]]

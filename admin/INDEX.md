@@ -57,3 +57,4 @@ AllBot 管理后台（FastAPI Web 控制台）。提供系统/联系人/插件/�
 | account_manager.py | API | 多账号列表/切换/刷新/删除与头像 |
 | update_with_progress.py | Update | 旧版带进度更新执行器（当前统一更新逻辑已收口到 `utils/framework_actions.py`） |
 | auth_helper.py / config.py / models.py / adapter_manager.py / account_manager.py | Support | 后台支撑模块（鉴权辅助、配置、模型、适配器与账号管理） |
+| routes/webhook_inbound_routes.py | Webhook | 通用 webhook 入站端点 + WS 实时推流（复用 9090 app，[Webhook].enable 默认关闭，只鉴权+fan-out 不缓存消息，不做业务归一化） |

@@ -31,6 +31,7 @@ REGISTERED_ROUTE_FILES = [
     "admin/routes/adapter_routes.py",
     "admin/routes/message_routes.py",
     "admin/routes/feedback_routes.py",
+    "admin/routes/webhook_inbound_routes.py",
     "admin/reminder_api.py",
     "admin/github_proxy_api.py",
     "admin/restart_api.py",
@@ -187,6 +188,16 @@ def register_all(app) -> None:
         logger.info("✓ feedback_routes 已注册")
     except Exception as e:
         logger.error(f"✗ feedback_routes 注册失败: {e}")
+
+    # 8.2) 通用 webhook 入站端点（默认关闭，由 [Webhook].enable 控制；只鉴权+WS 实时推流，不缓存消息）
+    try:
+        from admin.routes.webhook_inbound_routes import register_webhook_inbound_routes
+        if not getattr(app.state, "_webhook_inbound_registered", False):
+            register_webhook_inbound_routes(app)
+            app.state._webhook_inbound_registered = True
+            logger.info("✓ webhook_inbound_routes 已注册")
+    except Exception as e:
+        logger.error(f"✗ webhook_inbound_routes 注册失败: {e}")
 
     # 9) 外部 API 模块（原先 register_external_apis）
     _register_external_apis(app)
