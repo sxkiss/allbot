@@ -39,4 +39,6 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
-          tags: ghcr.io/${{ github.repository_owner }}/allbot-protocol875:${{ env.IMAGE_TAG }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/allbot-protocol875:${{ env.IMAGE_TAG }}
+            ghcr.io/${{ github.repository_owner }}/allbot-protocol875:latest
