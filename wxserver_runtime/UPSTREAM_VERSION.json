@@ -1,5 +1,5 @@
 {
-  "image": "wechatpadpro/wechatpadprobusiness:v2026.11.16.2",
+  "image": "wechatpadpro/wechatpadprobusiness:latest",
   "version": "v2026.11.16.2",
   "pad_client_version": "",
   "build_date": "",
