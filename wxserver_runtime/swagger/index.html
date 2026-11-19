@@ -292,7 +292,7 @@
 <nav class="topbar">
     <div class="shell topbar-inner">
         <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>WeChatPad Pro <span class="brand-sub">Developer Console</span></span></div>
-        <div class="topnav"><a href="#capabilities">产品能力</a><a href="#xiaowei-api">小微接口</a><a href="#socket-console">实时连接</a><a href="#api-reference">开发文档</a><a href="./pad-face-guide.html">人脸教程</a><a href="https://cloud.wechatpadpro.com/" target="_blank" rel="noreferrer">控制台</a><button id="credentialButton" class="credential-button" type="button">设置凭证</button><span class="top-status"><i class="pulse"></i>服务运行中</span></div>
+        <div class="topnav"><a href="#capabilities">产品能力</a><a href="#xiaowei-api">小微接口</a><a href="#socket-console">实时连接</a><a href="#api-reference">开发文档</a><a href="./pad-face-guide.html">人脸教程</a><button id="credentialButton" class="credential-button" type="button">设置凭证</button><span class="top-status"><i class="pulse"></i>服务运行中</span></div>
     </div>
 </nav>
 <header class="hero">
@@ -332,7 +332,7 @@
         </section>
         <section id="xiaowei-api" class="xiaowei-intro">
             <div class="xiaowei-intro-icon" aria-hidden="true">AI</div>
-            <div><div class="section-kicker">XiaoWei Business API</div><h2>小微业务能力</h2><p>覆盖资格权限、好友邀请、红点、历史记忆、会话推荐、用户卡片和实时对话。接口直接使用当前绑定账号，响应保持可读业务字段；具体方法统一收录在下方接口目录。</p><div class="xiaowei-intro-meta"><span>21 个业务接口</span><span>实时对话 SSE</span><span>统一业务响应</span></div></div>
+            <div><div class="section-kicker">XiaoWei Business API</div><h2>小微业务能力</h2><p>覆盖资格权限、邀请、红点、历史搜索与摘要、记忆、笔记、助手开关、房间、开场白、卡片和实时对话。接口直接使用当前绑定账号，响应保持可读业务字段；具体方法统一收录在下方接口目录。</p><div class="xiaowei-intro-meta"><span>35 个业务接口</span><span>实时对话 SSE</span><span>统一业务响应</span></div></div>
             <a class="xiaowei-intro-link" href="#api-reference">查看下方接口目录</a>
         </section>
         <section class="quickstart">
@@ -577,7 +577,10 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
             if (queryCredential) return queryCredential;
         } catch (e) {}
         const request = swaggerValue(response, 'request');
-        return accessCredentialFromHeaderSources(swaggerValue(request, 'headers')) || docsCredentials.accessToken();
+        // A later global-token change must not rebind an in-flight QR.
+        // The fetch observer supplies the original request header when the
+        // Swagger response does not retain request metadata.
+        return accessCredentialFromHeaderSources(swaggerValue(request, 'headers'));
     }
     function emitQRResponse(requestUrl, data, requestCredential) {
         if (!data || typeof data !== 'object') return;
@@ -594,7 +597,7 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
             detail: {
                 requestUrl,
                 data,
-                requestCredential: String(requestCredential || docsCredentials.accessToken() || '').trim(),
+                requestCredential: normalizeAccessToken(requestCredential),
                 isMac,
                 isNormal,
                 isOversea: path.includes('_oversea')
@@ -760,11 +763,21 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
                 if (!operation || typeof operation !== 'object') return;
                 const body = (operation.parameters || []).find(parameter => parameter?.in === 'body');
                 if (!body) return;
-                const example = { ...qrNetworkExamples['完整兼容配置'] };
+                const examples = JSON.parse(JSON.stringify(qrNetworkExamples));
+                const isMac = /^\/Login\/GetQRMac(?:_oversea)?$/i.test(path);
+                const isMacOversea = isMac && /_oversea$/i.test(path);
+                if (isMac) {
+                    Object.values(examples).forEach(value => {
+                        if (value.DeviceName) value.DeviceName = 'MacBook Pro';
+                        if (isMacOversea && 'oversea' in value) value.oversea = true;
+                    });
+                }
+                const example = examples['完整兼容配置'];
                 const schema = body.schema && typeof body.schema === 'object' ? body.schema : {};
-                body.description = qrNetworkDescription;
+                body.description = isMac ? qrNetworkDescription.replaceAll('我的 iPad', 'MacBook Pro') : qrNetworkDescription;
+                if (isMacOversea) body.description = body.description.replaceAll('"oversea":false', '"oversea":true');
                 body['x-example'] = example;
-                body['x-examples'] = JSON.parse(JSON.stringify(qrNetworkExamples));
+                body['x-examples'] = examples;
                 body.schema = schema.$ref
                     ? { allOf: [{ $ref: schema.$ref }], example }
                     : { ...schema, example };
@@ -966,7 +979,7 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
                     go_native: { title: "Go · net/http", syntax: "go" },
                     java_httpclient: { title: "Java · HttpClient", syntax: "java" },
                     csharp_httpclient: { title: "C# · HttpClient", syntax: "csharp" },
-                    php_curl: { title: "PHP · cURL", syntax: "php" },
+        url: "swagger.json",
                     ruby_nethttp: { title: "Ruby · Net::HTTP", syntax: "ruby" },
                     kotlin_okhttp: { title: "Kotlin · OkHttp", syntax: "kotlin" },
                     swift_urlsession: { title: "Swift · URLSession", syntax: "swift" },
@@ -1330,7 +1343,7 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
             if (responseKey === lastQRResponseKey && now - lastQRResponseAt < 1500) {
                 // Swagger responseInterceptor may not expose request headers on
                 // every build. Let the fetch observer enrich an empty first event.
-                if (detail.isMac || !requestCredential || lastQRResponseHadCredential) return;
+                if (!requestCredential || lastQRResponseHadCredential) return;
             }
             lastQRResponseKey = responseKey;
             lastQRResponseAt = now;
@@ -1338,7 +1351,7 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
 
             if (detail.isMac) {
                 const deviceID = data.DeviceId || payload.DeviceId || data.deviceID || data.DeviceID || data.deviceid;
-                openMacQrPopup(image, uuid, deviceID, !!detail.isOversea);
+                openMacQrPopup(image, uuid, deviceID, !!detail.isOversea, requestCredential);
                 currentQrType = 'mac';
                 return;
             }
@@ -1391,20 +1404,21 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
         };
 
         // Mac二维码专用弹窗函数 - 完全独立
-        function openMacQrPopup(imageUrl, uuid, deviceID, isOversea) {
+        function openMacQrPopup(imageUrl, uuid, deviceID, isOversea, requestCredential) {
             // 清除旧弹窗
             removeExistingPopups();
 
             // 再次确认类型，确保是Mac模式
             currentQrType = 'mac';
+            const macAccessToken = normalizeAccessToken(requestCredential);
 
             const overlay = document.createElement('div');
-            overlay.style.cssText = `position:fixed;top:0;left:0;width:100%;height:100%;background-color:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:1000`;
+            overlay.style.cssText = `position:fixed;inset:0;padding:16px;box-sizing:border-box;background-color:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:1000`;
             overlay.dataset.qrType = 'mac'; // 标记为Mac类型
             document.body.appendChild(overlay);
 
             const box = document.createElement('div');
-            box.style.cssText = `width:min(440px,100%);max-height:90vh;overflow:auto;background:#fff;padding:24px;border-radius:12px;display:flex;flex-direction:column;align-items:center;position:relative`;
+            box.style.cssText = `width:min(440px,100%);box-sizing:border-box;min-width:0;max-height:90vh;overflow-y:auto;overflow-x:hidden;background:#fff;padding:24px;border-radius:12px;display:flex;flex-direction:column;align-items:center;position:relative`;
 
             const title = document.createElement('div');
             title.innerText = isOversea ? 'Mac扫码登录（海外）' : 'Mac扫码登录';
@@ -1427,7 +1441,7 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
             img.style = 'width:300px;height:300px;max-width:100%;';
 
             const result = document.createElement('div');
-            result.style = 'margin-top:16px;color:#2c3e50;word-break:break-word;white-space:normal;max-width:400px;text-align:center;line-height:1.6;';
+            result.style = 'width:100%;min-width:0;margin-top:16px;color:#2c3e50;overflow-wrap:anywhere;word-break:break-word;white-space:normal;text-align:center;line-height:1.6;';
 
             const btn = document.createElement('button');
             btn.innerText = '检查Mac二维码';
@@ -1444,6 +1458,10 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
                 }
 
                 if (btn.innerText.includes('登录成功')) return;
+                if (!macAccessToken) {
+                    result.innerText = '未找到本次取码使用的 Access Token，请关闭窗口后重新获取二维码。';
+                    return;
+                }
                 btn.disabled = true;
                 btn.innerText = 'Mac检测中...';
 
@@ -1455,6 +1473,7 @@ Authorization: Bearer <span class="code-value">ACCESS_TOKEN</span></pre></div>
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-Access-Token': macAccessToken,
                         'X-QR-Mode': 'exclusive-mac' // 专用头标识，确保服务器识别
                     },
                     body: JSON.stringify({
