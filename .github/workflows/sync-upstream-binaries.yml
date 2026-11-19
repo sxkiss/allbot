@@ -157,5 +157,5 @@ jobs:
             echo "无变化，跳过提交"
             exit 0
           fi
-          git commit -m "chore(875): sync upstream binaries ${VERSION} (pad ${PAD_VERSION}) [skip ci]"
+          git commit -m "chore(875): sync upstream binaries ${VERSION} (pad ${PAD_VERSION})"
           git push origin "HEAD:${{ github.ref_name }}"
