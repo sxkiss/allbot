@@ -1,13 +1,13 @@
 {
   "project": "wechatpadpromax08",
-  "version": "v2026.11.16.2",
-  "build_id": "20261116_local_protected_tunnel_v2",
-  "build_time": "2026-11-15 22:20:17 +0000",
-  "build_timestamp": "2026-11-15T22:20:17.848077+00:00",
-  "git_commit": "c8db94081d7d7183c4afa367740b820aace0ce4d",
+  "version": "v2026.11.16.1",
+  "build_id": "20261116_local_protected_v1",
+  "build_time": "2026-11-15 17:28:07 +0000",
+  "build_timestamp": "2026-11-15T17:28:07.451348+00:00",
+  "git_commit": "432481d217639e20f2b9d52f48b4ad669620faf0",
   "git_dirty": false,
   "preview": false,
-  "source_tree_sha256": "dd284241808e774ab3755e120c73a90d70437f9f3b5cbee556b8a17754588c16",
+  "source_tree_sha256": "86bae35be45fddc59f85d81cbb3ebf991a31b727473e1275628bc3d9b0a97160",
   "go_version": "go1.26.11",
   "os": "linux",
   "arch": "amd64",
@@ -17,13 +17,6 @@
   "source_secret_scan": "passed",
   "cloud_worker": false,
   "authorization_policy": "production",
-  "domain_catalog": "aes-256-gcm",
-  "domain_literal_scan": "passed",
-  "client_tunnel_protocol": "2",
-  "tunnel_trust_sha256": "50c518f471a95ed1b3f0675e160b5793e64a2f4c04f4dab4f3deb84b4ce48c9a",
-  "tunnel_certificate_sha256": {
-    "zos-tunnel-20261116-efcdb314": "5c53b3187d3ef74711e1037d5ac74f1ea0868d3fd1ec43ab5079fef82b18c431"
-  },
   "entitlement_keys_sha256": "35de865598b15c0a7efff1be2ce705dfff6587d9dbdc3587e6e754f6b9f5face",
   "authority_sha256": "9bcb137ef56ce100677af0396a4897ebe0b8fdd5b863e964501d17f95807fdb1",
   "face_runtime_sha256": "f7b4237f5702f6cd21357fe6e4680a7e905f8f9b816b872230d018ea696c34d5",
@@ -34,7 +27,7 @@
     "version": "v0.17.0",
     "literals": true,
     "tiny": false,
-    "scope": "wechatdll/Algorithm,wechatdll/clientsdk,wechatdll/models/Admin,wechatdll/native,wechatdll/srv/owneddomains,wechatdll/srv/tunneltrust",
+    "scope": "wechatdll/Algorithm,wechatdll/clientsdk,wechatdll/models/Admin,wechatdll/native",
     "helper_scope": "wechatdll/cmd/facecapture"
   }
 }
