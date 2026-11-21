@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       image:
-        description: "官方镜像（含 tag）。默认 main = 最新版"
+        description: "官方镜像（含 tag）。留空用固定的稳定版 v2026.11.16.1"
         required: false
         default: ""
       mode:
@@ -45,12 +45,14 @@ jobs:
           INPUT_IMAGE: ${{ env.SYNC_IMAGE }}
         run: |
           set -euo pipefail
+          # 固定拉取已验证的稳定版，避免自动发现最新版导致鉴权机制变化引起掉线
+          DEFAULT_IMAGE="wechatpadpro/wechatpadprobusiness:v2026.11.16.1"
           IMAGE="$INPUT_IMAGE"
           if [ -z "$IMAGE" ]; then
-            IMAGE=$(python3 -c 'import json,urllib.request;u="https://hub.docker.com/v2/repositories/wechatpadpro/wechatpadprobusiness/tags?page_size=100&ordering=last_updated";d=json.load(urllib.request.urlopen(u,timeout=30));t=next((x["name"] for x in d.get("results",[]) if "arm" not in x["name"].lower()),"");print("wechatpadpro/wechatpadprobusiness:"+t if t else "")')
+            IMAGE="$DEFAULT_IMAGE"
           fi
-          echo "--- 候选 tags ---"
-          python3 -c 'import json,urllib.request;u="https://hub.docker.com/v2/repositories/wechatpadpro/wechatpadprobusiness/tags?page_size=20&ordering=last_updated";print([t["name"] for t in json.load(urllib.request.urlopen(u,timeout=20)).get("results",[])])'
+          echo "--- 使用的镜像 ---"
+          echo "$IMAGE"
           [ -n "$IMAGE" ] || { echo "无法解析镜像 tag"; exit 1; }
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
