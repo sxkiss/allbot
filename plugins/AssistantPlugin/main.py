@@ -995,7 +995,7 @@ class AssistantPlugin(PluginBase):
             if not bot:
                 return "", ""
             try:
-                payload_b64 = await bot.download_attach(attach_id) if attach_id else ""
+                payload_b64 = await bot.download_attach(attach_id, msg_id=msg_id) if attach_id else ""
                 if not payload_b64 and cdn_url and aeskey:
                     payload_b64 = await self._cdn_download_with_fallback(aeskey, cdn_url)
                 payload = self._coerce_media_payload_bytes(payload_b64)

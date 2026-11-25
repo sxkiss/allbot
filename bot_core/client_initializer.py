@@ -72,11 +72,18 @@ class ClientInitializer:
 
     @staticmethod
     def _resolve_context_client():
-        """按当前消息上下文(reply_context)解析客户端；无上下文/非微信类返回 None。
+        """按当前消息上下文(reply_context)解析客户端；无上下文返回 None。
 
-        供 BotFacade 查询类调用优先使用：875 消息的 download_video 等不再打到
-        按目录序挑到的 869 网关。无上下文时返回 None → facade 回退原有逻辑，
-        启动期/定时任务/869 行为完全不变。返回对象不缓存，避免全局串号。
+        供 BotFacade 查询类(下载/图片/资料等)调用优先使用：按入站消息自带的
+        platform(=适配器名) + account_wxid 精确路由到来源适配器客户端，避免
+        插件查询类调用打到「按目录序挑到的第一个适配器」造成跨协议串号。
+        对所有适配器(869/875/新适配器)一视同仁，不硬编码任何协议名。
+
+        匹配策略(按优先级)：
+          1. platform 精确等于适配器 name（如 wechat_869 / wechat_875webhook）
+          2. platform 是 name 的别名片段（数字协议号 869/875 等）或互为子串
+        无上下文 / 解析失败 → None → facade 回退 _resolve_active_client 原有逻辑，
+        启动期/定时任务行为完全不变。返回对象不缓存，避免全局串号。
         """
         try:
             from utils.reply_context import get_context
@@ -84,23 +91,46 @@ class ClientInitializer:
             ctx = get_context() or {}
             platform = str(ctx.get("platform") or "").lower()
             account = str(ctx.get("account_wxid") or "").strip()
-            if not platform or not account or "875" not in platform:
+            if not platform:
                 return None
-            for info in list_running_adapters():
+            infos = list_running_adapters()
+            # 规范化：去下划线/短横线后比较，兼容 wechat875 / wechat_875 /
+            # wechat_875webhook 等多种平台写法（不同适配器注入口径不一致）。
+            def _norm(s: str) -> str:
+                return str(s or "").lower().replace("_", "").replace("-", "")
+            pnorm = _norm(platform)
+            target_name = ""
+            # 1) 规范化后精确相等
+            for info in infos:
                 name = str(getattr(info, "name", "") or "")
-                if "875" not in name.lower():
-                    continue
-                inst = get_running_adapter(name)
-                if inst is None:
-                    continue
-                getter = getattr(inst, "get_client", None)
-                if callable(getter):
-                    try:
-                        client = getter(account)
-                    except TypeError:
-                        client = getter()
-                    if client is not None:
-                        return client
+                if name and _norm(name) == pnorm:
+                    target_name = name
+                    break
+            # 2) 规范化后互为子串（兼容别名/数字协议号 869/875）
+            if not target_name:
+                for info in infos:
+                    name = str(getattr(info, "name", "") or "")
+                    nname = _norm(name)
+                    if not nname:
+                        continue
+                    if pnorm in nname or nname in pnorm:
+                        target_name = name
+                        break
+            if not target_name:
+                return None
+            inst = get_running_adapter(target_name)
+            if inst is None:
+                return None
+            getter = getattr(inst, "get_client", None)
+            if callable(getter):
+                try:
+                    client = getter(account)
+                except TypeError:
+                    client = getter()
+                if client is not None:
+                    return client
+            # get_client 不可用时的兜底（wecom/ocwx 等无 get_client 的适配器）
+            return ClientInitializer._adapter_client(inst)
         except Exception as exc:
             logger.debug("按消息上下文解析客户端失败: {}", exc)
         return None

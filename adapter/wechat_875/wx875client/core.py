@@ -3557,11 +3557,81 @@ class WechatAPIClient(WechatAPIClientBase):
             logger.warning("[WechatAPIClient] download_video fallback 异常 key={} err={}", cache_key, e)
         return ""
 
-    async def download_attach(self, attach_id: str) -> str:
+    async def _download_file_by_context(self, msg_id: Any) -> str:
+        """875 网关自报 download_context 直连下载文件（分片拼接）。
+
+        网关在 49 文件消息的 download_context 里自带 endpoint + 完整参数
+        （含 data_len 总长与 section 分片），框架归一已按 MsgId 注册到
+        media_context_registry。这里按 section 循环拉取所有分片再拼成完整
+        base64，避免重拼参数打到错误端点（/api/Tools/CdnDownloadImage）。
+        返回 "" 表示无上下文或下载失败，调用方回退旧逻辑。
+        """
+        try:
+            from utils.message_normalizer import media_context_registry
+        except Exception:
+            return ""
+        req = None
+        for kind in ("file", "media"):
+            req = media_context_registry.get_request(msg_id, kind)
+            if req:
+                break
+        if not req:
+            return ""
+        endpoint, body = req
+        if not isinstance(body, dict) or not body:
+            return ""
+        try:
+            key = self._resolve_request_key(endpoint, None)
+            params = {protocol875.AUTH_QUERY_KEY_875: key} if key else {}
+            headers = {protocol875.AUTH_HEADER_KEY_875: key} if key else {}
+            url = endpoint if str(endpoint).startswith(("http://", "https://")) else f"{self.base_url}{endpoint}"
+
+            total = int(body.get("data_len") or 0)
+            section = body.get("section") if isinstance(body.get("section"), dict) else {}
+            chunk = int(section.get("data_len") or 0) or (total or 1048576)
+            start = int(section.get("start_pos") or 0)
+
+            chunks = []
+            async with aiohttp.ClientSession() as session:
+                while True:
+                    part = dict(body)
+                    part["section"] = {"data_len": chunk, "start_pos": start}
+                    async with session.post(url, json=part, params=params,
+                                            headers=headers or None, timeout=60) as resp:
+                        ctype = resp.headers.get("Content-Type", "")
+                        if "json" in ctype:
+                            payload = await resp.json(content_type=None)
+                            piece = self._extract_base64_from_payload(payload) or ""
+                        else:
+                            raw = await resp.read()
+                            piece = base64.b64encode(raw).decode() if raw else ""
+                    if not piece:
+                        break
+                    chunks.append(piece)
+                    start += chunk
+                    if total and start >= total:
+                        break
+                    if not total and len(piece) < chunk * 4 // 3:
+                        break
+            if not chunks:
+                return ""
+            return "".join(chunks)
+        except Exception as exc:
+            logger.debug("[WechatAPIClient] context 文件下载失败 err={}", exc)
+            return ""
+
+    async def download_attach(self, attach_id: str, msg_id: Any = None) -> str:
         cache_key = _sanitize_cache_key(f"attach_{attach_id}")
         cached = self._media_cache_get(cache_key)
         if cached:
             return cached
+
+        # 优先用网关自报 download_context（875 自己接收 id 的下载正道）
+        if msg_id is not None:
+            ctx_payload = await self._download_file_by_context(msg_id)
+            if ctx_payload:
+                self._media_cache_put(cache_key, ctx_payload)
+                return ctx_payload
 
         file_url = ""
         aes_key = ""

@@ -3076,7 +3076,9 @@ class WechatAPIClient(WechatAPIClientBase):
             logger.warning("[WechatAPIClient] download_video fallback 异常 key={} err={}", cache_key, e)
         return ""
 
-    async def download_attach(self, attach_id: str) -> str:
+    async def download_attach(self, attach_id: str, msg_id: Any = None) -> str:
+        # msg_id 仅为跨适配器签名兼容（875 用它走网关 download_context）；
+        # 869 老协议仍用 attach_id 拆 AesKey/FileURL + FileType 回退，忽略即可。
         cache_key = _sanitize_cache_key(f"attach_{attach_id}")
         cached = self._media_cache_get(cache_key)
         if cached:
