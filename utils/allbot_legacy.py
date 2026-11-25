@@ -1464,7 +1464,9 @@ class AllBot:
             is_group=message["IsGroup"],
         )
 
-        message["File"] = await self._resolve_media_client(message).download_attach(attach_id)
+        message["File"] = await self._resolve_media_client(message).download_attach(
+            attach_id, msg_id=message.get("MsgId") or message.get("NewMsgId")
+        )
 
         if self.ignore_check(message["FromWxid"], message["SenderWxid"]):
             if self.ignore_protection or not protector.check(14400):

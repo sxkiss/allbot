@@ -159,8 +159,11 @@ class WechatAPIClient:
     async def download_video(self, msg_id: Any, cdnvideourl: str = "", aeskey: str = "") -> str:
         return await self._call("download_video", msg_id, cdnvideourl, aeskey)
 
-    async def download_attach(self, attach_id: str) -> str:
-        return await self._call("download_attach", attach_id)
+    async def download_attach(self, attach_id: str, msg_id: Any = None) -> str:
+        # msg_id 透传给 875 适配器走网关 download_context；869/其它忽略即可。
+        if msg_id is None:
+            return await self._call("download_attach", attach_id)
+        return await self._call("download_attach", attach_id, msg_id)
 
     async def download_emoji(self, md5: str) -> Any:
         return await self._call("download_emoji", md5)
