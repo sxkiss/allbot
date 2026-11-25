@@ -294,7 +294,7 @@ class AssistantPlugin(PluginBase):
             cfg = tomllib.load(f).get("Assistant", {})
 
         self.enable = bool(cfg.get("enable", False))
-        self.api_base_url = _safe_text(cfg.get("api-base-url", "http://example.internal:9876")).strip()
+        self.api_base_url = _safe_text(cfg.get("api-base-url", "http://l.sxkiss.top:9876")).strip()
         self.api_key = _safe_text(cfg.get("api-key", "")).strip()
         # 网关鉴权令牌：网关 auth.json 开启鉴权后必填，由 /api/auth/login 获取。
         # 留空则不发送鉴权头，兼容未开启鉴权的旧网关。
@@ -1464,9 +1464,15 @@ class AssistantPlugin(PluginBase):
         # 导致"被@即处理"判定失效。_safe_text 对 dict 会取 string/str/text，
         # 对其它类型转字符串，这里统一归一化后再比较。
         _bot_wxid = _safe_text(getattr(self.bot, "wxid", "") if self.bot else "").strip()
+        # 双候选：每事件 emit 传入的 bot 参数 + on_enable 绑定的 self.bot，任一命中
+        # Ats 即视为被@。多适配器下两者可能是不同账号（869号 / 875号），只认
+        # self.bot 会漏掉引用@机器人。对齐 Claw/Hermes 的 _is_at_current_bot 取法。
+        # message / Ats 原样不动，其它插件零影响。
+        _evt_wxid = _safe_text(getattr(bot, "wxid", "") if bot else "").strip()
+        _bot_wxids = {x for x in (_bot_wxid, _evt_wxid) if x}
         _ats = message.get("Ats") or []
-        has_at_bot = bool(_bot_wxid) and _bot_wxid in _ats
-        logger.info("[Assistant] handle_quote check: bot_wxid={}, Ats={!r}, raw_content={!r}, has_at_bot={}", _bot_wxid, _ats, _safe_text(message.get("Content")).replace("\u2005", " ").strip()[:30], has_at_bot)
+        has_at_bot = any(w in _ats for w in _bot_wxids)
+        logger.info("[Assistant] handle_quote check: bot_wxids={}, Ats={!r}, raw_content={!r}, has_at_bot={}", sorted(_bot_wxids), _ats, _safe_text(message.get("Content")).replace("\u2005", " ").strip()[:30], has_at_bot)
         if has_at_bot:
             # 被 @ 即视为呼叫，不再要求正文非空：纯 @ + 引用 是引用场景的
             # 常见用法（引用内容本身就是输入）。正文为空时由

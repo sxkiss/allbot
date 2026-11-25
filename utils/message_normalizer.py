@@ -127,9 +127,19 @@ class MessageNormalizer:
         # 4) Content：取出纯字符串 + 按类型清理
         content = MessageNormalizer._coerce_content(message)
         msg_type = message["MsgType"]
+        _xml_group_prefix = ""
         if msg_type in _XML_TYPES:
+            _m = _GROUP_PREFIX_RE.match(content)
+            if _m and _WXID_RE.match(_m.group(1)):
+                _xml_group_prefix = _m.group(1)
+                content = _m.group(2)
             content = content.replace("\n", "").replace("\t", "")
         message["Content"] = content
+        if _xml_group_prefix:
+            if not message.get("SenderWxid"):
+                message["SenderWxid"] = _xml_group_prefix
+            if not message.get("ActualUserWxid"):
+                message["ActualUserWxid"] = _xml_group_prefix
 
         # 5) 身份归一：群判定 / 群前缀剥离 / 875 outgoing / 自发消息 / web 提权
         MessageNormalizer._normalize_identity(message, bot_wxid, admins)
@@ -528,6 +538,109 @@ class MessageNormalizer:
         MessageNormalizer._normalize_appmsg(message, built)
         return True
 
+    # ---- 引用消息统一解析（框架冻结契约：插件只读 message["Quote"]）----
+    @staticmethod
+    def _build_quote_from_content(content: str, db_path: str = "/app/database/message.db") -> Dict[str, Any]:
+        """从标准 appmsg XML 解析出引用 Quote（大写字段，与历史 legacy 逐字段等价）。
+
+        框架层唯一产者：适配器只喂标准 XML，插件只读 message["Quote"] 这套字段。
+        与旧 legacy 的差异：解析失败时返回已解析部分，不整条丢弃消息。
+        """
+        q: Dict[str, Any] = {}
+        def _e(el, tag, default=""):
+            if el is None:
+                return default
+            node = el.find(tag)
+            return node.text if isinstance(node, ET.Element) and node.text is not None else default
+        def _ei(el, tag, default=0):
+            raw = _e(el, tag, None)
+            try:
+                return int(raw) if raw not in (None, "") else default
+            except (TypeError, ValueError):
+                return default
+        try:
+            root = ET.fromstring(content)
+            appmsg = root.find("appmsg")
+            refermsg = appmsg.find("refermsg") if appmsg is not None else None
+            if refermsg is None:
+                return q
+            mtype = _ei(refermsg, "type", 0)
+            q["MsgType"] = mtype
+            for k, tag in (("NewMsgId", "svrid"), ("ToWxid", "fromusr"),
+                           ("FromWxid", "chatusr"), ("Nickname", "displayname"),
+                           ("MsgSource", "msgsource"), ("Createtime", "createtime")):
+                q[k] = _e(refermsg, tag, "")
+            if mtype == 1:
+                q["Content"] = _e(refermsg, "content", "")
+            elif mtype == 49:
+                inner = _e(refermsg, "content", "")
+                if isinstance(inner, str):
+                    xs = inner.find("<")
+                    if xs > 0:
+                        inner = inner[xs:]
+                qapp = None
+                try:
+                    qapp = ET.fromstring(inner).find("appmsg")
+                except Exception:
+                    qapp = None
+                q["Content"] = _e(qapp, "title", "")
+                q["destination"] = _e(qapp, "des", "")
+                q["action"] = _e(qapp, "action", "")
+                q["XmlType"] = _ei(qapp, "type", 0)
+                q["showtype"] = _ei(qapp, "showtype", 0)
+                q["soundtype"] = _ei(qapp, "soundtype", 0)
+                for k, tag in (("url", "url"), ("lowurl", "lowurl"), ("dataurl", "dataurl"),
+                               ("lowdataurl", "lowdataurl"), ("songlyric", "songlyric"),
+                               ("extinfo", "extinfo"), ("sourceusername", "sourceusername"),
+                               ("sourcedisplayname", "sourcedisplayname"),
+                               ("thumburl", "thumburl"), ("md5", "md5"),
+                               ("statextstr", "statextstr")):
+                    q[k] = _e(qapp, tag, "")
+                q["directshare"] = _ei(qapp, "directshare", 0)
+                attach = qapp.find("appattach") if qapp is not None else None
+                q["appattach"] = {
+                    "totallen": _ei(attach, "totallen", 0),
+                    "attachid": _e(attach, "attachid", ""),
+                    "emoticonmd5": _e(attach, "emoticonmd5", ""),
+                    "fileext": _e(attach, "fileext", ""),
+                    "cdnthumbaeskey": _e(attach, "cdnthumbaeskey", ""),
+                    "aeskey": _e(attach, "aeskey", ""),
+                }
+            elif mtype == 3:
+                q["Content"] = _e(refermsg, "content", "")
+                inner = html.unescape(q["Content"] or "")
+                m = re.search(r'cdnthumbaeskey="([^"]+)"', inner)
+                q["cdnthumbaeskey"] = m.group(1) if m else ""
+                m = re.search(r'aeskey="([^"]+)"', inner)
+                if m: q["aeskey"] = m.group(1)
+                m = re.search(r'cdnmidimgurl="([^"]+)"', inner) or re.search(r'cdnbigimgurl="([^"]+)"', inner)
+                if m: q["cdnmidimgurl"] = m.group(1)
+                m = re.search(r'md5="([^"]+)"', inner)
+                if m: q["ImageMD5"] = m.group(1)
+            elif mtype in (43, 34):
+                q["Content"] = _e(refermsg, "content", "")
+                q["RawReferMsgXml"] = ET.tostring(refermsg, encoding="unicode", method="xml")
+                if not q.get("cdnurl") and q.get("Createtime"):
+                    try:
+                        import sqlite3, datetime
+                        ts = datetime.datetime.fromtimestamp(int(q["Createtime"]))
+                        s = (ts - datetime.timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S")
+                        e2 = (ts + datetime.timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S")
+                        conn = sqlite3.connect(db_path)
+                        cur = conn.cursor()
+                        cur.execute("SELECT content FROM messages WHERE msg_type=43 AND timestamp BETWEEN ? AND ? ORDER BY timestamp ASC LIMIT 1", (s, e2))
+                        row = cur.fetchone(); conn.close()
+                        if row and row[0]:
+                            for key, pat in (("cdnurl", r'cdnvideourl="([^"]+)"'), ("aeskey", r'aeskey="([^"]+)"'),
+                                             ("md5", r'md5="([^"]+)"'), ("length", r'length="([^"]+)"')):
+                                mm = re.search(pat, row[0])
+                                if mm: q[key] = mm.group(1)
+                    except Exception:
+                        pass
+        except Exception as exc:
+            logger.warning("[归一] 引用解析容错(不丢消息): {}", exc)
+        return q
+
     @staticmethod
     def _normalize_appmsg(message: Dict[str, Any], content: str) -> None:
         """49 卡片/链接全归一：产出扁平字段 + AppAttach + Quote。"""
@@ -599,6 +712,14 @@ class MessageNormalizer:
                 "createtime": (refer.findtext("createtime") or "").strip(),
             }
             message["QuoteMsgType"] = rtype
+            # 框架冻结契约：产全大写 Quote 字段（与历史 legacy 逐字段等价），
+            # 插件统一只读 message["Quote"] 的这套字段。保留小写字段兼容。
+            try:
+                _full = MessageNormalizer._build_quote_from_content(content)
+                for _k, _v in _full.items():
+                    message["Quote"][_k] = _v
+            except Exception:
+                pass
 
         # 小程序 / 频道等：保留原始 XML 给插件扩展
         message["AppXml"] = content

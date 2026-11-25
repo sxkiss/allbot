@@ -40,6 +40,7 @@ ROUTE_MAP_875: Dict[str, str] = {
     "/login/TwiceAutoAuth": "/api/Login/TwiceAutoAuth",
     "/login/NewInit": "/api/Login/Newinit",
     "/login/HeartBeat": "/api/Login/HeartBeat",
+    "/login/HeartBeatLong": "/api/Login/HeartBeatLong",
     "/login/GetCacheInfo": "/api/Login/GetCacheInfo",
     "/login/Get62Data": "/api/Login/Get62Data",
     # ---------- 消息发送 ----------

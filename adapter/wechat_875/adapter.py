@@ -80,6 +80,55 @@ def w875_make_text_inner(raw):
     return c if is_text else ""
 
 
+def w875_extract_mentioned(raw):
+    """从 875 网关原始包取出被 @ 成员 wxid（网关已带结构化 id，无需反推昵称）。
+
+    实测：go_fields.MsgSource.mentioned_user_ids / message_context.mentioned_user_ids，
+    值为 ['wxid_xxx', ...]。兼容 dict / XML atuserlist / 单字符串多种形态。
+    """
+    if not isinstance(raw, dict):
+        return []
+    ids = []
+    gf = raw.get("go_fields") if isinstance(raw.get("go_fields"), dict) else {}
+    mc = raw.get("message_context")
+    holders = (gf, gf.get("MsgSource"), gf.get("msgSource"), mc,
+               raw.get("MsgSource"), raw.get("msg_source"), raw)
+    for holder in holders:
+        if isinstance(holder, str):
+            if "<atuserlist" in holder:
+                ids.extend(re.findall(r"<username>\s*([^<\s]+)\s*</username>", holder)
+                           or re.findall(r"<atuserlist>\s*([^<]+)\s*</atuserlist>", holder))
+            continue
+        if not isinstance(holder, dict):
+            continue
+        for key in ("mentioned_user_ids", "mentionedUserIds", "at_user_ids",
+                    "atUserIds", "atuserlist", "atUserlist", "mentioned", "at_users"):
+            val = holder.get(key)
+            if isinstance(val, str):
+                if "<" in val:
+                    val = (re.findall(r"<username>\s*([^<\s]+)\s*</username>", val)
+                           or re.findall(r"<atuserlist>\s*([^<]+)\s*</atuserlist>", val))
+                else:
+                    val = [v.strip() for v in re.split(r"[,<>\s]+", val) if v.strip()]
+            if isinstance(val, (list, tuple, set)):
+                ids.extend(str(x).strip() for x in val if str(x).strip())
+    seen, out = set(), []
+    for x in ids:
+        x = x.strip().strip(",")
+        if x and x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def w875_build_msg_source(ids):
+    """把 @id 列表拼成框架 MessageNormalizer 认的标准 MsgSource XML。"""
+    ats = [str(x).strip() for x in (ids or []) if str(x).strip()]
+    if not ats:
+        return "<msgsource></msgsource>"
+    return "<msgsource><atuserlist>%s</atuserlist></msgsource>" % ",".join(ats)
+
+
 def w875_cache_set(rds, prefix, ttl, raw):
     """收包时把一条原始包按 (new_msg_id,svr_id,id) 各写一份进 Redis，带 TTL。"""
     if rds is None or not isinstance(raw, dict):
@@ -756,6 +805,19 @@ class Wechat875Adapter:
         # 于是无论是否触发改写，FromWxid 最终都指向对方，回复目标始终正确。
         to_wxid_value = channel_id if not is_group else bot_identity
 
+        # @id 透传：网关原始包里已带结构化被@成员 wxid，拼成框架认的 MsgSource。
+        # 框架 MessageNormalizer(t=1) 与引用分支(t=49) 都从这里解 Ats，适配器只负责透传。
+        at_ids_for_source = w875_extract_mentioned(raw)
+        msg_source_at = w875_build_msg_source(at_ids_for_source)
+        if at_ids_for_source:
+            self._logger.info(
+                f"[875@] 透传@id msg_id={msg_id} type={msg_type} "
+                f"ids={at_ids_for_source} MsgSource={msg_source_at}")
+        elif "@" in str(content):
+            self._logger.warning(
+                f"[875@] 正文含@但未取到@id msg_id={msg_id} type={msg_type} "
+                f"content={str(content)[:60]!r}")
+
         std = {
             "Platform": self.platform,
             "ChannelId": channel_id,
@@ -765,7 +827,7 @@ class Wechat875Adapter:
             "Timestamp": timestamp,
             "CreateTime": timestamp,
             "Content": {"string": content},
-            "MsgSource": "<msgsource></msgsource>",
+            "MsgSource": msg_source_at,
             "IsGroup": is_group,
             "FromWxid": channel_id,
             "ToWxid": to_wxid_value,
