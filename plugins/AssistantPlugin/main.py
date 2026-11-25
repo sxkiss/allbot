@@ -727,6 +727,18 @@ class AssistantPlugin(PluginBase):
                     prompt = f"{prompt}\n\n{quote_block}" if prompt else quote_block
         if identity_header:
             prompt = f"{identity_header}\n\n{prompt}" if prompt else identity_header
+        # 收集引用媒体上传后的 file 块路径，挂到 message 上供 _stream_chat 组装
+        # 结构化 message（BT 的 _build_chat_agent 会 json.loads 成 content parts）。
+        try:
+            quote = message.get("Quote")
+            if isinstance(quote, dict) and quote.get("_file_attachment_blocks"):
+                msg_blocks = message.setdefault("_file_attachment_blocks", [])
+                if isinstance(msg_blocks, list):
+                    for p in quote["_file_attachment_blocks"]:
+                        if p not in msg_blocks:
+                            msg_blocks.append(p)
+        except Exception:
+            pass
         return prompt
 
     # ── 引用媒体提取（对齐 HermesPlugin media_pipeline）──────────────
@@ -749,7 +761,14 @@ class AssistantPlugin(PluginBase):
             quoted_type = int(quote.get("MsgType") or 0)
         except (ValueError, TypeError):
             quoted_type = 0
-        quote_xml = _safe_text(quote.get("RawReferMsgXml") or quote.get("Content"))
+        # 微信原始引用字段是小写 content（内含 <msg><img .../> 的 XML）；
+        # 归一化大写 Content 在文件引用场景下被置空。必须兜底小写 content，
+        # 否则 _extract_quote_cdn_fields 拿不到 attachid/aeskey，下载必失败。
+        quote_xml = _safe_text(
+            quote.get("RawReferMsgXml")
+            or quote.get("Content")
+            or quote.get("content")
+        )
 
         # 1. 尝试本地缓存（RESOURCE_PATH / MD5）
         local_path = self._extract_quote_resource_path(quote_xml)
@@ -768,6 +787,15 @@ class AssistantPlugin(PluginBase):
         uploaded_path = await self._upload_quote_media(local_path)
         if uploaded_path:
             refs.append(f"附件路径: {uploaded_path}")
+            # 把上传路径记到 quote 上，供 _build_prompt 收集成结构化 file 块。
+            # /api/files/upload 返回的相对路径(如 uploads/xxx)基于 BT 根(cwd=/home/sxkiss/bt)，
+            # agent 进程同 cwd，file 块直接用它即可命中 os.path.exists。
+            try:
+                blocks = quote.setdefault("_file_attachment_blocks", [])
+                if isinstance(blocks, list) and uploaded_path not in blocks:
+                    blocks.append(uploaded_path)
+            except Exception:
+                pass
         return refs
 
     async def _upload_quote_media(self, local_path: str) -> str:
@@ -1000,7 +1028,11 @@ class AssistantPlugin(PluginBase):
                     payload_b64 = await self._cdn_download_with_fallback(aeskey, cdn_url)
                 payload = self._coerce_media_payload_bytes(payload_b64)
                 if payload:
-                    return self._mk_quote_result(self._save_quote_binary(payload, f"{md5_value or 'quote-file'}.bin"), md5_value)
+                    # 用原始文件名/扩展名保存，别一律 .bin：BT agent 的
+                    # _is_binary_file 把 .bin 判为二进制，Read 工具直接拒读。
+                    # 文本类文件(如 fe.log)用真扩展名才能被 agent 读到内容。
+                    file_name = self._quote_file_name(quote_xml) or f"{md5_value or 'quote-file'}.bin"
+                    return self._mk_quote_result(self._save_quote_binary(payload, file_name), md5_value)
             except Exception as e:
                 self._log_media_download_error("quote-file", e)
             return "", ""
@@ -1040,6 +1072,25 @@ class AssistantPlugin(PluginBase):
                     return payload
             except Exception:
                 pass
+        return ""
+
+    def _quote_file_name(self, quote_xml: str) -> str:
+        """从引用媒体的 XML 提取原始文件名（title 属性），用于落盘保存。
+
+        优先 title=fe.log 这类带扩展名的；只有 fileext 时用 md5.fileext。
+        返回 "" 表示没提取到，调用方回退 .bin。
+        """
+        try:
+            raw = html.unescape(_safe_text(quote_xml))
+            m = re.search(r'\btitle="([^"]+)"', raw)
+            name = os.path.basename(m.group(1).strip()) if m else ""
+            if name and "." in name:
+                return name
+            m = re.search(r'\bfileext="([^"]+)"', raw)
+            if m:
+                return f"quote-file.{m.group(1).strip().lstrip('.')}"
+        except Exception:
+            pass
         return ""
 
     def _save_quote_binary(self, payload: bytes, file_name: str) -> str:
@@ -1655,9 +1706,23 @@ class AssistantPlugin(PluginBase):
         if self.progress_working_seconds > 0 and self.tool_feedback_enable:
             progress_task = asyncio.create_task(_progress_worker())
 
+        # 引用媒体附件：把 message 组装成 BT 支持的 content parts JSON 字符串。
+        # BT 的 _build_chat_agent 会 json.loads 成 list，agent 把 {"type":"file","path":...}
+        # 转成 Read 工具调用，从而让 agent 真正读到引用文件内容（纯文本"附件路径:"做不到）。
+        gateway_message = message
+        try:
+            file_blocks = original_message.get("_file_attachment_blocks") if isinstance(original_message, dict) else None
+            if isinstance(file_blocks, list) and file_blocks:
+                parts = [{"type": "text", "text": message}]
+                for fp in file_blocks:
+                    parts.append({"type": "file", "path": fp})
+                gateway_message = json.dumps(parts, ensure_ascii=False)
+        except Exception:
+            gateway_message = message
+
         try:
             async for evt in self._stream_with_auth_retry(
-                message, session_id, self.default_base_url, self.default_model,
+                gateway_message, session_id, self.default_base_url, self.default_model,
                 workspace=self.workspace, template=self.template, system_prompt=self.system_prompt,
                 mode=self.api_mode
             ):
