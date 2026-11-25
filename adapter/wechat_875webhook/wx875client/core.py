@@ -1485,6 +1485,41 @@ class WechatAPIClient(WechatAPIClientBase):
         # 未就绪（SESSION_NOT_READY）时静默返回空串
         return ""
 
+    async def ensure_newinit_875(self, max_retries: int = 3, retry_delay: float = 3.0) -> bool:
+        """875 协议：确保会话已完成 newinit（AutoHeartBeat 的硬性前置）。
+
+        协议登录成功后会话停在 auto_authenticated 中间态，必须先调 Newinit
+        完成初始化，AutoHeartBeat/HeartBeat/Msg/Sync 才可用。原适配器只调
+        AutoHeartBeat 而漏了这一步，导致心跳起不来、判掉线、收不到消息。
+        Newinit 偶发 UPSTREAM_REQUEST_FAILED（上游抖动），故带重试。
+        返回 True=已就绪（本次成功或状态已就绪），False=多次重试仍失败。
+        """
+        for attempt in range(1, max_retries + 1):
+            try:
+                resp = await self.newinit_875()
+            except Exception as e:
+                logger.warning("875 ensure_newinit 异常(第{}/{}次): {}", attempt, max_retries, e)
+                resp = {}
+            if isinstance(resp, dict):
+                code = resp.get("Code")
+                success = resp.get("Success")
+                cv = str(resp.get("CodeValue") or "")
+                # 成功：Code=0/1 或 Success=true
+                if success is True or code in (0, 1, 200):
+                    logger.info("875 newinit 完成(第{}次)", attempt)
+                    return True
+                # 已经初始化过：某些协议版本会报 ALREADY/已完成，视为就绪
+                if "ALREADY" in cv.upper() or "已完成" in str(resp.get("Message") or ""):
+                    return True
+                msg = str(resp.get("Message") or "")
+                logger.warning(
+                    "875 newinit 未就绪(第{}/{}次): Code={} CodeValue={} Msg={}",
+                    attempt, max_retries, code, cv, msg[:60],
+                )
+            if attempt < max_retries:
+                await asyncio.sleep(retry_delay)
+        return False
+
     async def start_auto_heartbeat_875(self) -> bool:
         """875 协议：开启自动心跳（/api/Login/AutoHeartBeat，authcode 必填）。
 
